@@ -1,0 +1,179 @@
+namespace RPA.Infrastructure.Tests;
+
+using System.Net;
+using System.Net.Http;
+using Microsoft.Extensions.Http;
+using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Activities.Api;
+using BusinessException = RPA.Domain.Exceptions.BusinessException;
+using SystemException = RPA.Domain.Exceptions.SystemException;
+using DomainLogLevel = RPA.Domain.Interfaces.LogLevel;
+
+public class ApiHttpActivityTests
+{
+    private sealed class FakeHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
+        public int CallCount { get; private set; }
+        public List<HttpRequestMessage> Requests { get; } = new();
+
+        public FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) => _responder = responder;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            Requests.Add(request);
+            return Task.FromResult(_responder(request));
+        }
+    }
+
+    private sealed class FakeHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient _client;
+        public FakeHttpClientFactory(HttpMessageHandler handler) => _client = new HttpClient(handler);
+        public HttpClient CreateClient(string name) => _client;
+    }
+
+    private sealed class FakeContext : IActivityExecutionContext
+    {
+        private readonly Dictionary<string, object?> _vars;
+        private readonly Dictionary<string, string> _credentials;
+
+        public FakeContext(Dictionary<string, object?> vars, Dictionary<string, string>? credentials = null)
+        {
+            _vars = vars;
+            _credentials = credentials ?? new();
+        }
+
+        public T GetVariable<T>(string name)
+        {
+            if (_vars.TryGetValue(name, out var value) && value is not null)
+            {
+                if (value is T typed) return typed;
+                var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+                return (T)Convert.ChangeType(value, targetType);
+            }
+            return default!;
+        }
+
+        public void SetVariable(string name, object? value) => _vars[name] = value;
+        public Task<string> GetCredentialAsync(string credentialName) =>
+            Task.FromResult(_credentials.TryGetValue(credentialName, out var v) ? v : "");
+        public Task<string?> GetAssetAsync(string assetName) => Task.FromResult<string?>(null);
+        public void Log(string message, DomainLogLevel level = DomainLogLevel.Information) { }
+        public string TimeZone => "UTC";
+        public Guid JobRunId => Guid.NewGuid();
+    }
+
+    private static ApiHttpActivity CreateActivity(HttpMessageHandler handler) =>
+        new(new FakeHttpClientFactory(handler));
+
+    [Fact]
+    public async Task Get_ReturnsStatusAndBody()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("test", System.Text.Encoding.UTF8, "text/plain"),
+        });
+        var activity = CreateActivity(handler);
+        var ctx = new FakeContext(new() { ["url"] = "https://test.api/data", ["method"] = "GET" });
+
+        var result = await activity.ExecuteAsync(ctx);
+
+        Assert.Equal(200, result["statusCode"]);
+        Assert.Equal("test", result["responseBody"]);
+    }
+
+    [Fact]
+    public async Task BearerAuth_SendsHeader()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("ok"),
+        });
+        var activity = CreateActivity(handler);
+        var ctx = new FakeContext(
+            new() { ["url"] = "https://test.api/", ["authType"] = "Bearer", ["credentialName"] = "token" },
+            new() { ["token"] = "abc123" });
+
+        await activity.ExecuteAsync(ctx);
+
+        Assert.Equal("Bearer", handler.Requests[0].Headers.Authorization?.Scheme);
+        Assert.Equal("abc123", handler.Requests[0].Headers.Authorization?.Parameter);
+    }
+
+    [Fact]
+    public async Task BasicAuth_EncodesBase64()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("ok"),
+        });
+        var activity = CreateActivity(handler);
+        var ctx = new FakeContext(
+            new() { ["url"] = "https://test.api/", ["authType"] = "Basic", ["credentialName"] = "cred" },
+            new() { ["cred"] = "user:pass" });
+
+        await activity.ExecuteAsync(ctx);
+
+        var expected = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("user:pass"));
+        Assert.Equal("Basic", handler.Requests[0].Headers.Authorization?.Scheme);
+        Assert.Equal(expected, handler.Requests[0].Headers.Authorization?.Parameter);
+    }
+
+    [Fact]
+    public async Task ApiKeyAuth_SetsHeader()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("ok"),
+        });
+        var activity = CreateActivity(handler);
+        var ctx = new FakeContext(
+            new() {
+                ["url"] = "https://test.api/",
+                ["authType"] = "ApiKey",
+                ["credentialName"] = "key",
+                ["apiKeyHeaderName"] = "X-Api-Key"
+            },
+            new() { ["key"] = "secret" });
+
+        await activity.ExecuteAsync(ctx);
+
+        Assert.True(handler.Requests[0].Headers.TryGetValues("X-Api-Key", out var vals));
+        Assert.Equal("secret", vals.First());
+    }
+
+    [Fact]
+    public async Task Status4xx_ThrowsBusiness()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("bad"),
+        });
+        var activity = CreateActivity(handler);
+        var ctx = new FakeContext(new() { ["url"] = "https://test.api/", ["retryCount"] = 0 });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx));
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task Status5xx_RetriesThenThrowsSystem()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("error"),
+        });
+        var activity = CreateActivity(handler);
+        var ctx = new FakeContext(new() {
+            ["url"] = "https://test.api/",
+            ["retryCount"] = 2,
+            ["circuitBreakerFailureThreshold"] = 100
+        });
+
+        await Assert.ThrowsAsync<SystemException>(() => activity.ExecuteAsync(ctx));
+        Assert.Equal(3, handler.CallCount); // 1 + 2 retries
+    }
+}

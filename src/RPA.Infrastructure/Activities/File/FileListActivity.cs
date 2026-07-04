@@ -3,31 +3,22 @@ namespace RPA.Infrastructure.Activities.File;
 using RPA.Domain.Interfaces;
 using Newtonsoft.Json.Linq;
 
-/// <summary>
-/// Klasördeki dosyaları listeler (Spec 5.3).
-/// </summary>
 public sealed class FileListActivity : IActivity
 {
-    public ActivityMetadata GetMetadata()
+    public ActivityMetadata GetMetadata() => new()
     {
-        return new ActivityMetadata
+        ActivityId = "File.List",
+        DisplayName = "Dosya Listele",
+        Category = "Dosya",
+        Description = "Klasördeki dosyaları listeler (pattern).",
+        Inputs = new()
         {
-            ActivityId = "File.List",
-            DisplayName = "Dosya Listele",
-            Category = "Dosya",
-            Description = "Klasördeki dosyaları listeler (pattern).",
-            Inputs = new()
-            {
-                new ActivityParameter { Name = "folder", Type = "string", Required = true, Description = "Klasör yolu" },
-                new ActivityParameter { Name = "pattern", Type = "string", Required = false, DefaultValue = "*", Description = "Dosya adı deseni" }
-            },
-            Outputs = new()
-            {
-                new ActivityParameter { Name = "files", Type = "JSON", Required = false, Description = "Dosya listesi (ad, yol, boyut, tarih)" }
-            },
-            RequiredCapabilities = new() { "file" }
-        };
-    }
+            new ActivityParameter { Name = "folder", Type = "string", Required = true, Description = "Klasör yolu" },
+            new ActivityParameter { Name = "pattern", Type = "string", Required = false, DefaultValue = "*", Description = "Dosya adı deseni" }
+        },
+        Outputs = new() { new ActivityParameter { Name = "files", Type = "JSON", Required = false, Description = "Dosya listesi" } },
+        RequiredCapabilities = new() { "file" }
+    };
 
     public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
     {
@@ -35,24 +26,20 @@ public sealed class FileListActivity : IActivity
         var pattern = context.GetVariable<string>("pattern") ?? "*";
 
         if (string.IsNullOrWhiteSpace(folder))
-        {
             throw new Domain.Exceptions.BusinessException("'folder' parametresi boş olamaz.");
-        }
 
-        if (!Directory.Exists(folder))
-        {
+        if (!System.IO.Directory.Exists(folder))
             throw new Domain.Exceptions.BusinessException($"Klasör bulunamadı: {folder}");
-        }
 
         try
         {
             context.Log($"Klasör taranıyor: {folder}, desen: {pattern}");
-            var files = Directory.GetFiles(folder, pattern, SearchOption.TopDirectoryOnly);
-
+            var files = System.IO.Directory.GetFiles(folder, pattern, System.IO.SearchOption.TopDirectoryOnly);
             var fileList = new JArray();
+
             foreach (var filePath in files)
             {
-                var fileInfo = new FileInfo(filePath);
+                var fileInfo = new System.IO.FileInfo(filePath);
                 fileList.Add(new JObject
                 {
                     ["name"] = fileInfo.Name,
@@ -70,7 +57,7 @@ public sealed class FileListActivity : IActivity
         {
             throw new Domain.Exceptions.BusinessException($"Klasör okuma izni reddedildi: {ex.Message}");
         }
-        catch (IOException ex)
+        catch (System.IO.IOException ex)
         {
             throw new Domain.Exceptions.SystemException($"Klasör tarama sırasında hata: {ex.Message}");
         }

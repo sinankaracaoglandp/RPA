@@ -1,0 +1,84 @@
+<div class="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+  <div class="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg">
+    <div class="mb-6 flex justify-end gap-2 text-sm">
+      <button
+        type="button"
+        class="rounded px-2 py-1"
+        [class.font-bold]="translationService.currentLang() === 'tr'"
+        (click)="changeLanguage('tr')"
+        data-testid="lang-tr"
+      >
+        TR
+      </button>
+      <button
+        type="button"
+        class="rounded px-2 py-1"
+        [class.font-bold]="translationService.currentLang() === 'en'"
+        (click)="changeLanguage('en')"
+        data-testid="lang-en"
+      >
+        EN
+      </button>
+    </div>
+
+    <h1 class="mb-1 text-2xl font-semibold text-slate-800" i18n="@@loginTitle">
+      {{ 'login.title' | translate }}
+    </h1>
+    <p class="mb-6 text-sm text-slate-500">
+      {{ 'login.subtitle' | translate }}
+    </p>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="space-y-4" novalidate>
+      <div>
+        <label for="username" class="mb-1 block text-sm font-medium text-slate-700">
+          {{ 'login.usernameLabel' | translate }}
+        </label>
+        <input
+          id="username"
+          type="text"
+          formControlName="username"
+          class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          [placeholder]="'login.usernamePlaceholder' | translate"
+          data-testid="username-input"
+        />
+        @if (form.controls.username.invalid && form.controls.username.touched) {
+          <p class="mt-1 text-sm text-red-600" data-testid="username-error">
+            {{ 'login.errorUsernameRequired' | translate }}
+          </p>
+        }
+      </div>
+
+      <div>
+        <label for="password" class="mb-1 block text-sm font-medium text-slate-700">
+          {{ 'login.passwordLabel' | translate }}
+        </label>
+        <input
+          id="password"
+          type="password"
+          formControlName="password"
+          class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          [placeholder]="'login.passwordPlaceholder' | translate"
+          data-testid="password-input"
+        />
+        @if (form.controls.password.invalid && form.controls.password.touched) {
+          <p class="mt-1 text-sm text-red-600" data-testid="password-error">
+            {{ 'login.errorPasswordRequired' | translate }}
+          </p>
+        }
+      </div>
+
+      @if (errorMessage()) {
+        <p class="text-sm text-red-600" data-testid="form-error">{{ errorMessage() }}</p>
+      }
+
+      <button
+        type="submit"
+        class="w-full rounded-md bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+        [disabled]="submitting()"
+        data-testid="submit-button"
+      >
+        {{ (submitting() ? 'login.submitting' : 'login.submit') | translate }}
+      </button>
+    </form>
+  </div>
+</div>

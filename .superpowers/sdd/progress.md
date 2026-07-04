@@ -19,12 +19,12 @@
 ## Faz 2: Core Engine (9 task)
 
 - [x] Task 2.1.1: Workflow JSON şeması + aktivite kataloğu (Opus) — DONE (52 aktivite, 27 tests ✅, commit 65f21f7)
-- [ ] Task 2.2.1: Base Runner state machine (Opus)
-- [ ] Task 2.3.1: Business/System Exception + Retry (Opus)
-- [ ] Task 2.4.1: Component Invocation (Opus)
-- [ ] Task 2.5.1: Idempotency/Checkpoint (Sonnet)
+- [x] Task 2.2.1: Base Runner state machine (Opus) — DONE (18 tests ✅, commit 0c84bba, 13 node types)
+- [x] Task 2.3.1: Business/System Exception + Retry (Opus) — DONE (16 tests ✅, commit 87f6be4, ExceptionClassifier + RetryHandler)
+- [x] Task 2.4.1: Component Invocation (Opus) — DONE (16 tests staged, commit 7eb5aee, SemanticVersion + ComponentResolver)
+- [x] Task 2.5.1: Idempotency/Checkpoint (Sonnet) — DONE (11 tests ✅, commit 703e1d5, ResumeAsync + CheckpointManager)
 - [ ] Task 2.6.1: API aktiviteleri (Sonnet)
-- [ ] Task 2.7.1: Excel/CSV (Sonnet)
+- [x] Task 2.7.1: Excel/CSV (Sonnet) — DONE (15 tests ✅, commit f35bbfa, ClosedXML + CsvHelper)
 - [ ] Task 2.8.1: E-posta (Sonnet)
 - [ ] Task 2.9.1: Dosya aktiviteleri (Haiku)
 

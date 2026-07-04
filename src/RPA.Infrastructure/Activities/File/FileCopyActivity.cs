@@ -42,7 +42,7 @@ public sealed class FileCopyActivity : IActivity
             throw new Domain.Exceptions.BusinessException("'destination' parametresi boş olamaz.");
         }
 
-        if (!File.Exists(source))
+        if (!System.IO.File.Exists(source))
         {
             throw new Domain.Exceptions.BusinessException($"Kaynak dosya bulunamadı: {source}");
         }
@@ -50,7 +50,7 @@ public sealed class FileCopyActivity : IActivity
         try
         {
             context.Log($"Dosya kopyalanıyor: {source} → {destination}");
-            File.Copy(source, destination, overwrite);
+            System.IO.File.Copy(source, destination, overwrite);
             context.Log($"Dosya başarıyla kopyalandı: {destination}");
             return new();
         }
@@ -58,7 +58,7 @@ public sealed class FileCopyActivity : IActivity
         {
             throw new Domain.Exceptions.BusinessException($"Dosya kopyalama izni reddedildi: {ex.Message}");
         }
-        catch (IOException ex)
+        catch (System.IO.IOException ex)
         {
             throw new Domain.Exceptions.SystemException($"Dosya kopyalama sırasında hata: {ex.Message}");
         }

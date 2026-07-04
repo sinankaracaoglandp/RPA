@@ -40,7 +40,7 @@ public sealed class FileMoveActivity : IActivity
             throw new Domain.Exceptions.BusinessException("'destination' parametresi boş olamaz.");
         }
 
-        if (!File.Exists(source))
+        if (!System.IO.File.Exists(source))
         {
             throw new Domain.Exceptions.BusinessException($"Kaynak dosya bulunamadı: {source}");
         }
@@ -48,7 +48,7 @@ public sealed class FileMoveActivity : IActivity
         try
         {
             context.Log($"Dosya taşınıyor: {source} → {destination}");
-            File.Move(source, destination, overwrite: true);
+            System.IO.File.Move(source, destination, overwrite: true);
             context.Log($"Dosya başarıyla taşındı: {destination}");
             return new();
         }
@@ -56,7 +56,7 @@ public sealed class FileMoveActivity : IActivity
         {
             throw new Domain.Exceptions.BusinessException($"Dosya taşıma izni reddedildi: {ex.Message}");
         }
-        catch (IOException ex)
+        catch (System.IO.IOException ex)
         {
             throw new Domain.Exceptions.SystemException($"Dosya taşıma sırasında hata: {ex.Message}");
         }

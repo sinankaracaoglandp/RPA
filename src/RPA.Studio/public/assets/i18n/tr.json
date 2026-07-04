@@ -1,0 +1,18 @@
+{
+  "login": {
+    "title": "RPA Studio'ya Giriş",
+    "subtitle": "Devam etmek için kimlik bilgilerinizi girin",
+    "usernameLabel": "Kullanıcı Adı",
+    "usernamePlaceholder": "kullanici.adi",
+    "passwordLabel": "Şifre",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Giriş Yap",
+    "submitting": "Giriş yapılıyor...",
+    "languageLabel": "Dil",
+    "errorRequired": "Kullanıcı adı ve şifre zorunludur.",
+    "errorUsernameRequired": "Kullanıcı adı zorunludur.",
+    "errorPasswordRequired": "Şifre zorunludur.",
+    "errorInvalidCredentials": "Kullanıcı adı veya şifre hatalı.",
+    "errorGeneric": "Giriş sırasında bir hata oluştu. Lütfen tekrar deneyin."
+  }
+}

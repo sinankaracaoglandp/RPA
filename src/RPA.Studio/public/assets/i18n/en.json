@@ -1,0 +1,18 @@
+{
+  "login": {
+    "title": "Sign in to RPA Studio",
+    "subtitle": "Enter your credentials to continue",
+    "usernameLabel": "Username",
+    "usernamePlaceholder": "username",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Sign In",
+    "submitting": "Signing in...",
+    "languageLabel": "Language",
+    "errorRequired": "Username and password are required.",
+    "errorUsernameRequired": "Username is required.",
+    "errorPasswordRequired": "Password is required.",
+    "errorInvalidCredentials": "Invalid username or password.",
+    "errorGeneric": "An error occurred while signing in. Please try again."
+  }
+}

@@ -1,0 +1,628 @@
+namespace RPA.Infrastructure.Tests;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Workflow;
+using RPA.Infrastructure.Workflow.Activities;
+using BusinessException = RPA.Domain.Exceptions.BusinessException;
+using SystemException = RPA.Domain.Exceptions.SystemException;
+
+/// <summary>
+/// File Operations Testleri (Task 2.9.1). Spec Bölüm 5.3 — System.IO sarmalayıcıları.
+/// FileCopyActivity, FileMoveActivity, FileDeleteActivity, FileListActivity, FileZipActivity, FileUnzipActivity
+/// </summary>
+public class FileOperationsTests : IDisposable
+{
+    private readonly string _testDir;
+
+    public FileOperationsTests()
+    {
+        // Create a temporary test directory
+        _testDir = Path.Combine(Path.GetTempPath(), "rpa-file-tests-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(_testDir);
+    }
+
+    public void Dispose()
+    {
+        // Cleanup test directory
+        if (Directory.Exists(_testDir))
+        {
+            Directory.Delete(_testDir, recursive: true);
+        }
+    }
+
+    private IActivityExecutionContext CreateContext()
+    {
+        return new TestActivityExecutionContext();
+    }
+
+    private string CreateTestFile(string name, string content = "test content")
+    {
+        var path = Path.Combine(_testDir, name);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    private string CreateTestDirectory(string name)
+    {
+        var path = Path.Combine(_testDir, name);
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    // ================================================================ FileCopyActivity
+
+    [Fact]
+    public async Task FileCopy_CopiesFile_Successfully()
+    {
+        // Arrange
+        var sourceFile = CreateTestFile("source.txt", "test data");
+        var destFile = Path.Combine(_testDir, "destination.txt");
+        var activity = new FileCopyActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceFile);
+        context.SetVariable("destination", destFile);
+        context.SetVariable("overwrite", false);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.True(File.Exists(destFile));
+        Assert.Equal("test data", File.ReadAllText(destFile));
+    }
+
+    [Fact]
+    public async Task FileCopy_WithOverwrite_ReplacesExistingFile()
+    {
+        // Arrange
+        var sourceFile = CreateTestFile("source.txt", "new content");
+        var destFile = Path.Combine(_testDir, "destination.txt");
+        File.WriteAllText(destFile, "old content");
+
+        var activity = new FileCopyActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceFile);
+        context.SetVariable("destination", destFile);
+        context.SetVariable("overwrite", true);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.True(File.Exists(destFile));
+        Assert.Equal("new content", File.ReadAllText(destFile));
+    }
+
+    [Fact]
+    public async Task FileCopy_WithoutOverwrite_ThrowsException()
+    {
+        // Arrange
+        var sourceFile = CreateTestFile("source.txt", "new content");
+        var destFile = Path.Combine(_testDir, "destination.txt");
+        File.WriteAllText(destFile, "old content");
+
+        var activity = new FileCopyActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceFile);
+        context.SetVariable("destination", destFile);
+        context.SetVariable("overwrite", false);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<SystemException>(() => activity.ExecuteAsync(context));
+    }
+
+    [Fact]
+    public async Task FileCopy_MissingSource_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileCopyActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", "/nonexistent/file.txt");
+        context.SetVariable("destination", Path.Combine(_testDir, "dest.txt"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    [Fact]
+    public async Task FileCopy_EmptySource_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileCopyActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", "");
+        context.SetVariable("destination", Path.Combine(_testDir, "dest.txt"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    // ================================================================ FileMoveActivity
+
+    [Fact]
+    public async Task FileMove_MovesFile_Successfully()
+    {
+        // Arrange
+        var sourceFile = CreateTestFile("source.txt", "test data");
+        var destFile = Path.Combine(_testDir, "destination.txt");
+        var activity = new FileMoveActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceFile);
+        context.SetVariable("destination", destFile);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.False(File.Exists(sourceFile));
+        Assert.True(File.Exists(destFile));
+        Assert.Equal("test data", File.ReadAllText(destFile));
+    }
+
+    [Fact]
+    public async Task FileMove_Renames_Successfully()
+    {
+        // Arrange
+        var sourceFile = CreateTestFile("oldname.txt", "content");
+        var destFile = Path.Combine(_testDir, "newname.txt");
+        var activity = new FileMoveActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceFile);
+        context.SetVariable("destination", destFile);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.False(File.Exists(sourceFile));
+        Assert.True(File.Exists(destFile));
+    }
+
+    [Fact]
+    public async Task FileMove_MissingSource_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileMoveActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", "/nonexistent/file.txt");
+        context.SetVariable("destination", Path.Combine(_testDir, "dest.txt"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    // ================================================================ FileDeleteActivity
+
+    [Fact]
+    public async Task FileDelete_DeletesFile_Successfully()
+    {
+        // Arrange
+        var fileToDelete = CreateTestFile("todelete.txt", "data");
+        var activity = new FileDeleteActivity();
+        var context = CreateContext();
+
+        context.SetVariable("path", fileToDelete);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.False(File.Exists(fileToDelete));
+    }
+
+    [Fact]
+    public async Task FileDelete_NonexistentFile_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileDeleteActivity();
+        var context = CreateContext();
+
+        context.SetVariable("path", "/nonexistent/file.txt");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    [Fact]
+    public async Task FileDelete_EmptyPath_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileDeleteActivity();
+        var context = CreateContext();
+
+        context.SetVariable("path", "");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    // ================================================================ FileListActivity
+
+    [Fact]
+    public async Task FileList_ListsFiles_Successfully()
+    {
+        // Arrange
+        CreateTestFile("file1.txt", "data1");
+        CreateTestFile("file2.txt", "data2");
+        CreateTestFile("other.doc", "data3");
+
+        var activity = new FileListActivity();
+        var context = CreateContext();
+
+        context.SetVariable("folder", _testDir);
+        context.SetVariable("pattern", "*");
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.ContainsKey("files"));
+        var files = result["files"];
+        Assert.NotNull(files);
+    }
+
+    [Fact]
+    public async Task FileList_WithPattern_FiltersFiles()
+    {
+        // Arrange
+        CreateTestFile("file1.txt", "data1");
+        CreateTestFile("file2.txt", "data2");
+        CreateTestFile("readme.md", "data3");
+
+        var activity = new FileListActivity();
+        var context = CreateContext();
+
+        context.SetVariable("folder", _testDir);
+        context.SetVariable("pattern", "*.txt");
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.ContainsKey("files"));
+    }
+
+    [Fact]
+    public async Task FileList_NonexistentFolder_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileListActivity();
+        var context = CreateContext();
+
+        context.SetVariable("folder", "/nonexistent/folder");
+        context.SetVariable("pattern", "*");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    [Fact]
+    public async Task FileList_EmptyFolder_ReturnsEmptyList()
+    {
+        // Arrange
+        var emptyFolder = CreateTestDirectory("empty");
+        var activity = new FileListActivity();
+        var context = CreateContext();
+
+        context.SetVariable("folder", emptyFolder);
+        context.SetVariable("pattern", "*");
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.ContainsKey("files"));
+    }
+
+    // ================================================================ FileZipActivity
+
+    [Fact]
+    public async Task FileZip_ZipsFile_Successfully()
+    {
+        // Arrange
+        var sourceFile = CreateTestFile("file.txt", "content");
+        var zipPath = Path.Combine(_testDir, "archive.zip");
+        var activity = new FileZipActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceFile);
+        context.SetVariable("zipPath", zipPath);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.True(File.Exists(zipPath));
+        Assert.True(zipPath.EndsWith(".zip"));
+        Assert.True(result.ContainsKey("path"));
+        Assert.Equal(zipPath, result["path"]);
+    }
+
+    [Fact]
+    public async Task FileZip_ZipsDirectory_Successfully()
+    {
+        // Arrange
+        var sourceDir = CreateTestDirectory("tozoip");
+        CreateTestFile("tozoip/file1.txt", "content1");
+        CreateTestFile("tozoip/file2.txt", "content2");
+
+        var zipPath = Path.Combine(_testDir, "archive.zip");
+        var activity = new FileZipActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", sourceDir);
+        context.SetVariable("zipPath", zipPath);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.True(File.Exists(zipPath));
+        Assert.True(zipPath.EndsWith(".zip"));
+    }
+
+    [Fact]
+    public async Task FileZip_NonexistentSource_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileZipActivity();
+        var context = CreateContext();
+
+        context.SetVariable("source", "/nonexistent/file");
+        context.SetVariable("zipPath", Path.Combine(_testDir, "archive.zip"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    // ================================================================ FileUnzipActivity
+
+    [Fact]
+    public async Task FileUnzip_UnzipsFile_Successfully()
+    {
+        // Arrange
+        var sourceDir = CreateTestDirectory("tozip");
+        CreateTestFile("tozip/file1.txt", "content1");
+        CreateTestFile("tozip/file2.txt", "content2");
+
+        var zipPath = Path.Combine(_testDir, "archive.zip");
+        var extractDir = CreateTestDirectory("extracted");
+
+        // Create zip
+        System.IO.Compression.ZipFile.CreateFromDirectory(sourceDir, zipPath, System.IO.Compression.CompressionLevel.Optimal, includeBaseDirectory: false);
+
+        var activity = new FileUnzipActivity();
+        var context = CreateContext();
+
+        context.SetVariable("zipPath", zipPath);
+        context.SetVariable("targetFolder", extractDir);
+
+        // Act
+        var result = await activity.ExecuteAsync(context);
+
+        // Assert
+        Assert.True(result.ContainsKey("files"));
+        Assert.True(File.Exists(Path.Combine(extractDir, "file1.txt")));
+        Assert.True(File.Exists(Path.Combine(extractDir, "file2.txt")));
+    }
+
+    [Fact]
+    public async Task FileUnzip_NonexistentZip_ThrowsBusinessException()
+    {
+        // Arrange
+        var activity = new FileUnzipActivity();
+        var context = CreateContext();
+
+        context.SetVariable("zipPath", "/nonexistent/archive.zip");
+        context.SetVariable("targetFolder", _testDir);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(context));
+    }
+
+    // ================================================================ Roundtrip Tests
+
+    [Fact]
+    public async Task ZipRoundtrip_FilesPreserved()
+    {
+        // Arrange
+        var sourceDir = CreateTestDirectory("roundtrip_source");
+        CreateTestFile("roundtrip_source/file1.txt", "content1");
+        CreateTestFile("roundtrip_source/file2.txt", "content2");
+
+        var zipPath = Path.Combine(_testDir, "roundtrip.zip");
+        var extractDir = Path.Combine(_testDir, "roundtrip_extract");
+
+        // Act - Zip
+        var zipActivity = new FileZipActivity();
+        var zipContext = CreateContext();
+        zipContext.SetVariable("source", sourceDir);
+        zipContext.SetVariable("zipPath", zipPath);
+        await zipActivity.ExecuteAsync(zipContext);
+
+        // Act - Unzip
+        var unzipActivity = new FileUnzipActivity();
+        var unzipContext = CreateContext();
+        unzipContext.SetVariable("zipPath", zipPath);
+        unzipContext.SetVariable("targetFolder", extractDir);
+        var result = await unzipActivity.ExecuteAsync(unzipContext);
+
+        // Assert
+        Assert.True(File.Exists(Path.Combine(extractDir, "file1.txt")));
+        Assert.True(File.Exists(Path.Combine(extractDir, "file2.txt")));
+        Assert.Equal("content1", File.ReadAllText(Path.Combine(extractDir, "file1.txt")));
+        Assert.Equal("content2", File.ReadAllText(Path.Combine(extractDir, "file2.txt")));
+    }
+
+    [Fact]
+    public async Task CompleteFileOperationsWorkflow()
+    {
+        // Test a complete workflow: Create → Copy → Move → List → Zip → Unzip
+
+        // Create source
+        var source = CreateTestFile("workflow_test.txt", "workflow content");
+        var copy = Path.Combine(_testDir, "copy.txt");
+        var moved = Path.Combine(_testDir, "moved.txt");
+        var zipPath = Path.Combine(_testDir, "moved.zip");
+        var extractDir = CreateTestDirectory("extracted_workflow");
+
+        // Copy
+        var copyActivity = new FileCopyActivity();
+        var copyContext = CreateContext();
+        copyContext.SetVariable("source", source);
+        copyContext.SetVariable("destination", copy);
+        copyContext.SetVariable("overwrite", false);
+        await copyActivity.ExecuteAsync(copyContext);
+        Assert.True(File.Exists(copy));
+
+        // Move
+        var moveActivity = new FileMoveActivity();
+        var moveContext = CreateContext();
+        moveContext.SetVariable("source", copy);
+        moveContext.SetVariable("destination", moved);
+        await moveActivity.ExecuteAsync(moveContext);
+        Assert.True(File.Exists(moved));
+        Assert.False(File.Exists(copy));
+
+        // List
+        var listActivity = new FileListActivity();
+        var listContext = CreateContext();
+        listContext.SetVariable("folder", _testDir);
+        listContext.SetVariable("pattern", "*.txt");
+        var listResult = await listActivity.ExecuteAsync(listContext);
+        Assert.True(listResult.ContainsKey("files"));
+
+        // Zip
+        var zipActivity = new FileZipActivity();
+        var zipContext = CreateContext();
+        zipContext.SetVariable("source", moved);
+        zipContext.SetVariable("zipPath", zipPath);
+        await zipActivity.ExecuteAsync(zipContext);
+        Assert.True(File.Exists(zipPath));
+
+        // Unzip
+        var unzipActivity = new FileUnzipActivity();
+        var unzipContext = CreateContext();
+        unzipContext.SetVariable("zipPath", zipPath);
+        unzipContext.SetVariable("targetFolder", extractDir);
+        var unzipResult = await unzipActivity.ExecuteAsync(unzipContext);
+        Assert.True(unzipResult.ContainsKey("files"));
+
+        // Verify content
+        var extractedFile = Path.Combine(extractDir, "moved.txt");
+        Assert.True(File.Exists(extractedFile));
+        Assert.Equal("workflow content", File.ReadAllText(extractedFile));
+
+        // Delete
+        var deleteActivity = new FileDeleteActivity();
+        var deleteContext = CreateContext();
+        deleteContext.SetVariable("path", moved);
+        await deleteActivity.ExecuteAsync(deleteContext);
+        Assert.False(File.Exists(moved));
+    }
+
+    // ================================================================ Activity Metadata Tests
+
+    [Fact]
+    public void FileCopyActivity_HasCorrectMetadata()
+    {
+        var activity = new FileCopyActivity();
+        var metadata = activity.GetMetadata();
+
+        Assert.Equal("File.Copy", metadata.ActivityId);
+        Assert.Equal("Dosya Kopyala", metadata.DisplayName);
+        Assert.Equal("Dosya", metadata.Category);
+        Assert.NotNull(metadata.Inputs);
+        Assert.Contains(metadata.Inputs, p => p.Name == "source");
+        Assert.Contains(metadata.Inputs, p => p.Name == "destination");
+        Assert.Contains(metadata.Inputs, p => p.Name == "overwrite");
+    }
+
+    [Fact]
+    public void FileZipActivity_HasCorrectMetadata()
+    {
+        var activity = new FileZipActivity();
+        var metadata = activity.GetMetadata();
+
+        Assert.Equal("File.Zip", metadata.ActivityId);
+        Assert.Equal("Sıkıştır (Zip)", metadata.DisplayName);
+        Assert.NotNull(metadata.Outputs);
+        Assert.Contains(metadata.Outputs, p => p.Name == "path");
+    }
+
+    [Fact]
+    public void FileUnzipActivity_HasCorrectMetadata()
+    {
+        var activity = new FileUnzipActivity();
+        var metadata = activity.GetMetadata();
+
+        Assert.Equal("File.Unzip", metadata.ActivityId);
+        Assert.Equal("Aç (Unzip)", metadata.DisplayName);
+        Assert.NotNull(metadata.Outputs);
+        Assert.Contains(metadata.Outputs, p => p.Name == "files");
+    }
+
+    [Fact]
+    public void AllFileActivities_HaveFileCapability()
+    {
+        var activities = new IActivity[]
+        {
+            new FileCopyActivity(),
+            new FileMoveActivity(),
+            new FileDeleteActivity(),
+            new FileListActivity(),
+            new FileZipActivity(),
+            new FileUnzipActivity()
+        };
+
+        foreach (var activity in activities)
+        {
+            var metadata = activity.GetMetadata();
+            Assert.Contains("file", metadata.RequiredCapabilities);
+        }
+    }
+
+    // ================================================================ Factory Tests
+
+    [Fact]
+    public void FileActivityFactory_CreatesAllActivities()
+    {
+        var factory = new FileActivityFactory();
+
+        Assert.NotNull(factory.CreateActivity("File.Copy"));
+        Assert.NotNull(factory.CreateActivity("File.Move"));
+        Assert.NotNull(factory.CreateActivity("File.Delete"));
+        Assert.NotNull(factory.CreateActivity("File.List"));
+        Assert.NotNull(factory.CreateActivity("File.Zip"));
+        Assert.NotNull(factory.CreateActivity("File.Unzip"));
+    }
+
+    [Fact]
+    public void FileActivityFactory_ReturnsNullForUnknownActivity()
+    {
+        var factory = new FileActivityFactory();
+        Assert.Null(factory.CreateActivity("Unknown.Activity"));
+    }
+
+    [Fact]
+    public void FileActivityFactory_IsCaseInsensitive()
+    {
+        var factory = new FileActivityFactory();
+
+        Assert.NotNull(factory.CreateActivity("file.copy"));
+        Assert.NotNull(factory.CreateActivity("FILE.COPY"));
+        Assert.NotNull(factory.CreateActivity("File.Copy"));
+    }
+}
