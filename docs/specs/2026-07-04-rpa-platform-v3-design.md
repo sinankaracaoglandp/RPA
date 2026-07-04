@@ -315,7 +315,16 @@ Her iş paketi (WP): **bağımsız teslim edilebilir**, girdi kontratı önceden
 ## 16. Görev Dağılımı — Ajan × Model × Efor
 
 ### 16.1 Çalışma Modeli
-- **Orkestratör: Fable 5 (ana oturum).** Planı yönetir, iş paketlerini alt ajanlara dağıtır, arayüz kontratlarını sabitler, teslim edilen her paketi doğrular ve entegre eder. Kod yazımının çoğu alt ajanlarda; Fable yalnızca kritik-yol tasarım kararlarında ve entegrasyon sorunlarında doğrudan kod yazar.
+
+**Kısıt:** Fable erişimi sınırlı süreli (yaklaşık 2-3 gün). Bu nedenle iki evreli model uygulanır:
+
+**Evre A — Fable (erişim kapanmadan, ön yükleme):**
+1. Bu spec'in tamamlanması ve onayı ✔
+2. Detaylı implementasyon planının yazılması (tüm fazlar, paket bazında adımlar ve kabul kriterleri)
+3. **Kontrat Paketi'nin üretilmesi:** Workflow JSON şemasının ilk sürümü, çekirdek C# arayüzleri (`IActivity`, `ISapDataChannel`, `ISapGuiChannel`, `ICredentialVault`, `IOtpChannel`, `IWorkflowRunner`), aktivite katalog şeması, REST API yüzeyinin taslağı ve EF varlık sınıfları — Opus'un tartışmasız uygulayacağı sabit referanslar.
+4. `CLAUDE.md` (proje anayasası): mimari kurallar, kontrat dosyalarının değiştirilemezlik kuralı, TDD ve review zorunlulukları — sonraki tüm oturumların otomatik bağlamı.
+
+**Evre B — Opus (orkestratör, projenin geri kalanı):** Planı ve Kontrat Paketi'ni takip ederek iş paketlerini alt ajanlara dağıtır, teslimleri doğrular, entegre eder. Kontrat değişikliği gerekirse `CLAUDE.md`'deki değişiklik prosedürü uygulanır (gerekçe yazılır, etkilenen paketler listelenir).
 - **Alt ajan tipi:** İmplementasyon paketleri → `general-purpose` (worktree izolasyonuyla); keşif/araştırma → `Explore`; plan revizyonu → `Plan`.
 - **Model seçim kuralı:** Mimari karmaşıklık ve hata maliyeti yüksekse **Opus**; standart, kontratı net implementasyon işiyse **Sonnet**; şablon/boilerplate/doküman işiyse **Haiku**.
 - **Efor:** her paketin teslimi sonrası `/code-review` eforu olarak da kullanılır (düşük→low, orta→medium, yüksek→high).
@@ -362,7 +371,7 @@ Her iş paketi (WP): **bağımsız teslim edilebilir**, girdi kontratı önceden
 | WP-6.2 Action Center | Sonnet | Orta | İş akışı net tanımlı |
 | WP-6.3 Alerting + Kibana | Haiku | Düşük | Kural motoru basit, dashboard şablon |
 | WP-6.4 Ortam/Publish e2e test | **Opus** | **Yüksek** | Governance doğrulaması |
-| WP-6.5 Pilot senaryo | **Fable (ana oturum)** | **Yüksek** | Uçtan uca entegrasyon; tüm modüller birleşir |
+| WP-6.5 Pilot senaryo | **Opus (ana oturum)** | **Yüksek** | Uçtan uca entegrasyon; tüm modüller birleşir — Kontrat Paketi'ne dayanarak yürütülür |
 | WP-6.6 Kurulum dokümantasyonu | Haiku | Düşük | Doküman işi |
 
-**Özet:** 16 paket Opus (kritik yol), 17 paket Sonnet (standart implementasyon), 4 paket Haiku (boilerplate/doküman), pilot Fable. Her Opus paketinin teslimi sonrası `/code-review high`, Sonnet paketlerinde `medium`, Haiku paketlerinde `low` efor ile gözden geçirme yapılır; güvenlik dokunan paketlerde (1.3, 1.5, 4.4) ek olarak `/security-review` koşulur.
+**Özet:** 16 paket Opus (kritik yol), 17 paket Sonnet (standart implementasyon), 4 paket Haiku (boilerplate/doküman); orkestrasyon ve pilot Opus ana oturumunda. Her Opus paketinin teslimi sonrası `/code-review high`, Sonnet paketlerinde `medium`, Haiku paketlerinde `low` efor ile gözden geçirme yapılır; güvenlik dokunan paketlerde (1.3, 1.5, 4.4) ek olarak `/security-review` koşulur.
