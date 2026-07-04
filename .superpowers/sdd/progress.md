@@ -23,10 +23,12 @@
 - [x] Task 2.3.1: Business/System Exception + Retry (Opus) — DONE (16 tests ✅, commit 87f6be4, ExceptionClassifier + RetryHandler)
 - [x] Task 2.4.1: Component Invocation (Opus) — DONE (16 tests staged, commit 7eb5aee, SemanticVersion + ComponentResolver)
 - [x] Task 2.5.1: Idempotency/Checkpoint (Sonnet) — DONE (11 tests ✅, commit 703e1d5, ResumeAsync + CheckpointManager)
-- [ ] Task 2.6.1: API aktiviteleri (Sonnet)
+- [x] Task 2.6.1: API aktiviteleri (Sonnet) — DONE (5 tests ✅, Polly retry + circuit-breaker, Bearer/Basic/API-Key auth)
 - [x] Task 2.7.1: Excel/CSV (Sonnet) — DONE (15 tests ✅, commit f35bbfa, ClosedXML + CsvHelper)
-- [ ] Task 2.8.1: E-posta (Sonnet)
-- [ ] Task 2.9.1: Dosya aktiviteleri (Haiku)
+- [x] Task 2.8.1: E-posta (Sonnet) — DONE (17 tests ✅, MailKit SMTP/IMAP, Send/Read/Download)
+- [x] Task 2.9.1: Dosya aktiviteleri (Haiku) — DONE (23 tests ✅, commit f73347a, Copy/Move/Delete/List/Zip/Unzip)
+
+## Faz 2: ✅ COMPLETE (9 task, 103 tests passing, 7 commits)
 
 ## Faz 3–6: TBD (20 task)
 

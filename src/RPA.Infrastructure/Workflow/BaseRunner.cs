@@ -90,7 +90,7 @@ public sealed class BaseRunner : IWorkflowRunner
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workflowVersion);
-        ArgumentException.ThrowIfNullOrWhiteSpace(checkpointData);
+        // Boş/whitespace checkpoint = kayıtlı durum yok → baştan çalıştır (Deserialize null döner).
         var stopwatch = Stopwatch.StartNew();
 
         var validation = _validator.ValidateWorkflowJson(workflowVersion.JsonDefinition);

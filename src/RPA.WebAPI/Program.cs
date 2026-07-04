@@ -1,8 +1,10 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.Logging;
+using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
 using RPA.WebAPI.Middleware;
@@ -28,6 +30,13 @@ builder.Services.AddRpaAuthentication(builder.Configuration);
 
 // Credential Vault (HashiCorp / DPAPI) — Spec Bölüm 5.5, 10.
 builder.Services.AddVaultServices(builder.Configuration);
+
+// Persistence: RpaDbContext (kuyruk/idempotency repository'lerinin bağımlılığı) — Spec Bölüm 4.
+// AddWorkflowServices IQueueItemRepository/IIdempotencyService kaydeder; bunlar RpaDbContext'e muhtaç.
+builder.Services.AddDbContext<RpaDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"));
 
 // Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
 builder.Services.AddWorkflowServices();

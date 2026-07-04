@@ -25,8 +25,8 @@ public class ComponentInvocationTests
       "name": "Echo",
       "version": "{{version}}",
       "arguments": {
-        "in": [ { "name": "x", "type": "number" } ],
-        "out": [ { "name": "result", "type": "number" } ]
+        "in": [ { "name": "x", "type": "int" } ],
+        "out": [ { "name": "result", "type": "int" } ]
       },
       "nodes": [
         { "id": "n1", "type": "assign", "variableName": "result", "value": "${x}" }
@@ -227,8 +227,8 @@ public class ComponentInvocationTests
           "name": "CallerWf",
           "version": "1.0.0",
           "arguments": {
-            "in": [ { "name": "seed", "type": "number" } ],
-            "out": [ { "name": "final", "type": "number" } ]
+            "in": [ { "name": "seed", "type": "int" } ],
+            "out": [ { "name": "final", "type": "int" } ]
           },
           "nodes": [
             {

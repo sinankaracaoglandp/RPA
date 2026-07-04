@@ -142,8 +142,9 @@ public class IdempotencyCheckpointTests
 
         Assert.NotNull(restored);
         Assert.Equal("checkpoint-node-x", restored.LastCheckpointNodeId);
-        Assert.Equal(42L, restored.Variables["counter"]);
-        Assert.Equal("checkpoint reached", restored.Variables["message"]);
+        // JTokenToNative sayısal/metin değerleri JValue olarak taşır; tip-güvenli erişimle doğrula.
+        Assert.Equal(42L, Convert.ToInt64(restored.Variables["counter"]));
+        Assert.Equal("checkpoint reached", Convert.ToString(restored.Variables["message"]));
     }
 
     [Fact]

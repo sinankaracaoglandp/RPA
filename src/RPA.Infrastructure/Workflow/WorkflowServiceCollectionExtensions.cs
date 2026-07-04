@@ -5,6 +5,7 @@ using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Idempotency;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Workflow.Activities.Api;
+using RPA.Infrastructure.Workflow.Activities.Email;
 
 public static class WorkflowServiceCollectionExtensions
 {
@@ -19,6 +20,11 @@ public static class WorkflowServiceCollectionExtensions
         // Task 2.6.1: API HTTP aktivitesi
         services.AddHttpClient("Api.HttpRequest");
         services.AddKeyedTransient<IActivity, ApiHttpActivity>("Api.HttpRequest");
+
+        // Task 2.8.1: E-posta aktiviteleri (Spec Bölüm 5.3)
+        services.AddKeyedTransient<IActivity, EmailSendActivity>("Email.Send");
+        services.AddKeyedTransient<IActivity, EmailReadInboxActivity>("Email.ReadInbox");
+        services.AddKeyedTransient<IActivity, AttachmentDownloadActivity>("Email.DownloadAttachment");
 
         services.AddSingleton<IActivityFactory>(sp =>
             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
