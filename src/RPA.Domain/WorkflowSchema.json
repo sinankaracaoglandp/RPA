@@ -1,0 +1,148 @@
+{
+  "title": "RPA Workflow Schema v1.0",
+  "description": "Workflow JSON yapısı — Studio tarafından oluşturulur, BaseRunner tarafından çalıştırılır. Spec Bölüm 5.1",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "version", "nodes", "connections"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Şema versiyonu — migration'lar sırasında referans"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Workflow benzersiz ID"
+    },
+    "name": {
+      "type": "string",
+      "description": "Workflow adı (insan okunabilir)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "SemVer (1.2.3)"
+    },
+    "arguments": {
+      "type": "object",
+      "properties": {
+        "in": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string", "enum": ["string", "int", "decimal", "bool", "DateTime", "DataTable", "JSON"] },
+              "required": { "type": "boolean", "default": false },
+              "default": {}
+            }
+          },
+          "description": "Giriş parametreleri (workflow tetiklenirken geçilen değerler)"
+        },
+        "out": {
+          "type": "array",
+          "items": { "$ref": "#/properties/arguments/properties/in/items" },
+          "description": "Çıkış parametreleri (workflow sonunda döndürülen değerler)"
+        }
+      }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["string", "int", "decimal", "bool", "DateTime", "DataTable", "JSON", "Credential"] },
+          "scope": { "type": "string", "enum": ["local", "component", "global"], "default": "local" },
+          "default": {},
+          "description": { "type": "string" }
+        }
+      },
+      "description": "İş değişkenleri (scope: local=bu node, component=parent component, global=workflow'un bütünü)"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "activity",
+              "assign",
+              "if",
+              "forEach",
+              "while",
+              "tryCatch",
+              "userPrompt",
+              "delay",
+              "log",
+              "checkpoint",
+              "terminate",
+              "componentCall",
+              "merge"
+            ]
+          },
+          "activity": { "type": "string", "description": "Activity ID (örn. 'Sap.Nco.CallBapi') — type=activity ise zorunlu" },
+          "channel": { "type": "string", "enum": ["nco", "gui"], "description": "SAP aktiviteleri için: NCo veya GUI Scripting" },
+          "properties": { "type": "object", "description": "Aktivite-spesifik property'ler (JSON; key-value)" },
+          "variableName": { "type": "string", "description": "type=assign için: atanacak değişken adı" },
+          "value": {}, "description": "type=assign için: atanacak değer (expression veya literal)",
+          "condition": { "type": "string", "description": "type=if için: boolean expression" },
+          "itemVariable": { "type": "string", "description": "type=forEach için: iteration variable adı" },
+          "items": { "type": "string", "description": "type=forEach için: iterate edilecek değişken adı (array/DataTable)" },
+          "bodyStartNodeId": { "type": "string", "description": "type=if/forEach/while/tryCatch için: body'nin başlangıç node ID'si" },
+          "bodyEndNodeId": { "type": "string", "description": "type=if/forEach/while/tryCatch için: body'nin bitiş node ID'si" },
+          "tryNodeId": { "type": "string", "description": "type=tryCatch için: try bloğunun başlangıcı" },
+          "catchNodeId": { "type": "string", "description": "type=tryCatch için: catch bloğunun başlangıcı (opsiyonel)" },
+          "finallyNodeId": { "type": "string", "description": "type=tryCatch için: finally bloğunun başlangıcı (opsiyonel)" },
+          "exceptionVariable": { "type": "string", "description": "type=tryCatch için: exception'ı taşıyacak değişken adı" },
+          "message": { "type": "string", "description": "type=log için: log mesajı (expression)" },
+          "level": { "type": "string", "enum": ["Debug", "Information", "Warning", "Error", "Critical"], "default": "Information" },
+          "durationMs": { "type": "integer", "description": "type=delay için: milisaniye cinsinden bekleme" },
+          "promptTitle": { "type": "string", "description": "type=userPrompt için: pencere başlığı" },
+          "promptInputVariable": { "type": "string", "description": "type=userPrompt için: kullanıcı input'unun atanacağı değişken" },
+          "promptTimeoutSeconds": { "type": "integer", "default": 180, "description": "type=userPrompt için: zaman aşımı" },
+          "exceptionType": { "type": "string", "enum": ["Business", "System"], "default": "System", "description": "type=terminate için: exception tipi" },
+          "componentId": { "type": "string", "description": "type=componentCall için: component ID" },
+          "componentVersion": { "type": "string", "description": "type=componentCall için: SemVer (örn. '1.2.0') — pinleme" },
+          "inputMapping": { "type": "object", "description": "type=componentCall için: {componentInputName: workflowVariableName}" },
+          "outputMapping": { "type": "object", "description": "type=componentCall için: {componentOutputName: workflowVariableName}" }
+        }
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string", "description": "Kaynak node ID" },
+          "fromPort": { "type": "string", "enum": ["out", "success", "failure", "true", "false"], "default": "out" },
+          "to": { "type": "string", "description": "Hedef node ID" },
+          "label": { "type": "string", "description": "Bağlantı etiketi (UI gösterimi için)" }
+        }
+      },
+      "description": "Node'lar arasındaki akış bağlantıları"
+    },
+    "errorHandling": {
+      "type": "object",
+      "properties": {
+        "defaultRetry": {
+          "type": "object",
+          "properties": {
+            "maxAttempts": { "type": "integer", "default": 3 },
+            "backoffPolicy": { "type": "string", "enum": ["linear", "exponential"], "default": "exponential" },
+            "initialDelayMs": { "type": "integer", "default": 1000 },
+            "maxDelayMs": { "type": "integer", "default": 30000 }
+          }
+        },
+        "screenshotOnError": { "type": "boolean", "default": true, "description": "Hata sırasında ekran görüntüsü al" }
+      }
+    }
+  }
+}
