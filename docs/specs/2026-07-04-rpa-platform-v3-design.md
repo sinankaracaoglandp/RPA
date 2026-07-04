@@ -309,3 +309,60 @@ Her iş paketi (WP): **bağımsız teslim edilebilir**, girdi kontratı önceden
 
 ### Gelecek İterasyon (v4 adayları)
 [S2] listesi + performans/throughput KPI'ları.
+
+---
+
+## 16. Görev Dağılımı — Ajan × Model × Efor
+
+### 16.1 Çalışma Modeli
+- **Orkestratör: Fable 5 (ana oturum).** Planı yönetir, iş paketlerini alt ajanlara dağıtır, arayüz kontratlarını sabitler, teslim edilen her paketi doğrular ve entegre eder. Kod yazımının çoğu alt ajanlarda; Fable yalnızca kritik-yol tasarım kararlarında ve entegrasyon sorunlarında doğrudan kod yazar.
+- **Alt ajan tipi:** İmplementasyon paketleri → `general-purpose` (worktree izolasyonuyla); keşif/araştırma → `Explore`; plan revizyonu → `Plan`.
+- **Model seçim kuralı:** Mimari karmaşıklık ve hata maliyeti yüksekse **Opus**; standart, kontratı net implementasyon işiyse **Sonnet**; şablon/boilerplate/doküman işiyse **Haiku**.
+- **Efor:** her paketin teslimi sonrası `/code-review` eforu olarak da kullanılır (düşük→low, orta→medium, yüksek→high).
+- Paralellik: aynı fazdaki `⇉` paketler farklı alt ajanlara **aynı anda** verilir; kontratlar (arayüz, şema) paket başlamadan Fable tarafından sabitlenir.
+
+### 16.2 Paket Bazlı Dağılım
+
+| Paket | Model | Efor | Gerekçe |
+|---|---|---|---|
+| WP-1.1 Onion iskelet | Sonnet | Orta | Kalıp bilinen yapı; katman testleri güvence |
+| WP-1.2 EF veri modeli | Sonnet | Orta | Spec Bölüm 4 birebir kontrat |
+| WP-1.3 SSO + RBAC | **Opus** | **Yüksek** | Güvenlik; hata maliyeti yüksek |
+| WP-1.4 Serilog→ES | Haiku | Düşük | Standart kurulum |
+| WP-1.5 Credential Vault | **Opus** | **Yüksek** | Güvenlik kritik |
+| WP-1.6 Audit altyapısı | Sonnet | Düşük | Interceptor kalıbı basit |
+| WP-1.7 Angular iskelet + i18n | Sonnet | Orta | Kalıp iş, ama i18n temeli sonradan değişmesi pahalı |
+| WP-2.1 JSON şema + katalog | **Opus** | **Yüksek** | Tüm platformun kontratı; her şey buna bağlanır |
+| WP-2.2 Base Runner | **Opus** | **Yüksek** | Çekirdek motor; en karmaşık paket |
+| WP-2.3 Exception/Retry | **Opus** | Orta | Sınıflandırma mantığı incelik ister |
+| WP-2.4 Component Invocation | **Opus** | **Yüksek** | İzole scope + versiyon pinleme karmaşık |
+| WP-2.5 Idempotency/Checkpoint | Sonnet | Orta | Kontrat net |
+| WP-2.6 API aktiviteleri | Sonnet | Düşük | Polly kalıbı standart |
+| WP-2.7 Excel/CSV | Sonnet | Düşük | ClosedXML sarmalayıcı |
+| WP-2.8 E-posta | Sonnet | Orta | EWS/IMAP kenar durumları |
+| WP-2.9 Dosya | Haiku | Düşük | Basit sarmalayıcılar |
+| WP-3.1 Robot kayıt + SignalR dağıtım | **Opus** | **Yüksek** | Dağıtık durum yönetimi |
+| WP-3.2 Kuyruk motoru | **Opus** | **Yüksek** | Eşzamanlılık (UPDLOCK/READPAST), Abandoned kurtarma |
+| WP-3.3 Zamanlayıcı + tetikleyiciler | Sonnet | Orta | Cron kalıbı bilinen |
+| WP-3.4 Agent çekirdeği | **Opus** | **Yüksek** | Servis + tray, yaşam döngüsü |
+| WP-3.5 SessionManager (RDP/tscon) | **Opus** | **Yüksek** | Windows oturum yönetimi kırılgan; elle test zorunlu |
+| WP-3.6 Attended UX | Sonnet | Orta | WPF/tray formları |
+| WP-4.1 SAP GUI Scripting | **Opus** | **Yüksek** | COM interop kırılgan; SAP DEP'te canlı test |
+| WP-4.2 SAP NCo | **Opus** | **Yüksek** | Bağlantı havuzu + commit yönetimi kritik |
+| WP-4.3 UI Spy | **Opus** | Orta | user32 + COM; v2'de kanıtlanmış desen |
+| WP-4.4 OTP modülü | **Opus** | **Yüksek** | 5 kanal + güvenlik + fallback zinciri |
+| WP-4.5 SAP Login component | Sonnet | Orta | Var olan altyapının kullanımı |
+| WP-5.1 Canvas (Rete.js) | **Opus** | **Yüksek** | En karmaşık frontend paketi |
+| WP-5.2 Toolbox + Properties | Sonnet | Orta | Katalogdan dinamik render |
+| WP-5.3 Component Library UI | Sonnet | Orta | CRUD + sihirbaz |
+| WP-5.4 Debug/Step-Through | **Opus** | **Yüksek** | Motor ile canlı senkron |
+| WP-5.5 Basit mod + şablonlar | Sonnet | Orta | UX ağırlıklı; Fable tasarım onayı verir |
+| WP-5.6 Web aktiviteleri (Playwright) | Sonnet | Orta | Playwright API'si olgun |
+| WP-6.1 Orchestrator ekranları | Sonnet | Orta | Çok ekran ama kalıp CRUD; 2-3 ajana bölünebilir |
+| WP-6.2 Action Center | Sonnet | Orta | İş akışı net tanımlı |
+| WP-6.3 Alerting + Kibana | Haiku | Düşük | Kural motoru basit, dashboard şablon |
+| WP-6.4 Ortam/Publish e2e test | **Opus** | **Yüksek** | Governance doğrulaması |
+| WP-6.5 Pilot senaryo | **Fable (ana oturum)** | **Yüksek** | Uçtan uca entegrasyon; tüm modüller birleşir |
+| WP-6.6 Kurulum dokümantasyonu | Haiku | Düşük | Doküman işi |
+
+**Özet:** 16 paket Opus (kritik yol), 17 paket Sonnet (standart implementasyon), 4 paket Haiku (boilerplate/doküman), pilot Fable. Her Opus paketinin teslimi sonrası `/code-review high`, Sonnet paketlerinde `medium`, Haiku paketlerinde `low` efor ile gözden geçirme yapılır; güvenlik dokunan paketlerde (1.3, 1.5, 4.4) ek olarak `/security-review` koşulur.
