@@ -2,28 +2,28 @@ namespace RPA.Infrastructure.Workflow;
 
 using Microsoft.Extensions.DependencyInjection;
 using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Idempotency;
+using RPA.Infrastructure.Persistence;
+using RPA.Infrastructure.Workflow.Activities.Api;
 
-/// <summary>
-/// Workflow çekirdek servislerinin DI kaydı: aktivite kataloğu, şema doğrulayıcı ve BaseRunner.
-/// Spec Bölüm 5.1, 5.2, 5.3.
-/// </summary>
 public static class WorkflowServiceCollectionExtensions
 {
     public static IServiceCollection AddWorkflowServices(this IServiceCollection services)
     {
-        // Katalog tüm platformda paylaşılan sabit referans → singleton.
         services.AddSingleton<ActivityCatalog>();
-
-        // Doğrulayıcı stateless (şema statik cache'li) → transient yeterli.
         services.AddTransient<WorkflowValidator>();
+        services.AddSingleton<ICheckpointManager, CheckpointManager>();
+        services.AddScoped<IQueueItemRepository, EfQueueItemRepository>();
+        services.AddScoped<IIdempotencyService, IdempotencyService>();
 
-        // Aktivite implementasyonları Faz 2.6–2.9'da eklenene dek boş factory.
-        // (İçerik eklendiğinde bu kayıt gerçek factory ile değiştirilir.)
-        services.AddSingleton<IActivityFactory, EmptyActivityFactory>();
+        // Task 2.6.1: API HTTP aktivitesi
+        services.AddHttpClient("Api.HttpRequest");
+        services.AddKeyedTransient<IActivity, ApiHttpActivity>("Api.HttpRequest");
 
-        // Her workflow çalıştırması için ayrı runner (state machine, çalışma başına scope).
+        services.AddSingleton<IActivityFactory>(sp =>
+            new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
+
         services.AddTransient<IWorkflowRunner, BaseRunner>();
-
         return services;
     }
 }

@@ -36,6 +36,22 @@ public interface IWorkflowRunner
         Dictionary<string, object?> inputs,
         Guid jobRunId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Daha önce kaydedilmiş bir checkpoint'ten devam eder. Checkpoint node'una kadar
+    /// tamamlanmış adımlar tekrar çalıştırılmaz; değişken durumu geri yüklenir ve
+    /// yürütme checkpoint'ten sonraki node'dan devam eder (Spec Bölüm 5.2, 2.6).
+    /// </summary>
+    /// <param name="workflowVersion">Workflow JSON'ı ve metadata</param>
+    /// <param name="arguments">Ek/override argümanlar (checkpoint'teki değişkenlerin üzerine yazılır)</param>
+    /// <param name="checkpointData">ICheckpointManager.Serialize ile üretilmiş veri (örn. QueueItem.CheckpointData)</param>
+    /// <param name="jobRunId">Korelasyon ID (logging için)</param>
+    Task<WorkflowExecutionResult> ResumeAsync(
+        WorkflowVersion workflowVersion,
+        Dictionary<string, object?> arguments,
+        string checkpointData,
+        Guid jobRunId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -62,4 +78,12 @@ public class WorkflowExecutionResult
     /// Çalıştırma süresi (ms).
     /// </summary>
     public long DurationMs { get; set; }
+
+    /// <summary>
+    /// Yürütme sırasında en az bir checkpoint node'u çalıştıysa, o andaki durumun
+    /// serileştirilmiş hali (ICheckpointManager.Serialize). Yoksa null.
+    /// Çağıran taraf (Kuyruk motoru) bunu QueueItem.CheckpointData'ya yazar;
+    /// başarısız/kesilen çalıştırmalarda ResumeAsync ile devam ettirmek için kullanılır.
+    /// </summary>
+    public string? CheckpointData { get; set; }
 }

@@ -25,6 +25,7 @@ public sealed class BaseRunner : IWorkflowRunner
     private readonly IActivityFactory _activityFactory;
     private readonly ILogger<BaseRunner> _logger;
     private readonly ICredentialVault? _vault;
+    private readonly ICheckpointManager _checkpointManager;
 
     /// <summary>componentCall node'ları için: (componentId, version) → component JSON çözümleyici.</summary>
     private readonly Func<string, string?, string?>? _componentResolver;
@@ -35,7 +36,8 @@ public sealed class BaseRunner : IWorkflowRunner
         IActivityFactory activityFactory,
         ILogger<BaseRunner> logger,
         ICredentialVault? vault = null,
-        Func<string, string?, string?>? componentResolver = null)
+        Func<string, string?, string?>? componentResolver = null,
+        ICheckpointManager? checkpointManager = null)
     {
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -43,6 +45,7 @@ public sealed class BaseRunner : IWorkflowRunner
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _vault = vault;
         _componentResolver = componentResolver;
+        _checkpointManager = checkpointManager ?? new CheckpointManager();
     }
 
     /// <inheritdoc />
@@ -76,6 +79,68 @@ public sealed class BaseRunner : IWorkflowRunner
 
         return await ExecuteDefinitionAsync(
             def, arguments ?? new(), jobRunId, isolatedScope: null, stopwatch, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<WorkflowExecutionResult> ResumeAsync(
+        WorkflowVersion workflowVersion,
+        Dictionary<string, object?> arguments,
+        string checkpointData,
+        Guid jobRunId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workflowVersion);
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkpointData);
+        var stopwatch = Stopwatch.StartNew();
+
+        var validation = _validator.ValidateWorkflowJson(workflowVersion.JsonDefinition);
+        if (!validation.IsValid)
+        {
+            var message = "Workflow JSON şema doğrulaması başarısız: " +
+                          string.Join(" | ", validation.Errors);
+            _logger.LogError("JobRun {JobRunId} — {Message}", jobRunId, message);
+            return Fail(new SystemException(message), stopwatch);
+        }
+
+        WorkflowDefinition def;
+        try
+        {
+            def = WorkflowDefinition.Parse(workflowVersion.JsonDefinition);
+        }
+        catch (Exception ex)
+        {
+            return Fail(new SystemException($"Workflow ayrıştırılamadı: {ex.Message}", ex), stopwatch);
+        }
+
+        var checkpoint = _checkpointManager.Deserialize(checkpointData);
+        if (checkpoint is null)
+        {
+            _logger.LogInformation(
+                "JobRun {JobRunId} — geçerli checkpoint bulunamadı, baştan çalıştırılıyor.", jobRunId);
+            return await ExecuteDefinitionAsync(
+                def, arguments ?? new(), jobRunId, isolatedScope: null, stopwatch, cancellationToken);
+        }
+
+        var resumeEntryNodeId = ResolveResumeEntryNodeId(def, checkpoint.LastCheckpointNodeId);
+        _logger.LogInformation(
+            "JobRun {JobRunId} — checkpoint node '{CheckpointNode}' sonrasından devam ediliyor (giriş: {ResumeNode}).",
+            jobRunId, checkpoint.LastCheckpointNodeId, resumeEntryNodeId);
+
+        return await ExecuteDefinitionAsync(
+            def, arguments ?? new(), jobRunId, isolatedScope: null, stopwatch, cancellationToken,
+            resumeEntryNodeId: resumeEntryNodeId,
+            resumeVariables: checkpoint.Variables);
+    }
+
+    /// <summary>Checkpoint node'undan sonraki (varsayılan port) node ID'sini bulur — o node
+    /// tekrar çalıştırılacak ilk node'dur; checkpoint'e kadar olan her şey atlanır.</summary>
+    private static string? ResolveResumeEntryNodeId(WorkflowDefinition def, string? checkpointNodeId)
+    {
+        if (string.IsNullOrEmpty(checkpointNodeId))
+        {
+            return FindEntryNode(def);
+        }
+        return GetNext(def, checkpointNodeId, "success", "out");
     }
 
     /// <inheritdoc />
@@ -118,7 +183,9 @@ public sealed class BaseRunner : IWorkflowRunner
         Guid jobRunId,
         VariableScope? isolatedScope,
         Stopwatch stopwatch,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? resumeEntryNodeId = null,
+        IReadOnlyDictionary<string, object?>? resumeVariables = null)
     {
         // Döngü tespiti (bağlantı grafı bir DAG olmalı; forEach/while gövde ID'leriyle çalışır).
         if (HasCycle(def, out var cyclePath))
@@ -130,12 +197,20 @@ public sealed class BaseRunner : IWorkflowRunner
         var scope = isolatedScope ?? new VariableScope();
         InitializeVariables(def, arguments, scope);
 
+        // Resume: checkpoint anındaki değişkenler, argüman varsayılanlarının üzerine yazılır
+        // (çağrı zamanı argümanları en son uygulanmıştı — checkpoint bunları da ezer, çünkü
+        // checkpoint yürütmenin en güncel bilinen durumudur).
+        if (resumeVariables is { Count: > 0 })
+        {
+            scope.ImportGlobal(resumeVariables);
+        }
+
         var context = new ActivityExecutionContext(scope, jobRunId, _logger, _vault);
         var state = new ExecutionState(def, scope, context, new ExpressionEvaluator(scope), ct);
 
         try
         {
-            var entry = FindEntryNode(def);
+            var entry = resumeEntryNodeId ?? FindEntryNode(def);
             if (entry is not null)
             {
                 await RunSequenceAsync(entry, stopAfterId: null, state);
@@ -148,18 +223,18 @@ public sealed class BaseRunner : IWorkflowRunner
         catch (BusinessException bex)
         {
             _logger.LogWarning(bex, "JobRun {JobRunId} — İş kuralı istisnası: {Message}", jobRunId, bex.Message);
-            return Fail(bex, stopwatch);
+            return Fail(bex, stopwatch, BuildCheckpointData(state));
         }
         catch (SystemException sex)
         {
             _logger.LogError(sex, "JobRun {JobRunId} — Sistem istisnası: {Message}", jobRunId, sex.Message);
-            return Fail(sex, stopwatch);
+            return Fail(sex, stopwatch, BuildCheckpointData(state));
         }
         catch (Exception ex)
         {
             // Sınıflandırılmamış → sistem hatası (retry edilebilir).
             _logger.LogError(ex, "JobRun {JobRunId} — Beklenmeyen hata: {Message}", jobRunId, ex.Message);
-            return Fail(new SystemException(ex.Message, ex), stopwatch);
+            return Fail(new SystemException(ex.Message, ex), stopwatch, BuildCheckpointData(state));
         }
 
         var outputs = CollectOutputs(def, scope);
@@ -169,7 +244,18 @@ public sealed class BaseRunner : IWorkflowRunner
             Success = true,
             Outputs = outputs,
             DurationMs = stopwatch.ElapsedMilliseconds,
+            CheckpointData = BuildCheckpointData(state),
         };
+    }
+
+    /// <summary>En az bir checkpoint node'u çalıştıysa serileştirilmiş durumu üretir; yoksa null.</summary>
+    private string? BuildCheckpointData(ExecutionState state)
+    {
+        if (state.LastCheckpointNodeId is null)
+        {
+            return null;
+        }
+        return _checkpointManager.Serialize(state.LastCheckpointNodeId, state.Scope.ExportGlobal());
     }
 
     /// <summary>Bir düğüm dizisini akışı takip ederek çalıştırır. stopAfterId çalıştırıldıktan sonra durur.</summary>
@@ -374,6 +460,8 @@ public sealed class BaseRunner : IWorkflowRunner
         var referenceKey = node.Properties.TryGetValue("referenceKey", out var rk)
             ? (string?)rk : node.Id;
         state.LastCheckpoint = referenceKey;
+        // Resume noktası olarak node ID'si tutulur (referenceKey yalnızca tanılama/log içindir).
+        state.LastCheckpointNodeId = node.Id;
         _logger.LogInformation("Node {NodeId} kontrol noktası kaydedildi: {Key}", node.Id, referenceKey);
     }
 
@@ -596,7 +684,7 @@ public sealed class BaseRunner : IWorkflowRunner
             ? parsed
             : DomainLogLevel.Information;
 
-    private static WorkflowExecutionResult Fail(Exception ex, Stopwatch stopwatch)
+    private static WorkflowExecutionResult Fail(Exception ex, Stopwatch stopwatch, string? checkpointData = null)
     {
         stopwatch.Stop();
         return new WorkflowExecutionResult
@@ -604,6 +692,7 @@ public sealed class BaseRunner : IWorkflowRunner
             Success = false,
             Exception = ex,
             DurationMs = stopwatch.ElapsedMilliseconds,
+            CheckpointData = checkpointData,
         };
     }
 
@@ -703,5 +792,8 @@ public sealed class BaseRunner : IWorkflowRunner
         public ExpressionEvaluator Evaluator { get; }
         public CancellationToken CancellationToken { get; }
         public string? LastCheckpoint { get; set; }
+
+        /// <summary>Bu yürütmede en son çalıştırılan checkpoint node'unun ID'si (resume anchor). null = hiç çalışmadı.</summary>
+        public string? LastCheckpointNodeId { get; set; }
     }
 }

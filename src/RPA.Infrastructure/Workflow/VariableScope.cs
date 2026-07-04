@@ -79,6 +79,19 @@ public sealed class VariableScope
         return false;
     }
 
+    /// <summary>Global (taban) scope'un salt-okunur anlık görüntüsünü döner (checkpoint serileştirme için).</summary>
+    public IReadOnlyDictionary<string, object?> ExportGlobal()
+        => new Dictionary<string, object?>(_scopes[0], StringComparer.Ordinal);
+
+    /// <summary>Verilen değerleri global scope'a yazar (checkpoint resume için) — mevcut değerlerin üzerine yazar.</summary>
+    public void ImportGlobal(IReadOnlyDictionary<string, object?> variables)
+    {
+        foreach (var (key, value) in variables)
+        {
+            _scopes[0][key] = Normalize(value);
+        }
+    }
+
     /// <summary>JToken'ları .NET tiplerine indirger (saklama tutarlılığı için).</summary>
     private static object? Normalize(object? value)
     {
