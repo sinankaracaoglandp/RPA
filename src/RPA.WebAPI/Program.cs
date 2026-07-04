@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.Logging;
 using RPA.Infrastructure.Vault;
+using RPA.Infrastructure.Workflow;
 using RPA.WebAPI.Middleware;
 using Serilog;
 
@@ -27,6 +28,9 @@ builder.Services.AddRpaAuthentication(builder.Configuration);
 
 // Credential Vault (HashiCorp / DPAPI) — Spec Bölüm 5.5, 10.
 builder.Services.AddVaultServices(builder.Configuration);
+
+// Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
+builder.Services.AddWorkflowServices();
 
 // JWT Bearer authentication middleware.
 var jwt = builder.Configuration
