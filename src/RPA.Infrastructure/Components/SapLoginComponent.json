@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "1.0",
+  "id": "00000000-0000-0000-0000-000000000101",
+  "name": "Sap.Login",
+  "version": "1.0.0",
+  "arguments": {
+    "in": [
+      { "name": "systemName", "type": "string", "required": true },
+      { "name": "client", "type": "string", "required": true },
+      { "name": "credentialRef", "type": "string", "required": true }
+    ],
+    "out": [
+      { "name": "sessionId", "type": "string" },
+      { "name": "loggedInUser", "type": "string" }
+    ]
+  },
+  "variables": [
+    { "name": "otpCode", "type": "Credential", "scope": "component" },
+    { "name": "statusText", "type": "string", "scope": "component" }
+  ],
+  "nodes": [
+    {
+      "id": "connect",
+      "type": "activity",
+      "activity": "Sap.Gui.Connect",
+      "channel": "gui",
+      "properties": {
+        "systemId": "${systemName}",
+        "client": "${client}",
+        "userId": "${credentialRef}",
+        "credentialName": "${credentialRef}",
+        "language": "EN"
+      }
+    },
+    {
+      "id": "getOtp",
+      "type": "activity",
+      "activity": "Otp.GetOtp",
+      "properties": {
+        "portalReference": "${systemName}",
+        "channels": "Totp,Email,GsmModem,PhoneForward,HumanApproval",
+        "timeoutSeconds": 180
+      }
+    },
+    {
+      "id": "verify",
+      "type": "activity",
+      "activity": "Sap.Gui.GetText",
+      "channel": "gui",
+      "properties": {
+        "elementId": "wnd[0]/sbar"
+      }
+    },
+    {
+      "id": "captureStatus",
+      "type": "assign",
+      "variableName": "statusText",
+      "value": "${text}"
+    },
+    {
+      "id": "setSessionId",
+      "type": "assign",
+      "variableName": "sessionId",
+      "value": "${otpRequestId}"
+    },
+    {
+      "id": "setLoggedInUser",
+      "type": "assign",
+      "variableName": "loggedInUser",
+      "value": "${credentialRef}"
+    }
+  ],
+  "connections": [
+    { "from": "connect", "to": "getOtp" },
+    { "from": "getOtp", "to": "verify" },
+    { "from": "verify", "to": "captureStatus" },
+    { "from": "captureStatus", "to": "setSessionId" },
+    { "from": "setSessionId", "to": "setLoggedInUser" }
+  ]
+}

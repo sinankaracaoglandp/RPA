@@ -30,6 +30,13 @@ public static class WorkflowServiceCollectionExtensions
             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
 
         services.AddTransient<IWorkflowRunner, BaseRunner>();
+
+        // Task 4.5: Component publish/approve governance (Spec Bölüm 9).
+        // Bellek-içi depo — DB persistansı ayrı bir görev kapsamındadır.
+        services.AddSingleton<InMemoryComponentPublishRepository>();
+        services.AddSingleton<IComponentPublishRepository>(sp => sp.GetRequiredService<InMemoryComponentPublishRepository>());
+        services.AddSingleton<IComponentStore>(sp => sp.GetRequiredService<InMemoryComponentPublishRepository>());
+        services.AddSingleton<RPA.Infrastructure.Services.ComponentPublishService>();
         return services;
     }
 }
