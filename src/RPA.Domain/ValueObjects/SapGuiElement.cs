@@ -22,6 +22,12 @@ public sealed record SapGuiElement
     /// <summary>Element değiştirilebilir mi (input alanı)?</summary>
     public bool Changeable { get; init; } = true;
 
+    /// <summary>İmleç/ekran konumu — X koordinatı (piksel). UI Spy tespit anındaki konum.</summary>
+    public int X { get; init; }
+
+    /// <summary>İmleç/ekran konumu — Y koordinatı (piksel). UI Spy tespit anındaki konum.</summary>
+    public int Y { get; init; }
+
     public SapGuiElement() { }
 
     [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]

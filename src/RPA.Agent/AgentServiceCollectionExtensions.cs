@@ -13,8 +13,11 @@ using RPA.Agent.Registration;
 using RPA.Agent.Session;
 using RPA.Agent.State;
 using RPA.Agent.Tray;
+using RPA.Agent.UISpy;
+using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Retry;
+using RPA.Infrastructure.UISpy;
 
 /// <summary>
 /// Ajan servislerini DI konteynerine kaydeder. Hosted service sırası önemlidir:
@@ -75,6 +78,27 @@ public static class AgentServiceCollectionExtensions
         services.AddHostedService<QueuePollingBackgroundService>();
         services.AddHostedService<JobHubHostedService>();
         services.AddHostedService<TrayUiHostedService>();
+
+        // UI Spy (Task 4.4, Spec Bölüm 6): gerçek zamanlı SAP GUI element tespiti — Studio tasarımcısının
+        // point-and-click ile element seçmesini sağlar. Güvenlik: yalnızca ATTENDED modda + Windows'ta.
+        var agentOptions = configuration.GetSection(AgentOptions.SectionName).Get<AgentOptions>() ?? new AgentOptions();
+        if (agentOptions.Mode == RobotMode.Attended && OperatingSystem.IsWindows())
+        {
+            services.AddOptions<UiSpyOptions>()
+                .Bind(configuration.GetSection(UiSpyOptions.SectionName));
+
+            // Native P/Invoke + SAP COM resolver (stub — SAP GUI kurulu makinede gerçek COM resolver ile değişir).
+            services.AddSingleton<INativeWindowApi, Win32NativeWindowApi>();
+            services.AddSingleton<ISapGuiElementResolver, NullSapGuiElementResolver>();
+            services.AddSingleton<SapGuiElementDetector>();
+
+            // SignalR köprüsü (agent → Studio) + gönderici + orkestrasyon servisi.
+            services.AddSingleton<ISpyElementTransport, SignalRSpyElementTransport>();
+            services.AddSingleton<SapGuiElementSender>();
+            services.AddSingleton<SapGuiSpyService>();
+
+            services.AddHostedService<UiSpyHostedService>();
+        }
 
         return services;
     }

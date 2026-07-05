@@ -12,6 +12,7 @@ using RPA.Infrastructure.Scheduling;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
 using RPA.WebAPI.Robots;
+using RPA.WebAPI.Hubs;
 using RPA.WebAPI.Middleware;
 using Serilog;
 
@@ -134,6 +135,7 @@ app.UseAuthorization();
 app.MapGet("/", () => "RPA Platform API");
 app.MapControllers();
 app.MapHub<RobotHub>("/hubs/robot");
+app.MapHub<StudioHub>("/hubs/studio");
 
 app.Run();
 
