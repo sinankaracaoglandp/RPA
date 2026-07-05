@@ -1,11 +1,13 @@
 namespace RPA.Infrastructure.SAP.SapGuiElements;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
 /// <summary>
 /// SAP GUI ekranındaki tab-strip'te bir sekme seçer (Spec 5.3 — SAP GUI: SelectTab).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiSelectTabActivity : IActivity
 {
     private readonly ISapGuiChannel _channel;

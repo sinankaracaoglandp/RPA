@@ -1,11 +1,13 @@
 namespace RPA.Infrastructure.SAP.SapGuiElements;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
 /// <summary>
 /// SAP GUI ekranındaki bir alana metin yazar (Spec 5.3 — SAP GUI: SetText).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiSetTextActivity : IActivity
 {
     private readonly ISapGuiChannel _channel;

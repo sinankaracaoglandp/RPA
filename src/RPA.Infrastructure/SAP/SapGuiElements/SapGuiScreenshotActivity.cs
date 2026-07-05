@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.SapGuiElements;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 
 /// <summary>
@@ -7,6 +8,7 @@ using RPA.Domain.Interfaces;
 /// İş bitiminde/hata analizinde arşivlenmek üzere PNG byte'ları "screenshot" çıkış
 /// değişkenine yazılır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiScreenshotActivity : IActivity
 {
     private readonly ISapGuiChannel _channel;

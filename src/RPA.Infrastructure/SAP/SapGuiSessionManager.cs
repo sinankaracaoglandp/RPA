@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.SAP;
 
 using System.Collections.Concurrent;
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 using SystemException = RPA.Domain.Exceptions.SystemException;
@@ -14,6 +15,7 @@ using SystemException = RPA.Domain.Exceptions.SystemException;
 /// <see cref="StubSapGuiSession"/> ile temsil edilir; böylece kanal ve aktivite mantığı
 /// SAP GUI kurulumu olmadan birim testlerle doğrulanabilir.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiSessionManager : ISapGuiSessionManager
 {
     private readonly ILogger<SapGuiSessionManager> _logger;

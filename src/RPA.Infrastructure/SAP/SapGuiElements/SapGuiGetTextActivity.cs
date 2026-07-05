@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.SapGuiElements;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
@@ -7,6 +8,7 @@ using BusinessException = RPA.Domain.Exceptions.BusinessException;
 /// SAP GUI ekranındaki bir alandan metin okur (Spec 5.3 — SAP GUI: GetText).
 /// Sonuç "text" çıkış değişkenine yazılır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiGetTextActivity : IActivity
 {
     private readonly ISapGuiChannel _channel;

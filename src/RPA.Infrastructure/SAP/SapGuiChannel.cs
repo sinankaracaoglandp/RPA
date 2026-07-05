@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP;
 
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
@@ -14,6 +15,7 @@ using SystemException = RPA.Domain.Exceptions.SystemException;
 /// <see cref="DisconnectAsync"/> ile kapanır. Bir kanal örneği bir iş akışı (JobRun) boyunca
 /// yaşar; eşzamanlı çağrı için tasarlanmamıştır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiChannel : ISapGuiChannel
 {
     private readonly ISapGuiSessionManager _sessionManager;

@@ -1,11 +1,13 @@
 namespace RPA.Infrastructure.SAP.SapGuiElements;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
 /// <summary>
 /// SAP GUI ekranındaki bir elemente tıklar (Spec 5.3 — SAP GUI: Click).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiClickActivity : IActivity
 {
     private readonly ISapGuiChannel _channel;

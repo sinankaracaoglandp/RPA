@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.SAP;
 
 using System.Collections.Concurrent;
+using System.Runtime.Versioning;
 using System.Text;
 
 /// <summary>
@@ -9,6 +10,7 @@ using System.Text;
 /// böylece kanal/aktivite mantığı birim testlerle uçtan uca doğrulanabilir.
 /// Gerçek COM implementasyonu ayrı entegrasyon testinde (real DEP) yer alır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 internal sealed class StubSapGuiSession : ISapGuiSession
 {
     private readonly ConcurrentDictionary<string, string> _fields = new();

@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.SapGuiElements;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
@@ -7,6 +8,7 @@ using BusinessException = RPA.Domain.Exceptions.BusinessException;
 /// SAP GUI oturumuna bağlanır (Spec 5.3 — SAP GUI: Connect/Login).
 /// Şifre Credential Vault'tan çözülür (plaintext taşınmaz).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapGuiConnectActivity : IActivity
 {
     private readonly ISapGuiChannel _channel;
