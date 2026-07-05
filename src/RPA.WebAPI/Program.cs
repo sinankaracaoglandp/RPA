@@ -6,8 +6,10 @@ using Microsoft.IdentityModel.Tokens;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.Logging;
 using RPA.Infrastructure.Persistence;
+using RPA.Infrastructure.Robots;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
+using RPA.WebAPI.Robots;
 using RPA.WebAPI.Middleware;
 using Serilog;
 
@@ -41,6 +43,12 @@ builder.Services.AddDbContext<RpaDbContext>(options =>
 
 // Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
 builder.Services.AddWorkflowServices();
+
+// Robot kayıt + heartbeat + offline tespiti servisleri — Spec Bölüm 5.6, 9.
+builder.Services.AddRobotServices();
+
+// SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
+builder.Services.AddSignalR();
 
 // JWT Bearer authentication middleware.
 var jwt = builder.Configuration
@@ -101,6 +109,7 @@ app.UseAuthorization();
 
 app.MapGet("/", () => "RPA Platform API");
 app.MapControllers();
+app.MapHub<RobotHub>("/hubs/robot");
 
 app.Run();
 
