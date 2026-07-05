@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -46,6 +47,17 @@ var jwt = builder.Configuration
     .GetSection(AuthenticationOptions.SectionName)
     .Get<AuthenticationOptions>()?.Jwt ?? new JwtOptions();
 
+// CRITICAL FIX: No fallback to all-zero key. Require JWT_SECRET environment variable.
+if (string.IsNullOrEmpty(jwt.Secret))
+{
+    throw new InvalidOperationException(
+        "JWT secret not configured. Set Authentication:Jwt:Secret in appsettings or JWT_SECRET environment variable. " +
+        "Secret must be at least 32 bytes (characters).");
+}
+
+// HIGH FIX: Derive signing key using PBKDF2 to ensure strength against low-entropy secrets
+var derivedKey = DeriveKeyFromSecret(jwt.Secret);
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -57,10 +69,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwt.Issuer,
             ValidAudience = jwt.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(string.IsNullOrEmpty(jwt.Secret)
-                    ? new string('0', 32)
-                    : jwt.Secret)),
+            IssuerSigningKey = new SymmetricSecurityKey(derivedKey),
             ClockSkew = TimeSpan.FromMinutes(1),
         };
     });
@@ -94,6 +103,23 @@ app.MapGet("/", () => "RPA Platform API");
 app.MapControllers();
 
 app.Run();
+
+// Helper method to derive a cryptographically strong key from JWT secret using PBKDF2.
+static byte[] DeriveKeyFromSecret(string secret)
+{
+    // Use PBKDF2 to derive a 32-byte key from the secret.
+    // This strengthens the key against low-entropy input and provides proper key derivation.
+    var secretBytes = Encoding.UTF8.GetBytes(secret);
+    var saltBytes = Encoding.UTF8.GetBytes("RPA.JwtTokenService.v1"); // Fixed salt for consistency
+
+    // Use static Pbkdf2 method (not deprecated constructor)
+    return Rfc2898DeriveBytes.Pbkdf2(
+        secretBytes,
+        saltBytes,
+        iterations: 10000,
+        HashAlgorithmName.SHA256,
+        outputLength: 32);
+}
 
 // Integration test (WebApplicationFactory) için erişilebilir Program sınıfı.
 public partial class Program { }

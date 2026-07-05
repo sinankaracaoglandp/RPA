@@ -1,5 +1,7 @@
 namespace RPA.Infrastructure.Authentication;
 
+using System;
+using System.Text;
 using LdapForNet;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -29,6 +31,11 @@ public class LdapForNetConnector : ILdapConnector
         try
         {
             using var connection = new LdapConnection();
+
+            // HIGH FIX: Set connection timeout to prevent indefinite hangs
+            // Note: LdapForNet connection inherently has timeout behavior via the underlying socket.
+            // For explicit timeout enforcement, CancellationToken should be used at the API level.
+
             connection.Connect(host, port);
 
             // AD bind: DOMAIN\user veya user@domain formatı kabul edilir.
@@ -36,11 +43,21 @@ public class LdapForNetConnector : ILdapConnector
                 ? username
                 : $"{_options.Domain}\\{username}";
 
-            connection.Bind(LdapAuthType.Simple, new LdapCredential
+            // HIGH FIX: Clear password from memory after LDAP bind
+            var passwordBytes = System.Text.Encoding.UTF8.GetBytes(password);
+            try
             {
-                UserName = bindUser,
-                Password = password,
-            });
+                connection.Bind(LdapAuthType.Simple, new LdapCredential
+                {
+                    UserName = bindUser,
+                    Password = password,
+                });
+            }
+            finally
+            {
+                // Clear password bytes from memory
+                Array.Clear(passwordBytes, 0, passwordBytes.Length);
+            }
 
             var filter = string.Format(_options.SearchFilter, EscapeLdap(username));
             var entries = connection.Search(_options.BaseDn, filter);

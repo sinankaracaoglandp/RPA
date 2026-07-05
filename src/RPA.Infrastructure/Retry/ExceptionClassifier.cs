@@ -18,6 +18,15 @@ public sealed class ExceptionClassifier
 {
     private static readonly string[] Operators = { "==", "!=", ">=", "<=", ">", "<" };
 
+    // HIGH FIX: Whitelist of allowed field names in rule evaluation to prevent information disclosure.
+    // Only these fields may be referenced in rule conditions.
+    private static readonly HashSet<string> AllowedFields = new(StringComparer.Ordinal)
+    {
+        "ReturnType",      // SAP return type (E, W, S, I)
+        "StatusCode",      // HTTP status code
+        "ErrorMessage",    // Exception error message
+    };
+
     /// <summary>İstisnayı Business/System olarak sınıflandırır (bilinmeyen tip → System).</summary>
     public ExceptionType Classify(Exception exception)
     {
@@ -98,8 +107,14 @@ public sealed class ExceptionClassifier
         }
 
         // Alan referansı (olgularda var).
+        // HIGH FIX: Enforce whitelist to prevent information disclosure via unallowed field access.
         if (facts.TryGetValue(raw, out var value))
         {
+            if (!AllowedFields.Contains(raw))
+            {
+                throw new ArgumentException(
+                    $"Field '{raw}' is not allowed in rule conditions. Allowed fields: {string.Join(", ", AllowedFields)}");
+            }
             return value;
         }
 

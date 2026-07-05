@@ -30,5 +30,26 @@
 
 ## Faz 2: ✅ COMPLETE (9 task, 103 tests passing, 7 commits)
 
+### Faz 2 Post-Completion
+
+- Fix subagent: 5 test failures fixed (94678d6, commit by agent a9643461b8d2a6fb4)
+  - BaseRunner ResumeAsync empty checkpoint handling
+  - Component schema type format (test fixtures)
+  - CheckpointManager SecureString assertion
+  - WebAPI DI registration (RpaDbContext)
+  - Test results: Infrastructure 160/160, WebAPI 12/12
+
+- Code review (high effort, Opus critical path 2.1–2.4):
+  - Reviewer: agent aa48750c6c9c8d338
+  - Findings: 10 (2 CONFIRMED, 8 PLAUSIBLE)
+  - Fix subagent: agent a05593b98ad440ae4 (4 critical fixes):
+    - BaseRunner ComponentId null coalesce (error message clarity)
+    - BaseRunner resumeVariables empty dict (state import separation)
+    - ExpressionEvaluator operator precedence (comparison > equality)
+    - RetryHandler OperationCanceledException (unconditional catch)
+  - Test results: Domain 4/4, Infrastructure 164/164, WebAPI 12/12 = **180/180 passing**
+
+- Security review: pending (auth 1.3.1, vault 1.5.1, exception 2.3.1, component 2.4.1, email 2.8.1)
+
 ## Faz 3–6: TBD (20 task)
 

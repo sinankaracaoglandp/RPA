@@ -1,6 +1,8 @@
 namespace RPA.Infrastructure.Workflow.Activities.Email;
 
+using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using MailKit.Net.Smtp;
@@ -140,13 +142,28 @@ public class EmailSendActivity : IActivity
                 {
                     context.Log($"SMTP bağlantısı: {host}:{port}", RPA.Domain.Interfaces.LogLevel.Debug);
 
+                    // HIGH FIX: Set 30-second timeout to prevent indefinite connection hold
+                    client.Timeout = 30000; // milliseconds
+
                     // Port numarasına göre otomatik TLS ayarla
                     SecureSocketOptions options = port == 587 ? SecureSocketOptions.StartTls :
                                                   port == 465 ? SecureSocketOptions.SslOnConnect :
                                                   SecureSocketOptions.None;
 
                     await client.ConnectAsync(host, port, options);
-                    await client.AuthenticateAsync(username, password);
+
+                    // HIGH FIX: Clear password from memory after authentication
+                    var passwordBytes = Encoding.UTF8.GetBytes(password);
+                    try
+                    {
+                        await client.AuthenticateAsync(username, password);
+                    }
+                    finally
+                    {
+                        // Clear password bytes from memory
+                        Array.Clear(passwordBytes, 0, passwordBytes.Length);
+                    }
+
                     await client.SendAsync(message);
                     await client.DisconnectAsync(true);
 

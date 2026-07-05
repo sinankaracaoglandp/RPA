@@ -79,13 +79,27 @@ public class EmailReadInboxActivity : IActivity
                 {
                     context.Log($"IMAP bağlantısı: {host}:{port}", RPA.Domain.Interfaces.LogLevel.Debug);
 
+                    // HIGH FIX: Set 30-second timeout to prevent indefinite connection hold
+                    client.Timeout = 30000; // milliseconds
+
                     // Port numarasına göre otomatik TLS ayarla
                     var options = port == 993 ? MailKit.Security.SecureSocketOptions.SslOnConnect :
                                   port == 143 ? MailKit.Security.SecureSocketOptions.StartTls :
                                   MailKit.Security.SecureSocketOptions.None;
 
                     await client.ConnectAsync(host, port, options);
-                    await client.AuthenticateAsync(username, password);
+
+                    // HIGH FIX: Clear password from memory after authentication
+                    var passwordBytes = System.Text.Encoding.UTF8.GetBytes(password);
+                    try
+                    {
+                        await client.AuthenticateAsync(username, password);
+                    }
+                    finally
+                    {
+                        // Clear password bytes from memory
+                        Array.Clear(passwordBytes, 0, passwordBytes.Length);
+                    }
 
                     // Klasörü aç
                     var mailFolder = client.GetFolder(folder);

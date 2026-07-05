@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.Authentication;
 
+using System.Security.Cryptography;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -28,7 +29,10 @@ public class JwtTokenService : ITokenService
                 "JWT secret yapılandırılmamış veya 32 byte'tan kısa.");
         }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Secret));
+        // HIGH FIX: Use PBKDF2 for proper key derivation instead of raw UTF-8 bytes.
+        // This ensures low-entropy passphrases are strengthened via key derivation.
+        var derivedKey = DeriveKeyFromSecret(_options.Secret);
+        var key = new SymmetricSecurityKey(derivedKey);
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
@@ -47,5 +51,24 @@ public class JwtTokenService : ITokenService
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    /// <summary>
+    /// Derives a cryptographically strong 32-byte key from the secret using PBKDF2.
+    /// </summary>
+    private static byte[] DeriveKeyFromSecret(string secret)
+    {
+        // Use PBKDF2 to derive a 32-byte key from the secret.
+        // This strengthens the key against low-entropy input and provides proper key derivation.
+        var secretBytes = Encoding.UTF8.GetBytes(secret);
+        var saltBytes = Encoding.UTF8.GetBytes("RPA.JwtTokenService.v1"); // Fixed salt for consistency
+
+        // Use static Pbkdf2 method (not deprecated constructor)
+        return Rfc2898DeriveBytes.Pbkdf2(
+            secretBytes,
+            saltBytes,
+            iterations: 10000,
+            HashAlgorithmName.SHA256,
+            outputLength: 32);
     }
 }

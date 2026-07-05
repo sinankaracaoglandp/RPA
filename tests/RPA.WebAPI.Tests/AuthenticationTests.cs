@@ -98,4 +98,79 @@ public class AuthenticationTests
         Assert.Contains("Viewer", roles);
         Assert.True(jwt.ValidTo > DateTime.UtcNow);
     }
+
+    // ---- SECURITY: JWT Vulnerabilities ----
+
+    [Fact]
+    public void JwtToken_MissingSecret_ThrowsException()
+    {
+        // CRITICAL FIX: No fallback to all-zero key when secret is missing
+        var options = Options.Create(new AuthenticationOptions
+        {
+            Jwt = new JwtOptions
+            {
+                Secret = null, // or empty string
+                Issuer = "RPA.Platform",
+                Audience = "RPA.Clients",
+                ExpirationMinutes = 60,
+            },
+        });
+
+        var tokenService = new JwtTokenService(options);
+
+        // Act & Assert: Must throw, not default to all-zero key
+        Assert.Throws<InvalidOperationException>(() =>
+            tokenService.GenerateToken("user", new[] { "Developer" })
+        );
+    }
+
+    [Fact]
+    public void JwtToken_ShortSecret_ThrowsException()
+    {
+        // CRITICAL FIX: Secret must be 32 bytes minimum
+        var options = Options.Create(new AuthenticationOptions
+        {
+            Jwt = new JwtOptions
+            {
+                Secret = "short", // < 32 bytes
+                Issuer = "RPA.Platform",
+                Audience = "RPA.Clients",
+                ExpirationMinutes = 60,
+            },
+        });
+
+        var tokenService = new JwtTokenService(options);
+
+        // Act & Assert: Must throw
+        Assert.Throws<InvalidOperationException>(() =>
+            tokenService.GenerateToken("user", new[] { "Developer" })
+        );
+    }
+
+    [Fact]
+    public void JwtToken_ValidSecret_GeneratesToken()
+    {
+        // CRITICAL FIX: Valid secret (32+ bytes) should work
+        var options = Options.Create(new AuthenticationOptions
+        {
+            Jwt = new JwtOptions
+            {
+                Secret = "this-is-a-valid-secret-key-32bytes!!!",
+                Issuer = "RPA.Platform",
+                Audience = "RPA.Clients",
+                ExpirationMinutes = 60,
+            },
+        });
+
+        var tokenService = new JwtTokenService(options);
+
+        // Act
+        var token = tokenService.GenerateToken("user", new[] { "Developer" });
+
+        // Assert
+        Assert.NotNull(token);
+        Assert.NotEmpty(token);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        Assert.Equal("RPA.Platform", jwt.Issuer);
+    }
 }

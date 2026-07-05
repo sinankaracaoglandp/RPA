@@ -263,4 +263,76 @@ public class RetryTests
 
         Assert.Equal("internal cancellation", ex.Message);
     }
+
+    // ---- SECURITY: Expression Injection ----
+
+    [Fact]
+    public void Evaluate_UnwhitelistedField_ThrowsException()
+    {
+        // HIGH FIX: Only whitelisted fields allowed in rule conditions
+        // Prevent information disclosure via field name injection
+        var c = new ExceptionClassifier();
+        var rule = new ExceptionClassificationRule
+        {
+            Condition = "Hostname == 'prod-server'", // Hostname is NOT whitelisted
+            Classification = ExceptionType.Business,
+        };
+        var facts = new Dictionary<string, object?> { ["Hostname"] = "prod-server" };
+
+        // Act & Assert: Must throw ArgumentException for unwhitelisted field
+        Assert.Throws<ArgumentException>(() =>
+            c.Evaluate(rule, facts)
+        );
+    }
+
+    [Fact]
+    public void Evaluate_WhitelistedFieldReturnType_Succeeds()
+    {
+        // HIGH FIX: ReturnType is whitelisted, should work
+        var c = new ExceptionClassifier();
+        var rule = new ExceptionClassificationRule
+        {
+            Condition = "ReturnType == 'E'",
+            Classification = ExceptionType.Business,
+        };
+        var facts = new Dictionary<string, object?> { ["ReturnType"] = "E" };
+
+        // Act & Assert: Must succeed with whitelisted field
+        var result = c.Evaluate(rule, facts);
+        Assert.Equal(ExceptionType.Business, result);
+    }
+
+    [Fact]
+    public void Evaluate_WhitelistedFieldStatusCode_Succeeds()
+    {
+        // HIGH FIX: StatusCode is whitelisted, should work
+        var c = new ExceptionClassifier();
+        var rule = new ExceptionClassificationRule
+        {
+            Condition = "StatusCode >= 500",
+            Classification = ExceptionType.System,
+        };
+        var facts = new Dictionary<string, object?> { ["StatusCode"] = 503 };
+
+        // Act & Assert: Must succeed with whitelisted field
+        var result = c.Evaluate(rule, facts);
+        Assert.Equal(ExceptionType.System, result);
+    }
+
+    [Fact]
+    public void Evaluate_WhitelistedFieldErrorMessage_Succeeds()
+    {
+        // HIGH FIX: ErrorMessage is whitelisted, should work
+        var c = new ExceptionClassifier();
+        var rule = new ExceptionClassificationRule
+        {
+            Condition = "ErrorMessage == 'Timeout'",
+            Classification = ExceptionType.System,
+        };
+        var facts = new Dictionary<string, object?> { ["ErrorMessage"] = "Timeout" };
+
+        // Act & Assert: Must succeed with whitelisted field
+        var result = c.Evaluate(rule, facts);
+        Assert.Equal(ExceptionType.System, result);
+    }
 }
