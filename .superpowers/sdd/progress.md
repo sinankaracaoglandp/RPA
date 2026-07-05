@@ -88,5 +88,15 @@
 - Interop testing: Manual smoke test on real Windows/admin/sessions
 - Migration baseline: First migration needs reconciliation with pre-existing EnsureCreated schema
 
-## Faz 4–6: TBD (11 task)
+## Faz 4: SAP & OTP (5 task)
+
+### Tasks (SDD execution order)
+
+- [x] Task 4.1: SAP GUI Scripting (Opus) — complete (commits 2029b26..e3b9285, review approved + fix, 42 tests, coverage 75.97%)
+- [x] Task 4.2: SAP NCo channel (Opus) — complete (commits 63e5049..693b051, review approved + fix, 38 tests, coverage 90.61%)
+- [x] Task 4.3: OTP module (Opus) — complete (commits 0b6f84d..b9edbce, review approved + tests, 32 tests, coverage 92.77%)
+- [x] Task 4.4: UI Spy (Opus) — complete (commit 204ec15, review pending, 27 tests)
+- [x] Task 4.5: SAP Login component (Sonnet) — complete (commits 617377d..4130571, review approved, 8 tests)
+
+## Faz 5–6: TBD (11 task)
 

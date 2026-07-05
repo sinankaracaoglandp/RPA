@@ -135,6 +135,24 @@ Etkilenen paket yok (arayüzün henüz tüketicisi yoktu; bu ilk NCo paketidir).
 
 ---
 
+## Kontrat Değişikliği — 2026-07-05 (WP-4.3 OTP)
+
+`IOtpChannel` sözleşmesi OTP modülü implementasyonu sırasında netleştirildi:
+- **Metot:** `GetCodeAsync(OtpRequest, CancellationToken)` → `GetOtpAsync(OtpRequest request, TimeSpan timeout, CancellationToken)`.
+  Timeout artık explicit parametredir (fallback orkestrasyonu `GetOtpActivity` içinde kanal-başına timeout uygular).
+- **`IsHealthyAsync()` kaldırıldı** (tüketicisi yoktu; sağlık kontrolü kanal-dışı ele alınır).
+- **`OtpRequest`** artık `IOtpChannel.cs` içindeki request-DTO değil, `RPA.Domain.Entities.OtpRequest`
+  entity'sidir (JobRunId, Channel, PortalReference, EncryptedCode, Status, ExpiresAt, ProvidedAt).
+  Kanala özgü teknik parametreler (email hesabı, TOTP secret, GSM numarası, webhook ref, kod deseni)
+  `RPA.Infrastructure.OTP.OtpChannelSettings` içine taşındı (kanal constructor'ına DI ile verilir).
+- **Yeni:** `OtpRequestStatus` enum (Pending, Provided, Expired, Failed).
+
+Etkilenen paket yok — `IOtpChannel`'in henüz hiçbir tüketicisi yoktu (bu ilk OTP paketidir).
+Gerekçe: audit entity'si ile runtime request-DTO'sunun tek isim altında çakışması giderildi; timeout
+tabanlı sıralı fallback sözleşmede explicit hale getirildi.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:
