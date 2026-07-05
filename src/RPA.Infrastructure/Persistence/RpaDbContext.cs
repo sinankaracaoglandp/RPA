@@ -33,6 +33,13 @@ public class RpaDbContext : DbContext
     /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
     public DbSet<Robot> Robots => Set<Robot>();
 
+    /// <summary>Task 3.3 — Zamanlayıcı + tetikleyiciler (Spec Bölüm 7).</summary>
+    public DbSet<Trigger> Triggers => Set<Trigger>();
+
+    public DbSet<Schedule> Schedules => Set<Schedule>();
+
+    public DbSet<JobRun> JobRuns => Set<JobRun>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -91,6 +98,38 @@ public class RpaDbContext : DbContext
             entity.HasIndex(r => r.MachineName);
             // QueueItems navigasyonu QueueItem tarafında Ignore edildi (tam şema WP-1.2/3.2).
             entity.Ignore(r => r.QueueItems);
+        });
+
+        modelBuilder.Entity<Trigger>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.Configuration).HasMaxLength(4000).IsRequired();
+            entity.Property(t => t.Type).HasConversion<string>().HasMaxLength(32);
+            entity.HasIndex(t => new { t.WorkflowVersionId, t.IsActive });
+            // Project navigasyonu tam şema paketinde (WP-1.2) yapılandırılacak.
+            entity.Ignore(t => t.Project);
+        });
+
+        modelBuilder.Entity<Schedule>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.CronExpression).HasMaxLength(128).IsRequired();
+            entity.Property(s => s.TimeZone).HasMaxLength(64).IsRequired();
+            entity.Property(s => s.OverlapPolicy).HasMaxLength(32).IsRequired();
+            entity.HasIndex(s => s.TriggerId).IsUnique();
+        });
+
+        modelBuilder.Entity<JobRun>(entity =>
+        {
+            entity.HasKey(j => j.Id);
+            entity.Property(j => j.TriggeredBy).HasMaxLength(32).IsRequired();
+            entity.Property(j => j.Status).HasMaxLength(32).IsRequired();
+            entity.Property(j => j.ElasticsearchCorrelationId).HasMaxLength(64);
+            // Task 3.3 — OverlapPolicy kontrolü (skip/queue) aynı WorkflowVersion için çalışan
+            // JobRun aranmasıyla yapılır; bu sorgu için birleşik indeks.
+            entity.HasIndex(j => new { j.WorkflowVersionId, j.Status });
+            // WorkflowVersion navigasyonu tam şema paketinde (WP-1.2) yapılandırılacak.
+            entity.Ignore(j => j.WorkflowVersion);
         });
     }
 }
