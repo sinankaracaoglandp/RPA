@@ -79,9 +79,27 @@ public sealed class ExpressionEvaluator
             return false;
         }
 
-        foreach (var op in Operators)
+        // Operator precedence: split on lowest-precedence operator (== and !=).
+        // For each precedence level, find the rightmost occurrence to ensure correct associativity.
+
+        // Level 1 (lowest precedence): equality operators
+        foreach (var op in new[] { "==", "!=" })
         {
-            var idx = FindOperator(condition, op);
+            var idx = FindOperatorRightmost(condition, op);
+            if (idx >= 0)
+            {
+                var leftRaw = condition[..idx].Trim();
+                var rightRaw = condition[(idx + op.Length)..].Trim();
+                var left = ResolveOperand(leftRaw);
+                var right = ResolveOperand(rightRaw);
+                return Compare(left, right, op);
+            }
+        }
+
+        // Level 2 (higher precedence): comparison operators
+        foreach (var op in new[] { ">=", "<=", ">", "<" })
+        {
+            var idx = FindOperatorRightmost(condition, op);
             if (idx >= 0)
             {
                 var leftRaw = condition[..idx].Trim();
@@ -103,6 +121,13 @@ public sealed class ExpressionEvaluator
         return text.IndexOf(op, StringComparison.Ordinal);
     }
 
+    private static int FindOperatorRightmost(string text, string op)
+    {
+        // Find the rightmost occurrence to ensure lowest-precedence operator is used for split.
+        // This handles cases like "a > 1 == true" → split on ==, not >.
+        return text.LastIndexOf(op, StringComparison.Ordinal);
+    }
+
     private object? ResolveOperand(string raw)
     {
         if (string.IsNullOrEmpty(raw))
@@ -119,6 +144,16 @@ public sealed class ExpressionEvaluator
         if (TokenPattern.IsMatch(raw))
         {
             return EvaluateString(raw);
+        }
+
+        // Check if operand contains comparison operators (for nested conditions)
+        foreach (var op in new[] { ">=", "<=", ">", "<", "==", "!=" })
+        {
+            if (raw.Contains(op, StringComparison.Ordinal))
+            {
+                // Recursively evaluate as condition
+                return EvaluateCondition(raw);
+            }
         }
 
         return ParseLiteral(raw);
@@ -218,6 +253,9 @@ public sealed class ExpressionEvaluator
             case null:
                 result = 0;
                 return false;
+            case bool b:
+                result = b ? 1 : 0;
+                return true;
             case double d:
                 result = d;
                 return true;

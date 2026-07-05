@@ -55,8 +55,9 @@ public sealed class RetryHandler
                     bex, "İş kuralı istisnası (deneme {Attempt}) — retry uygulanmaz.", attempt);
                 throw;
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
+                // Cancellation (whether from token or internal) — propagate immediately, no retry.
                 throw;
             }
             catch (Exception ex) when (_classifier.IsRetryable(ex))

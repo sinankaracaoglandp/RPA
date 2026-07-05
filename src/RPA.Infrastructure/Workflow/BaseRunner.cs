@@ -200,7 +200,8 @@ public sealed class BaseRunner : IWorkflowRunner
         // Resume: checkpoint anındaki değişkenler, argüman varsayılanlarının üzerine yazılır
         // (çağrı zamanı argümanları en son uygulanmıştı — checkpoint bunları da ezer, çünkü
         // checkpoint yürütmenin en güncel bilinen durumudur).
-        if (resumeVariables is { Count: > 0 })
+        // Not: Empty dict (Count=0) should still import checkpoint state; only null means skip.
+        if (resumeVariables != null)
         {
             scope.ImportGlobal(resumeVariables);
         }
@@ -535,9 +536,10 @@ public sealed class BaseRunner : IWorkflowRunner
                 $"componentCall node '{node.Id}' — component çözümleyici yapılandırılmamış (Task 2.4).");
         }
 
-        var json = _componentResolver(node.ComponentId ?? "", node.ComponentVersion)
+        var componentId = node.ComponentId ?? "";
+        var json = _componentResolver(componentId, node.ComponentVersion)
             ?? throw new SystemException(
-                $"Component bulunamadı: {node.ComponentId} v{node.ComponentVersion}.");
+                $"Component bulunamadı: {node.ComponentId ?? "(null)"} v{node.ComponentVersion}.");
 
         // Giriş eşlemesi: {componentInput: workflowVariable}
         var inputs = new Dictionary<string, object?>(StringComparer.Ordinal);

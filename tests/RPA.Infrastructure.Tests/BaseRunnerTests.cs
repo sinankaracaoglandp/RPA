@@ -509,4 +509,92 @@ public class BaseRunnerTests
         Assert.Equal("Merhaba Ada", eval.EvaluateString("Merhaba ${name}"));
         Assert.Equal(10L, eval.EvaluateValue("${a}"));
     }
+
+    [Fact]
+    public void ExpressionEvaluator_MixedOperators_RespectsPrecedence()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("a", 1L);
+        scope.SetGlobalVariable("b", 1L);
+        var eval = new ExpressionEvaluator(scope);
+
+        // Basic comparison: 1 > 0 should be true
+        Assert.True(eval.EvaluateCondition("1 > 0"));
+
+        // Variable comparison: ${b} > 0 should be true
+        Assert.True(eval.EvaluateCondition("${b} > 0"));
+
+        // Nested: ${a} == 1 > 0 means ${a} == (1 > 0)
+        // Right operand "1 > 0" should be evaluated as condition (true),
+        // then compared: 1 == true (converts true to 1) → true
+        Assert.True(eval.EvaluateCondition("${a} == 1 > 0"));
+    }
+
+    [Fact]
+    public async Task ComponentCall_WithUnresolvedId_ErrorMessagePreservesId()
+    {
+        var json = """
+        {
+          "schemaVersion": "1.0",
+          "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+          "name": "TestUnresolved",
+          "version": "1.0.0",
+          "nodes": [
+            { "id": "cc", "type": "componentCall", "componentId": "missing-component-id",
+              "componentVersion": "1.0.0",
+              "inputMapping": {},
+              "outputMapping": {} }
+          ],
+          "connections": []
+        }
+        """;
+
+        var runner = CreateRunner(componentResolver: (id, ver) => null);
+        var result = await runner.ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.False(result.Success);
+        Assert.IsType<SystemException>(result.Exception);
+        // Error message should show the actual ComponentId
+        Assert.Contains("missing-component-id", result.Exception!.Message);
+    }
+
+    [Fact]
+    public async Task ResumeWithCheckpoint_EmptyOverrides_RestoresState()
+    {
+        var componentJson = """
+        {
+          "schemaVersion": "1.0",
+          "id": "12121212-1212-1212-1212-121212121212",
+          "name": "Stateful",
+          "version": "1.0.0",
+          "variables": [ { "name": "counter", "type": "int", "default": 0 },
+                         { "name": "next", "type": "int", "default": 0 } ],
+          "arguments": { "out": [ { "name": "next", "type": "int" } ] },
+          "nodes": [
+            { "id": "cp", "type": "checkpoint" },
+            { "id": "assign_next", "type": "assign", "variableName": "next", "value": "${counter}" }
+          ],
+          "connections": [ { "from": "cp", "to": "assign_next" } ]
+        }
+        """;
+
+        var runner = CreateRunner();
+
+        // First execution: reach checkpoint, set counter=5
+        var result1 = await runner.ExecuteAsync(Version(componentJson), new() { ["counter"] = 5 }, Guid.NewGuid());
+        Assert.True(result1.Success);
+        Assert.NotNull(result1.CheckpointData);
+        Assert.Equal(5L, Convert.ToInt64(result1.Outputs["next"]));
+
+        // Resume with empty override dict: should restore checkpoint state (counter=5) then continue
+        var result2 = await runner.ResumeAsync(
+            new WorkflowVersion { JsonDefinition = componentJson },
+            new(), // Empty override dict!
+            result1.CheckpointData!,
+            Guid.NewGuid());
+
+        Assert.True(result2.Success);
+        // If checkpoint state was properly imported despite empty dict, counter should still be 5
+        Assert.Equal(5L, Convert.ToInt64(result2.Outputs["next"]));
+    }
 }

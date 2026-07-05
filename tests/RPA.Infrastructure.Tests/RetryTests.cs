@@ -246,4 +246,21 @@ public class RetryTests
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             handler.ExecuteAsync(_ => Task.FromResult(1), policy, cts.Token));
     }
+
+    [Fact]
+    public async Task Execute_OperationCanceledWithoutTokenRequest_StillThrows()
+    {
+        // Test case: OperationCanceledException is thrown internally (not by CancellationToken)
+        // Current code only catches it if IsCancellationRequested is true, otherwise it falls through
+        var handler = new RetryHandler(new ExceptionClassifier(), (_, _) => Task.CompletedTask);
+        var policy = new RetryPolicy(maxAttempts: 3);
+
+        var ex = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            handler.ExecuteAsync<string>(_ =>
+            {
+                throw new OperationCanceledException("internal cancellation");
+            }, policy));
+
+        Assert.Equal("internal cancellation", ex.Message);
+    }
 }
