@@ -30,6 +30,9 @@ public class RpaDbContext : DbContext
 
     public DbSet<QueueItem> QueueItems => Set<QueueItem>();
 
+    /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
+    public DbSet<Robot> Robots => Set<Robot>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -72,6 +75,19 @@ public class RpaDbContext : DbContext
             // Robot/Queue navigasyonları tam şema paketinde (WP-1.2/3.2) yapılandırılacak.
             entity.Ignore(qi => qi.Queue);
             entity.Ignore(qi => qi.AssignedRobot);
+        });
+
+        modelBuilder.Entity<Robot>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.MachineName).HasMaxLength(256).IsRequired();
+            entity.Property(r => r.Tags).HasMaxLength(1024);
+            entity.Property(r => r.AgentVersion).HasMaxLength(64);
+            entity.Property(r => r.Mode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(r => r.Status).HasConversion<string>().HasMaxLength(32);
+            entity.HasIndex(r => r.MachineName);
+            // QueueItems navigasyonu QueueItem tarafında Ignore edildi (tam şema WP-1.2/3.2).
+            entity.Ignore(r => r.QueueItems);
         });
     }
 }

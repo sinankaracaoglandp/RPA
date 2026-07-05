@@ -49,7 +49,22 @@
     - RetryHandler OperationCanceledException (unconditional catch)
   - Test results: Domain 4/4, Infrastructure 164/164, WebAPI 12/12 = **180/180 passing**
 
-- Security review: pending (auth 1.3.1, vault 1.5.1, exception 2.3.1, component 2.4.1, email 2.8.1)
+- Security review: COMPLETE (agent a9fe9fc6a885caf99)
+  - 5 vulnerabilities fixed (JWT fallback CRITICAL, SMTP/IMAP/LDAP/expression/key-derivation HIGH)
+  - 190/190 tests passing (Domain 4, Infrastructure 171, WebAPI 15)
+  - Commit: 23f2867 (all security fixes committed)
+  - Details: JWT no fallback, password clearing in email/LDAP, expression whitelist, PBKDF2 key derivation
 
-## Faz 3–6: TBD (20 task)
+## Faz 3: Robot Agent & Orchestrator (6 WP = 6 task)
+
+### Tasks (SDD execution order)
+
+- [ ] Task 3.1: Robot kayıt + SignalR dağıtım (Opus) — implementer a73509ae6836a48a4 in progress
+- [ ] Task 3.2: Kuyruk motoru + UPDLOCK atama (Opus) — blocked on 3.1
+- [ ] Task 3.3: Zamanlayıcı + tetikleyiciler (Sonnet) — blocked on 3.1-3.2
+- [ ] Task 3.4: Agent çekirdeği (Windows Service + tray) (Opus) — blocked on 3.1-3.3
+- [ ] Task 3.5: SessionManager (RDP/AutoLogon/tscon) (Opus) — blocked on 3.1-3.4
+- [ ] Task 3.6: Attended UX (tray, akış listesi, UserPrompt) (Sonnet) — blocked on 3.1-3.5
+
+## Faz 4–6: TBD (11 task)
 
