@@ -63,8 +63,30 @@
 - [x] Task 3.2: Kuyruk motoru + UPDLOCK atama (Opus) — complete (commits 5b6893d..214b46e, review approved, 245 tests)
 - [x] Task 3.3: Zamanlayıcı + tetikleyiciler (Sonnet) — complete (commits 214b46e..575bcf9, review approved, 276 tests)
 - [x] Task 3.4: Agent çekirdeği (Windows Service + tray) (Opus) — complete (commits 575bcf9..9f322d1, review approved, 34 tests)
-- [ ] Task 3.5: SessionManager (RDP/AutoLogon/tscon) (Opus) — implementer queued
-- [ ] Task 3.6: Attended UX (tray, akış listesi, UserPrompt) (Sonnet) — blocked on 3.5
+- [x] Task 3.5: SessionManager (RDP/AutoLogon/tscon) (Opus) — complete (commits 9f322d1..f13abc1, security ✅, 50 tests)
+- [x] Task 3.6: Attended UX (tray, akış listesi, UserPrompt) (Sonnet) — complete (commits f13abc1..d122ba5, review approved, 78 tests)
+
+## Faz 3: ✅ FINAL REVIEW APPROVED (6 task, 358 tests passing, 22 commits)
+
+**Summary:**
+- Task 3.1: Robot Registration + SignalR (Opus) — 202 tests, coverage 71.63%
+- Task 3.2: Queue Engine + UPDLOCK (Opus) — 245 tests, atomic claim + retry
+- Task 3.3: Scheduler + Triggers (Sonnet) — 276 tests, Cron + overlap policies
+- Task 3.4: Agent Core (Opus) — 34 tests, RobotRegistrar + JobExecutor + Services
+- Task 3.5: SessionManager (Opus) — 50 tests, AutoLogon + tscon + credential security ✅
+- Task 3.6: Attended UX (Sonnet) — 78 tests, Tray + JobList + UserPrompt dialogs
+
+**Final Review Verdict (agent a6b38767186204acf):**
+- Build: ✅ Succeeds (0 errors)
+- Tests: ✅ All passing (358 total)
+- Architecture: ✅ Clean (no circular deps, Onion layers intact)
+- Ready to Merge: YES
+
+**Known follow-ups (non-blocking, post-Faz 3):**
+- RobotHub: Add server-side JobStatusChanged + UserPromptRequested event broadcasting
+- Coverage: Verify final thresholds post-merge
+- Interop testing: Manual smoke test on real Windows/admin/sessions
+- Migration baseline: First migration needs reconciliation with pre-existing EnsureCreated schema
 
 ## Faz 4–6: TBD (11 task)
 
