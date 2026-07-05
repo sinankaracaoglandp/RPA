@@ -125,6 +125,16 @@ Gerekçe: SelectTab aktivitesi (Spec 5.3 SAP GUI listesi) kanalda karşılık ge
 
 ---
 
+## Kontrat Değişikliği — 2026-07-05 (WP-4.2 NCo)
+
+`ISapDataChannel` + `SapCallResult` `ISapChannel.cs`'ten kendi dosyasına taşındı
+(`src/RPA.Domain/Interfaces/ISapDataChannel.cs`) — `ISapGuiChannel` ile aynı desen.
+`ISapChannel.cs` yalnızca geriye dönük referans yorumu içerir. **İmzalar değişmedi**
+(CallBapiAsync, CallRfcAsync, ReadTableAsync, CommitAsync, RollbackAsync, IsHealthyAsync).
+Etkilenen paket yok (arayüzün henüz tüketicisi yoktu; bu ilk NCo paketidir).
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:
