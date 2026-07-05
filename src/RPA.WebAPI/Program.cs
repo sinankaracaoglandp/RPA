@@ -8,6 +8,7 @@ using RPA.Infrastructure.Logging;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Queues;
 using RPA.Infrastructure.Robots;
+using RPA.Infrastructure.Scheduling;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
 using RPA.WebAPI.Robots;
@@ -50,6 +51,9 @@ builder.Services.AddRobotServices();
 
 // Kuyruk motoru (UPDLOCK atama + retry) — Task 3.2, Spec Bölüm 7.
 builder.Services.AddQueueServices();
+
+// Zamanlayıcı + tetikleyiciler (cron/manuel, OverlapPolicy) — Task 3.3, Spec Bölüm 7.
+builder.Services.AddSchedulerServices();
 
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
