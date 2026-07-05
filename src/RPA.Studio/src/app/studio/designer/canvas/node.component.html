@@ -1,0 +1,36 @@
+<div
+  class="canvas-node"
+  [class.canvas-node--selected]="node.selected"
+  role="button"
+  tabindex="0"
+  [attr.aria-label]="('canvas.node.ariaLabel' | translate) + ': ' + node.label"
+  [attr.aria-selected]="!!node.selected"
+  [attr.data-node-id]="node.id"
+  [attr.data-node-type]="node.nodeType"
+  data-testid="canvas-node"
+  (click)="select()"
+  (keydown.enter)="select()"
+  (keydown.space)="select()"
+>
+  <span class="canvas-node__socket canvas-node__socket--in" aria-hidden="true"></span>
+
+  <header class="canvas-node__header">
+    <span class="canvas-node__icon" aria-hidden="true">{{ node.icon || '▸' }}</span>
+    <span class="canvas-node__title" data-testid="canvas-node-title">{{ node.label }}</span>
+    <button
+      type="button"
+      class="canvas-node__delete"
+      data-testid="canvas-node-delete"
+      [attr.aria-label]="'canvas.node.delete' | translate"
+      (click)="remove($event)"
+    >
+      ✕
+    </button>
+  </header>
+
+  @if (node.activityId) {
+    <p class="canvas-node__subtitle">{{ node.activityId }}</p>
+  }
+
+  <span class="canvas-node__socket canvas-node__socket--out" aria-hidden="true"></span>
+</div>

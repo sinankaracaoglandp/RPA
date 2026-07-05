@@ -6,5 +6,11 @@ import { DashboardComponent } from './dashboard/dashboard.component';
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: '', component: DashboardComponent, canActivate: [authGuard] },
+  {
+    path: 'designer',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./studio/designer/designer.component').then((m) => m.DesignerComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

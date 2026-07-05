@@ -1,0 +1,65 @@
+<div class="canvas" data-testid="canvas-root">
+  <div
+    class="canvas__toolbar"
+    role="toolbar"
+    [attr.aria-label]="'canvas.toolbar.ariaLabel' | translate"
+  >
+    <button
+      type="button"
+      class="canvas__btn"
+      data-testid="canvas-zoom-in"
+      [attr.aria-label]="'canvas.toolbar.zoomIn' | translate"
+      (click)="zoomIn()"
+    >
+      +
+    </button>
+    <button
+      type="button"
+      class="canvas__btn"
+      data-testid="canvas-zoom-out"
+      [attr.aria-label]="'canvas.toolbar.zoomOut' | translate"
+      (click)="zoomOut()"
+    >
+      −
+    </button>
+    <button
+      type="button"
+      class="canvas__btn"
+      data-testid="canvas-zoom-fit"
+      [attr.aria-label]="'canvas.toolbar.zoomFit' | translate"
+      (click)="zoomToFit()"
+    >
+      ⤢
+    </button>
+    <span class="canvas__divider" aria-hidden="true"></span>
+    <button
+      type="button"
+      class="canvas__btn"
+      data-testid="canvas-undo"
+      [attr.aria-label]="'canvas.toolbar.undo' | translate"
+      (click)="undo()"
+    >
+      ↶
+    </button>
+    <button
+      type="button"
+      class="canvas__btn"
+      data-testid="canvas-redo"
+      [attr.aria-label]="'canvas.toolbar.redo' | translate"
+      (click)="redo()"
+    >
+      ↷
+    </button>
+  </div>
+
+  <div
+    #reteContainer
+    class="rete-canvas"
+    data-testid="rete-canvas"
+    tabindex="0"
+    role="application"
+    [attr.aria-label]="'canvas.ariaLabel' | translate"
+    (keydown.delete)="selected && deleteNode(selected)"
+    (keydown.backspace)="selected && deleteNode(selected)"
+  ></div>
+</div>

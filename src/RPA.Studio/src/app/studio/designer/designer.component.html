@@ -1,0 +1,9 @@
+<div class="designer flex h-full w-full">
+  <main class="designer__canvas relative flex-1">
+    <app-canvas
+      [workflow]="workflow()"
+      (nodeSelect)="onNodeSelect($event)"
+      (graphChanged)="onGraphChanged($event)"
+    ></app-canvas>
+  </main>
+</div>

@@ -1,0 +1,94 @@
+.canvas-node {
+  position: relative;
+  min-width: 160px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+
+  &:hover {
+    border-color: #94a3b8;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+
+  &--selected {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  &__icon {
+    font-size: 0.9rem;
+    color: #475569;
+  }
+
+  &__title {
+    flex: 1 1 auto;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__delete {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0.15rem;
+    border-radius: 0.25rem;
+
+    &:hover {
+      color: #dc2626;
+      background: #fee2e2;
+    }
+  }
+
+  &__subtitle {
+    margin: 0.25rem 0 0;
+    font-size: 0.7rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__socket {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: #2563eb;
+    border: 2px solid #ffffff;
+
+    &--in {
+      top: -6px;
+    }
+
+    &--out {
+      bottom: -6px;
+    }
+  }
+}

@@ -14,5 +14,20 @@
     "errorPasswordRequired": "Şifre zorunludur.",
     "errorInvalidCredentials": "Kullanıcı adı veya şifre hatalı.",
     "errorGeneric": "Giriş sırasında bir hata oluştu. Lütfen tekrar deneyin."
+  },
+  "canvas": {
+    "ariaLabel": "İş akışı tasarım tuvali",
+    "node": {
+      "ariaLabel": "İş akışı düğümü",
+      "delete": "Düğümü sil"
+    },
+    "toolbar": {
+      "ariaLabel": "Tuval kontrolleri",
+      "zoomIn": "Yakınlaştır",
+      "zoomOut": "Uzaklaştır",
+      "zoomFit": "Görünüme sığdır",
+      "undo": "Geri al",
+      "redo": "Yinele"
+    }
   }
 }

@@ -14,5 +14,20 @@
     "errorPasswordRequired": "Password is required.",
     "errorInvalidCredentials": "Invalid username or password.",
     "errorGeneric": "An error occurred while signing in. Please try again."
+  },
+  "canvas": {
+    "ariaLabel": "Workflow design canvas",
+    "node": {
+      "ariaLabel": "Workflow node",
+      "delete": "Delete node"
+    },
+    "toolbar": {
+      "ariaLabel": "Canvas controls",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomFit": "Fit to view",
+      "undo": "Undo",
+      "redo": "Redo"
+    }
   }
 }
