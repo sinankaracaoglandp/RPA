@@ -72,6 +72,9 @@ public class RpaDbContext : DbContext
             // Spec Bölüm 5.2 — referans anahtarı ile mükerrer işlem engeli: kuyruk +
             // idempotency key birlikte benzersizdir.
             entity.HasIndex(qi => new { qi.QueueId, qi.IdempotencyKey }).IsUnique();
+            // Task 3.2 — kuyruk motoru sıradaki New kalemi (QueueId + Status) ile çeker; claim
+            // sorgusunun UPDLOCK/READPAST performansı için birleşik indeks.
+            entity.HasIndex(qi => new { qi.QueueId, qi.Status });
             // Robot/Queue navigasyonları tam şema paketinde (WP-1.2/3.2) yapılandırılacak.
             entity.Ignore(qi => qi.Queue);
             entity.Ignore(qi => qi.AssignedRobot);
