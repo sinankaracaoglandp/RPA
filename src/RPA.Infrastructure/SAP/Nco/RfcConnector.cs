@@ -1,5 +1,7 @@
 namespace RPA.Infrastructure.SAP.Nco;
 
+using System.Runtime.Versioning;
+
 /// <summary>
 /// SAP NCo 3.1 (SAP.Middleware.Connector) soyutlama katmanı (Task 4.2).
 ///
@@ -8,6 +10,7 @@ namespace RPA.Infrastructure.SAP.Nco;
 /// (<see cref="IRfcConnection"/>) ardına soyutlanır — birim testlerde mock'lanabilir, gerçek
 /// implementasyon (RfcDestination/RfcRepository sarmalayan) DEP entegrasyon testinde kullanılır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public interface IRfcConnection : IDisposable
 {
     /// <summary>Fiziksel bağlantı kimliği (havuz izleme/loglama için).</summary>
@@ -34,6 +37,7 @@ public interface IRfcConnection : IDisposable
 /// Fiziksel RFC bağlantısı açan fabrika. Gerçek implementasyon NCo
 /// <c>RfcDestinationManager.GetDestination</c> sarmalar; testlerde mock'lanır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public interface IRfcConnectionFactory
 {
     /// <summary>Verilen ayarlarla yeni bir fiziksel RFC bağlantısı aç.</summary>
@@ -44,6 +48,7 @@ public interface IRfcConnectionFactory
 /// <summary>
 /// Bir RFC/BAPI çağrısının ham sonucu — export parametreleri ve tablo çıktıları.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class RfcInvokeResult
 {
     /// <summary>Export (çıkış) parametreleri. RETURN yapısı burada veya <see cref="Tables"/> içinde olabilir.</summary>
@@ -57,6 +62,7 @@ public sealed class RfcInvokeResult
 /// RFC iletişim hatası (RFC_COMMUNICATION_FAILURE / SYSTEM_FAILURE) — teknik, retry edilebilir.
 /// Havuz ölü bağlantıyı atar ve yeniden dener; kanal <see cref="RPA.Domain.Exceptions.SystemException"/>'a çevirir.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class RfcCommunicationException : Exception
 {
     public RfcCommunicationException(string message)
@@ -74,6 +80,7 @@ public sealed class RfcCommunicationException : Exception
 /// Bir SAP sistemine bağlantı için çözülmüş ayarlar. Şifre Vault'tan çözülür ve yalnızca bu
 /// nesnenin ömrü boyunca bellekte tutulur (kalıcı saklama yok — CLAUDE.md Kısım 3).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapConnectionSettings
 {
     public required string SystemId { get; init; }
@@ -91,6 +98,7 @@ public sealed class SapConnectionSettings
 /// <summary>
 /// <see cref="SapConnectionPool"/> davranış ayarları.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapNcoPoolOptions
 {
     /// <summary>Havuzdaki maksimum eşzamanlı bağlantı sayısı.</summary>

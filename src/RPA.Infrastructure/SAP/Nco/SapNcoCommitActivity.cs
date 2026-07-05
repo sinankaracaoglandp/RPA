@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.Nco;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 
 /// <summary>
@@ -7,6 +8,7 @@ using RPA.Domain.Interfaces;
 /// "rollback" değişkeni true ise rollback, aksi halde commit çalıştırılır. Sonuç "result" ve
 /// "success" çıktılarına yazılır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapNcoCommitActivity : IActivity
 {
     private readonly ISapDataChannel _channel;

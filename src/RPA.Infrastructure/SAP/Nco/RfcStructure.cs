@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.Nco;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 
 /// <summary>
@@ -7,6 +8,7 @@ using RPA.Domain.Interfaces;
 /// iş akışı çıktısına eşler. Ayrıca standart SAP RFC_READ_TABLE ve BAPI RETURN yapısı için
 /// yardımcı ayrıştırma/oluşturma metotları sağlar.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class RfcStructure
 {
     private readonly Dictionary<string, object?> _fields;
@@ -287,6 +289,7 @@ public sealed class RfcStructure
 /// <summary>
 /// SAP dönüş mesajı özeti (TYPE + MESSAGE).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public readonly record struct SapReturn(char? Type, string? Message)
 {
     public static SapReturn Empty => new(null, null);

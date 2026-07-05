@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.Nco;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
@@ -7,6 +8,7 @@ using BusinessException = RPA.Domain.Exceptions.BusinessException;
 /// SAP NCo: BAPI/RFC çağrısı aktivitesi (Task 4.2, Spec 5.2/6). "bapiName" ve "inputs"
 /// değişkenlerini alır; sonuç "result" (SapCallResult), "outputs" ve "success" çıktılarına yazılır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapNcoCallBapiActivity : IActivity
 {
     private readonly ISapDataChannel _channel;

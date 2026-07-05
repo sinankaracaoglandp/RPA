@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP;
 
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using RPA.Infrastructure.SAP.Nco;
 using SystemException = RPA.Domain.Exceptions.SystemException;
@@ -16,6 +17,7 @@ using SystemException = RPA.Domain.Exceptions.SystemException;
 /// - Zaman aşımı: havuz doluyken bekleme <see cref="SapNcoPoolOptions.BorrowTimeoutSeconds"/>
 ///   ile sınırlandırılır; aşılırsa <see cref="SystemException"/>.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapConnectionPool : IDisposable
 {
     private readonly IRfcConnectionFactory _factory;

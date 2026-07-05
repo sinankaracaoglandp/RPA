@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP;
 
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.SAP.Nco;
@@ -18,6 +19,7 @@ using SystemException = RPA.Domain.Exceptions.SystemException;
 /// - SAP dönüş türü E/A → <see cref="BusinessException"/> (iş kuralı, Action Center'a düşer).
 /// - RFC_COMMUNICATION_FAILURE / timeout → <see cref="SystemException"/> (teknik, retry).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapNcoChannel : ISapDataChannel
 {
     private readonly SapConnectionPool _pool;

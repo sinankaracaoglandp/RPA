@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.SAP.Nco;
 
+using System.Runtime.Versioning;
 using RPA.Domain.Interfaces;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
@@ -7,6 +8,7 @@ using BusinessException = RPA.Domain.Exceptions.BusinessException;
 /// SAP NCo: RFC_READ_TABLE ile tablo okuma aktivitesi (Task 4.2, Spec 6). "tableName" (zorunlu),
 /// "fields" ve "where" değişkenlerini alır; sonuç satırları "rows" çıktısına yazılır.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class SapNcoReadTableActivity : IActivity
 {
     private readonly ISapDataChannel _channel;
