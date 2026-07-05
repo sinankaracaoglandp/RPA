@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage" uri="datacollector://microsoft/CodeCoverage/2.0" assemblyQualifiedName="Coverlet.Collector.DataCollection.CoverletRunSettings, coverlet.collector">
+        <Configuration>
+          <Format>json</Format>
+          <Exclude>[xunit*]*,[*.Tests]*</Exclude>
+          <ExcludeByAttribute>CompilerGeneratedAttribute,GeneratedCodeAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+          <IncludeDirectory>C:\Source\RPA\src</IncludeDirectory>
+          <UseSourceLink>false</UseSourceLink>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

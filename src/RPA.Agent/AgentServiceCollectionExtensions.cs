@@ -7,8 +7,10 @@ using RPA.Agent.Configuration;
 using RPA.Agent.Hosting;
 using RPA.Agent.Jobs;
 using RPA.Agent.Registration;
+using RPA.Agent.Session;
 using RPA.Agent.State;
 using RPA.Agent.Tray;
+using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Retry;
 
 /// <summary>
@@ -40,6 +42,19 @@ public static class AgentServiceCollectionExtensions
 
         // Tray sunucusu (attended mod).
         services.AddSingleton<TrayStatusPresenter>();
+
+        // Oturum yönetimi (RDP/AutoLogon/tscon — Spec Bölüm 9).
+        services.AddOptions<SessionManagerOptions>()
+            .Bind(configuration.GetSection(SessionManagerOptions.SectionName));
+        services.AddSingleton<SessionCredentialProvider>();
+        services.AddSingleton<ISessionManager, WindowsSessionManager>();
+        if (OperatingSystem.IsWindows())
+        {
+            // Gerçek Windows interop implementasyonları yalnızca Windows'ta bağlanır.
+            services.AddSingleton<IAutoLogonRegistry, WinlogonAutoLogonRegistry>();
+            services.AddSingleton<ISessionSwitcher, TsconSessionSwitcher>();
+            services.AddSingleton<ISessionInfoProvider, WtsSessionInfoProvider>();
+        }
 
         // Hosted service sırası: kayıt önce.
         services.AddHostedService<RegistrationHostedService>();

@@ -1,0 +1,11 @@
+{
+  "documentStore": {
+    "reports": [
+      {
+        "name": "RPA.Infrastructure.Tests",
+        "lineCoverage": 0,
+        "branchCoverage": 0
+      }
+    ]
+  }
+}

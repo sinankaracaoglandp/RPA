@@ -59,12 +59,12 @@
 
 ### Tasks (SDD execution order)
 
-- [ ] Task 3.1: Robot kayıt + SignalR dağıtım (Opus) — implementer a73509ae6836a48a4 in progress
-- [ ] Task 3.2: Kuyruk motoru + UPDLOCK atama (Opus) — blocked on 3.1
-- [ ] Task 3.3: Zamanlayıcı + tetikleyiciler (Sonnet) — blocked on 3.1-3.2
-- [ ] Task 3.4: Agent çekirdeği (Windows Service + tray) (Opus) — blocked on 3.1-3.3
-- [ ] Task 3.5: SessionManager (RDP/AutoLogon/tscon) (Opus) — blocked on 3.1-3.4
-- [ ] Task 3.6: Attended UX (tray, akış listesi, UserPrompt) (Sonnet) — blocked on 3.1-3.5
+- [x] Task 3.1: Robot kayıt + SignalR dağıtım (Opus) — complete (commits 23f2867..5b6893d, review clean, coverage 71.63%)
+- [x] Task 3.2: Kuyruk motoru + UPDLOCK atama (Opus) — complete (commits 5b6893d..214b46e, review approved, 245 tests)
+- [x] Task 3.3: Zamanlayıcı + tetikleyiciler (Sonnet) — complete (commits 214b46e..575bcf9, review approved, 276 tests)
+- [x] Task 3.4: Agent çekirdeği (Windows Service + tray) (Opus) — complete (commits 575bcf9..9f322d1, review approved, 34 tests)
+- [ ] Task 3.5: SessionManager (RDP/AutoLogon/tscon) (Opus) — implementer queued
+- [ ] Task 3.6: Attended UX (tray, akış listesi, UserPrompt) (Sonnet) — blocked on 3.5
 
 ## Faz 4–6: TBD (11 task)
 

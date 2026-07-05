@@ -31,9 +31,47 @@ public class HostedServiceTests
         var registrar = new Mock<IRobotRegistrar>();
         registrar.Setup(r => r.RegisterAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Guid.NewGuid());
         var sf = ScopeFactory(s => s.AddScoped(_ => registrar.Object));
-        var svc = new RegistrationHostedService(sf, NullLogger<RegistrationHostedService>.Instance);
+        var session = new Mock<ISessionManager>();
+        var svc = new RegistrationHostedService(sf, session.Object,
+            Options.Create(new AgentOptions { Mode = RobotMode.Unattended }),
+            NullLogger<RegistrationHostedService>.Instance);
 
         await svc.StartAsync(CancellationToken.None);
+
+        registrar.Verify(r => r.RegisterAsync(It.IsAny<CancellationToken>()), Times.Once);
+        session.Verify(s => s.EnsureSessionAsync(SessionMode.Unattended, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Registration_Attended_Mod_EnsureSession_Attended_Cagirir()
+    {
+        var registrar = new Mock<IRobotRegistrar>();
+        registrar.Setup(r => r.RegisterAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Guid.NewGuid());
+        var sf = ScopeFactory(s => s.AddScoped(_ => registrar.Object));
+        var session = new Mock<ISessionManager>();
+        var svc = new RegistrationHostedService(sf, session.Object,
+            Options.Create(new AgentOptions { Mode = RobotMode.Attended }),
+            NullLogger<RegistrationHostedService>.Instance);
+
+        await svc.StartAsync(CancellationToken.None);
+
+        session.Verify(s => s.EnsureSessionAsync(SessionMode.Attended, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Registration_Oturum_Hatasi_Yutulur()
+    {
+        var registrar = new Mock<IRobotRegistrar>();
+        registrar.Setup(r => r.RegisterAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Guid.NewGuid());
+        var sf = ScopeFactory(s => s.AddScoped(_ => registrar.Object));
+        var session = new Mock<ISessionManager>();
+        session.Setup(s => s.EnsureSessionAsync(It.IsAny<SessionMode>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("AutoLogon devre dışı"));
+        var svc = new RegistrationHostedService(sf, session.Object,
+            Options.Create(new AgentOptions { Mode = RobotMode.Unattended }),
+            NullLogger<RegistrationHostedService>.Instance);
+
+        await svc.StartAsync(CancellationToken.None); // Fırlatmamalı.
 
         registrar.Verify(r => r.RegisterAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
