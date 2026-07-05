@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.Logging;
 using RPA.Infrastructure.Persistence;
+using RPA.Infrastructure.Queues;
 using RPA.Infrastructure.Robots;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
@@ -46,6 +47,9 @@ builder.Services.AddWorkflowServices();
 
 // Robot kayıt + heartbeat + offline tespiti servisleri — Spec Bölüm 5.6, 9.
 builder.Services.AddRobotServices();
+
+// Kuyruk motoru (UPDLOCK atama + retry) — Task 3.2, Spec Bölüm 7.
+builder.Services.AddQueueServices();
 
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
