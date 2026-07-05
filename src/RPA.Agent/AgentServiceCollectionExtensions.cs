@@ -74,6 +74,7 @@ public static class AgentServiceCollectionExtensions
         services.AddHostedService<HeartbeatBackgroundService>();
         services.AddHostedService<QueuePollingBackgroundService>();
         services.AddHostedService<JobHubHostedService>();
+        services.AddHostedService<TrayUiHostedService>();
 
         return services;
     }
