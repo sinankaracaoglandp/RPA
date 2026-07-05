@@ -17,6 +17,16 @@ public interface IQueueItemRepository
 
     Task<QueueItem?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Kuyruktan sıradaki (en eski) New kalemi atomik olarak kilitler (SQL Server UPDLOCK/READPAST),
+    /// InProgress'e çeker, verilen robota atar, StartedAt'i set eder ve kalıcı hale getirir.
+    /// Uygun kalem yoksa null döner. Eşzamanlı çağrılarda yalnızca bir çağrı kalemi alır.
+    /// </summary>
+    Task<QueueItem?> ClaimNextNewItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default);
+
+    /// <summary>Kuyruğu Id ile bulur (retry politikası için MaxRetries); yoksa null.</summary>
+    Task<Queue?> FindQueueAsync(Guid queueId, CancellationToken cancellationToken = default);
+
     Task AddAsync(QueueItem item, CancellationToken cancellationToken = default);
 
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
