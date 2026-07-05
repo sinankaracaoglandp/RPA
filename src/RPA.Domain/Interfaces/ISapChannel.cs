@@ -60,67 +60,8 @@ public interface ISapDataChannel
     Task<bool> IsHealthyAsync();
 }
 
-public interface ISapGuiChannel
-{
-    /// <summary>
-    /// SAP GUI oturumuna bağlan.
-    /// </summary>
-    /// <param name="systemId">System ID (örn. "DEV")</param>
-    /// <param name="client">Client (örn. "100")</param>
-    /// <param name="userId">User ID</param>
-    /// <param name="password">Password (Vault'tan)</param>
-    /// <param name="language">Dil (örn. "TR")</param>
-    Task LoginAsync(string systemId, string client, string userId, string password, string language = "EN");
-
-    /// <summary>
-    /// SAP ekranında transaction çalıştır.
-    /// </summary>
-    /// <param name="transactionCode">Transaksiyon kodu (örn. "MM01")</param>
-    Task ExecuteTransactionAsync(string transactionCode);
-
-    /// <summary>
-    /// Element'e tıkla.
-    /// </summary>
-    /// <param name="elementId">Hiyerarşik ID (örn. "wnd[0]/usr/btnOK")</param>
-    Task ClickAsync(string elementId);
-
-    /// <summary>
-    /// Alan'a metin yaz.
-    /// </summary>
-    /// <param name="elementId">Alan ID</param>
-    /// <param name="text">Yazılacak metin</param>
-    Task SetTextAsync(string elementId, string text);
-
-    /// <summary>
-    /// Alan'dan metni oku.
-    /// </summary>
-    /// <param name="elementId">Alan ID</param>
-    /// <returns>Mevcut metin</returns>
-    Task<string> GetTextAsync(string elementId);
-
-    /// <summary>
-    /// ALV grid oku (SAP listeyi otomatik al).
-    /// </summary>
-    /// <param name="gridId">Grid element ID</param>
-    /// <returns>Satır/sütun veri</returns>
-    Task<List<Dictionary<string, object?>>> ReadGridAsync(string gridId);
-
-    /// <summary>
-    /// Ekran görüntüsü al (debug/error analysis için).
-    /// </summary>
-    /// <returns>PNG bytes</returns>
-    Task<byte[]> CaptureScreenAsync();
-
-    /// <summary>
-    /// Oturumdan çık.
-    /// </summary>
-    Task LogoutAsync();
-
-    /// <summary>
-    /// Oturum sağlık kontrolü.
-    /// </summary>
-    Task<bool> IsHealthyAsync();
-}
+// NOT: ISapGuiChannel arayüzü kendi dosyasına taşındı: Interfaces/ISapGuiChannel.cs
+// (Kontrat Değişikliği 2026-07-05 — SelectTabAsync eklendi; bkz. CLAUDE.md)
 
 public class SapCallResult
 {

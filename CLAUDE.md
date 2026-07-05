@@ -109,6 +109,22 @@ Her teslim sonrası `/code-review [efor]`; güvenlik dokunan paketlerde ek `/sec
 
 ---
 
+## Kontrat Değişikliği — 2026-07-05
+
+`ISapGuiChannel` kendi dosyasına taşındı (`src/RPA.Domain/Interfaces/ISapGuiChannel.cs`);
+daha önce `ISapChannel.cs` içindeydi. `ISapDataChannel` ve `SapCallResult` `ISapChannel.cs`'te kaldı.
+
+Metot adları netleştirildi ve bir metot eklendi:
+- `LoginAsync` → `ConnectAsync`, `LogoutAsync` → `DisconnectAsync` (spec Bölüm 5.3 "Connect" terminolojisi).
+- **Yeni:** `SelectTabAsync(elementId)` — SAP tab-strip desteği (aktivite: `Sap.Gui.SelectTab`).
+
+Etkilenen paketler: WP-4.1 (bu paket — implementasyon + aktiviteler), WP-4.2 (NCo — yalnızca
+`ISapDataChannel` kullanır, etkilenmez), WP-4.5 (SAP Login component — yeni ad/metotları kullanacak).
+Gerekçe: SelectTab aktivitesi (Spec 5.3 SAP GUI listesi) kanalda karşılık gerektiriyordu; mevcut
+`ISapGuiChannel` bunu içermiyordu. Kanalın hiçbir tüketicisi henüz yoktu (bu ilk SAP paketidir).
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:
