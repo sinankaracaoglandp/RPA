@@ -5,7 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RPA.Agent.Configuration;
 using RPA.Agent.Hosting;
+using RPA.Agent.Hub;
+using RPA.Agent.JobList;
 using RPA.Agent.Jobs;
+using RPA.Agent.Prompts;
 using RPA.Agent.Registration;
 using RPA.Agent.Session;
 using RPA.Agent.State;
@@ -43,6 +46,16 @@ public static class AgentServiceCollectionExtensions
         // Tray sunucusu (attended mod).
         services.AddSingleton<TrayStatusPresenter>();
 
+        // Attended UX (Task 3.6 — tray, iş listesi, UserPrompt): gerçek zamanlı iş listesi modeli,
+        // kullanıcı girdi kanalı, SignalR bağlantı durumu ve iş olayı yönlendirme — tümü tekil (uygulama
+        // ömrü boyunca tek örnek; tray/pencereler bu örnekleri paylaşır).
+        services.AddSingleton<JobListViewModel>();
+        services.AddSingleton<UserPromptService>();
+        services.AddSingleton<IUserPromptChannel>(sp => sp.GetRequiredService<UserPromptService>());
+        services.AddSingleton<HubConnectionStatusCoordinator>();
+        services.AddSingleton<JobEventRouter>();
+        services.AddSingleton<IJobHubClient, RobotHubClient>();
+
         // Oturum yönetimi (RDP/AutoLogon/tscon — Spec Bölüm 9).
         services.AddOptions<SessionManagerOptions>()
             .Bind(configuration.GetSection(SessionManagerOptions.SectionName));
@@ -60,6 +73,7 @@ public static class AgentServiceCollectionExtensions
         services.AddHostedService<RegistrationHostedService>();
         services.AddHostedService<HeartbeatBackgroundService>();
         services.AddHostedService<QueuePollingBackgroundService>();
+        services.AddHostedService<JobHubHostedService>();
 
         return services;
     }
