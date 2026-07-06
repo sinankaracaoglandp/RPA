@@ -100,3 +100,19 @@ export interface JobRunQuery {
   skip?: number;
   take?: number;
 }
+
+// WP-6.4 — Ortam yönetimi + deployment governance
+export interface Environment {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface WorkflowVersion {
+  id: string;
+  workflowId: string;
+  version: string;
+  status: string;
+  environmentId: string;
+  changeNotes?: string | null;
+}

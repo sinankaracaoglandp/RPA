@@ -107,4 +107,33 @@ describe('OrchestratorService', () => {
     expect(req.request.params.get('take')).toBe('50');
     req.flush({ totalCount: 0, items: [] });
   });
+
+  it('lists environments', () => {
+    service.listEnvironments().subscribe((e) => expect(e.length).toBe(1));
+    const req = httpMock.expectOne('/api/environments');
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: 'e1', name: 'Dev', description: '' }]);
+  });
+
+  it('creates an environment', () => {
+    service.createEnvironment('Staging', 'x').subscribe();
+    const req = httpMock.expectOne('/api/environments');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ name: 'Staging', description: 'x' });
+    req.flush({});
+  });
+
+  it('publishes a workflow version to test', () => {
+    service.publishWorkflowVersion('wf1', '1.0.0').subscribe();
+    const req = httpMock.expectOne('/api/workflows/wf1/versions/1.0.0/publish');
+    expect(req.request.method).toBe('POST');
+    req.flush({});
+  });
+
+  it('approves a workflow version to prod', () => {
+    service.approveWorkflowVersion('wf1', '1.0.0').subscribe();
+    const req = httpMock.expectOne('/api/workflows/wf1/versions/1.0.0/approve');
+    expect(req.request.method).toBe('POST');
+    req.flush({});
+  });
 });

@@ -1,0 +1,69 @@
+<section class="p-8">
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Orchestrator — Ortamlar</h1>
+    <button type="button" class="rounded border px-3 py-1 text-sm hover:bg-gray-50" (click)="load()">
+      Yenile
+    </button>
+  </header>
+
+  <form class="mb-6 flex flex-wrap items-end gap-3" (ngSubmit)="create()">
+    <label class="flex flex-col text-sm">
+      <span class="mb-1 text-gray-500">Ortam adı</span>
+      <input
+        name="name"
+        [(ngModel)]="newName"
+        data-testid="env-name"
+        class="rounded border px-2 py-1"
+        placeholder="örn. Staging"
+      />
+    </label>
+    <label class="flex flex-col text-sm">
+      <span class="mb-1 text-gray-500">Açıklama</span>
+      <input
+        name="description"
+        [(ngModel)]="newDescription"
+        class="rounded border px-2 py-1"
+        placeholder="opsiyonel"
+      />
+    </label>
+    <button
+      type="submit"
+      data-testid="env-create"
+      class="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+      [disabled]="!newName.trim() || saving()"
+    >
+      Ortam Ekle
+    </button>
+  </form>
+
+  @if (error()) {
+    <p class="mb-3 text-red-600" role="alert">{{ error() }}</p>
+  }
+
+  @if (loading()) {
+    <p class="text-gray-500">Yükleniyor…</p>
+  } @else {
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="border-b text-left text-gray-500">
+          <tr>
+            <th class="py-2 pr-4">Ad</th>
+            <th class="py-2 pr-4">Açıklama</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (env of environments(); track env.id) {
+            <tr class="border-b" data-testid="env-row">
+              <td class="py-2 pr-4 font-medium">{{ env.name }}</td>
+              <td class="py-2 pr-4 text-gray-600">{{ env.description || '—' }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="py-4 text-gray-400" colspan="2">Tanımlı ortam yok.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

@@ -6,12 +6,14 @@ import {
   AlertRule,
   CreateAlertRuleRequest,
   DashboardSummary,
+  Environment,
   JobRun,
   JobRunListResponse,
   JobRunQuery,
   QueueItemListResponse,
   QueueSummary,
   Robot,
+  WorkflowVersion,
 } from './orchestrator.models';
 
 /**
@@ -111,6 +113,41 @@ export class OrchestratorService {
     return this.http.get<QueueItemListResponse>(
       `/api/queues/${encodeURIComponent(queueId)}/items`,
       { params },
+    );
+  }
+
+  // --- WP-6.4: Ortam yönetimi + deployment governance ---
+
+  /** Tüm ortamlar (Dev/Test/Prod). */
+  listEnvironments(): Observable<Environment[]> {
+    return this.http.get<Environment[]>('/api/environments');
+  }
+
+  /** Yeni ortam oluşturur. */
+  createEnvironment(name: string, description?: string): Observable<Environment> {
+    return this.http.post<Environment>('/api/environments', { name, description });
+  }
+
+  /** Bir workflow'un versiyonları (deployment durumu ile). */
+  listWorkflowVersions(workflowId: string): Observable<WorkflowVersion[]> {
+    return this.http.get<WorkflowVersion[]>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/versions`,
+    );
+  }
+
+  /** Versiyonu Test ortamına yayınlar (Developer). */
+  publishWorkflowVersion(workflowId: string, version: string): Observable<WorkflowVersion> {
+    return this.http.post<WorkflowVersion>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(version)}/publish`,
+      {},
+    );
+  }
+
+  /** Versiyonu onaylayıp Prod'a terfi ettirir (Approver). */
+  approveWorkflowVersion(workflowId: string, version: string): Observable<WorkflowVersion> {
+    return this.http.post<WorkflowVersion>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(version)}/approve`,
+      {},
     );
   }
 }

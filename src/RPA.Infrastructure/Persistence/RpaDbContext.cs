@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using RPA.Domain.Entities;
+using Environment = RPA.Domain.Entities.Environment;
 
 namespace RPA.Infrastructure.Persistence;
 
@@ -45,6 +46,12 @@ public class RpaDbContext : DbContext
 
     /// <summary>WP-6.3 — Alarm kuralları (koşul/kanal/alıcılar).</summary>
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
+
+    /// <summary>WP-6.4 — Ortamlar (Dev/Test/Prod) — deployment governance hedefleri.</summary>
+    public DbSet<Environment> Environments => Set<Environment>();
+
+    /// <summary>WP-6.4 — Workflow versiyonları (Draft → Test → Published yaşam döngüsü).</summary>
+    public DbSet<WorkflowVersion> WorkflowVersions => Set<WorkflowVersion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,6 +157,29 @@ public class RpaDbContext : DbContext
             entity.HasIndex(j => new { j.WorkflowVersionId, j.Status });
             // WorkflowVersion navigasyonu tam şema paketinde (WP-1.2) yapılandırılacak.
             entity.Ignore(j => j.WorkflowVersion);
+        });
+
+        modelBuilder.Entity<Environment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(512);
+            entity.HasIndex(e => e.Name).IsUnique();
+            // Credential/Asset navigasyonları tam şema paketinde (WP-1.2) yapılandırılacak.
+            entity.Ignore(e => e.Credentials);
+            entity.Ignore(e => e.Assets);
+        });
+
+        modelBuilder.Entity<WorkflowVersion>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.Property(v => v.Version).HasMaxLength(32).IsRequired();
+            entity.Property(v => v.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(v => v.ChangeNotes).HasMaxLength(2048);
+            entity.HasIndex(v => new { v.WorkflowId, v.Version }).IsUnique();
+            // Workflow/Environment navigasyonları tam şema paketinde (WP-1.2) yapılandırılacak.
+            entity.Ignore(v => v.Workflow);
+            entity.Ignore(v => v.Environment);
         });
     }
 }

@@ -57,5 +57,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./orchestrator/alert-rules/alert-rules.component').then((m) => m.AlertRulesComponent),
   },
+  {
+    path: 'orchestrator/environments',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./orchestrator/environments/environments.component').then((m) => m.EnvironmentsComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

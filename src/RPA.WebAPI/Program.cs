@@ -69,6 +69,14 @@ builder.Services.AddScoped<RPA.Infrastructure.ActionCenter.ActionCenterService>(
 // Alarm motoru: kural değerlendirme + bildirim (e-posta/Teams) + arka plan servisi — WP-6.3.
 builder.Services.AddAlertingServices(builder.Configuration);
 
+// Ortam yönetimi + workflow deployment governance (Dev/Test/Prod, publish/approve) — WP-6.4.
+builder.Services.AddScoped<RPA.Domain.Interfaces.IEnvironmentRepository,
+    RPA.Infrastructure.Persistence.EfEnvironmentRepository>();
+builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowVersionRepository,
+    RPA.Infrastructure.Persistence.EfWorkflowVersionRepository>();
+builder.Services.AddScoped<RPA.Infrastructure.Services.EnvironmentService>();
+builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDeploymentService>();
+
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
 
