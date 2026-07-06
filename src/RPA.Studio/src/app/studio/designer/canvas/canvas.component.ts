@@ -250,6 +250,12 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     this.editor.addPipe((context) => {
       const type = (context as { type?: string }).type;
+      if (type === 'connectionremoved') {
+        const removedId = (context as { data?: { id?: string } }).data?.id;
+        if (removedId && this.selectedConnectionId === removedId) {
+          this.selectedConnectionId = null;
+        }
+      }
       if (
         !this.suppressEvents &&
         (type === 'nodecreated' ||
@@ -447,7 +453,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   /** Out soketinden bağlantı sürüklemesi başlatır (geçici kesikli çizgi). */
   beginConnection(nodeId: string): void {
-    this.assertWritable();
+    if (this.readOnly) {
+      return;
+    }
     if (!this.editor.getNode(nodeId)) {
       return;
     }
@@ -457,6 +465,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   /** Sürüklemeyi hedef node üzerinde tamamlar; kural ihlalinde null döner. */
   async completeConnection(targetNodeId: string): Promise<string | null> {
+    if (this.readOnly) {
+      this.cancelConnection();
+      return null;
+    }
     const from = this.pendingConnectionFrom;
     this.cancelConnection();
     if (!from) {

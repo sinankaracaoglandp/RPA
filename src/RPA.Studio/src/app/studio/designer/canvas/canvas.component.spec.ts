@@ -336,5 +336,53 @@ describe('CanvasComponent', () => {
 
       expect(events.length).toBeGreaterThan(0);
     });
+
+    it('clears selectedConnection when the selected connection is removed via deleteConnection', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+      const connId = await component.connectNodes(a, b);
+
+      component.selectConnection(connId!);
+      expect(component.selectedConnection).toBe(connId);
+
+      await component.deleteConnection(connId!);
+      expect(component.selectedConnection).toBeNull();
+    });
+
+    it('clears selectedConnection when deleteNode cascades removal of the selected connection', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+      const connId = await component.connectNodes(a, b);
+
+      component.selectConnection(connId!);
+      expect(component.selectedConnection).toBe(connId);
+
+      await component.deleteNode(a);
+      expect(component.selectedConnection).toBeNull();
+    });
+  });
+
+  describe('read-only connection drag guard', () => {
+    it('beginConnection does not throw on a read-only canvas', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      component.readOnly = true;
+      expect(() => component.beginConnection(a)).not.toThrow();
+    });
+
+    it('completeConnection resolves to null on a read-only canvas and creates no connections', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+      component.readOnly = true;
+
+      component.beginConnection(a);
+      const connId = await component.completeConnection(b);
+
+      expect(connId).toBeNull();
+      expect(component.editor.getConnections().length).toBe(0);
+    });
   });
 });
