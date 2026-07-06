@@ -42,6 +42,15 @@ public class RobotsController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = robot.Id }, dto);
     }
 
+    /// <summary>Tüm robotları listeler (Orchestrator Robotlar ekranı — WP-6.1).</summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<RobotDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        var robots = await _robotService.ListAsync(ct);
+        return Ok(robots.Select(RobotDto.From).ToList());
+    }
+
     /// <summary>Id ile robot döner.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(RobotDto), StatusCodes.Status200OK)]

@@ -20,6 +20,10 @@ public sealed class QueueService : IQueueService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    public Task<QueueItemPage> ListItemsAsync(
+        Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default)
+        => _repository.ListItemsAsync(queueId, status, skip, take, cancellationToken);
+
     public async Task<QueueItem?> GetNextItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default)
     {
         var item = await _repository.ClaimNextNewItemAsync(queueId, robotId, cancellationToken);

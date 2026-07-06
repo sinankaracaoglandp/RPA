@@ -31,6 +31,12 @@ public sealed class EfRobotRepository : IRobotRepository
                         && r.LastHeartbeat < olderThanUtc)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Robot>> ListAllAsync(CancellationToken cancellationToken = default)
+        => await _db.Robots.AsNoTracking()
+            .Where(r => !r.IsDeleted)
+            .OrderBy(r => r.MachineName)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Robot robot, CancellationToken cancellationToken = default)
         => await _db.Robots.AddAsync(robot, cancellationToken);
 

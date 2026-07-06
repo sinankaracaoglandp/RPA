@@ -59,6 +59,9 @@ public sealed class RobotService : IRobotService
     public Task<Robot?> GetAsync(Guid id, CancellationToken cancellationToken = default)
         => _repository.FindByIdAsync(id, cancellationToken);
 
+    public Task<IReadOnlyList<Robot>> ListAsync(CancellationToken cancellationToken = default)
+        => _repository.ListAllAsync(cancellationToken);
+
     public async Task<Robot?> RecordHeartbeatAsync(Guid robotId, CancellationToken cancellationToken = default)
     {
         var robot = await _repository.FindByIdAsync(robotId, cancellationToken);

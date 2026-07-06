@@ -18,6 +18,9 @@ public interface IRobotService
     /// <summary>Id ile robot döner; yoksa null.</summary>
     Task<Robot?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
+    /// <summary>Tüm robotları döner (Orchestrator Robotlar ekranı — WP-6.1).</summary>
+    Task<IReadOnlyList<Robot>> ListAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Robotun heartbeat'ini kaydeder: LastHeartbeat = şimdi (UTC), Status = Online.
     /// Robot bulunamazsa null döner.

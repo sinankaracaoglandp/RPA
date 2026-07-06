@@ -2,6 +2,7 @@ namespace RPA.WebAPI.Queues;
 
 using Microsoft.AspNetCore.Mvc;
 using RPA.Domain.Entities;
+using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
 
 /// <summary>
@@ -33,6 +34,38 @@ public class QueuesController : ControllerBase
 
         var item = await _queueService.GetNextItemAsync(id, robotId, ct);
         return item is null ? NoContent() : Ok(QueueItemDto.From(item));
+    }
+
+    /// <summary>
+    /// Orchestrator Kuyruklar ekranı (WP-6.1): kuyruğun kalemlerini opsiyonel durum filtresiyle
+    /// sayfalı listeler (en yeni önce). status geçersizse 400.
+    /// </summary>
+    [HttpGet("{id:guid}/items")]
+    [ProducesResponseType(typeof(QueueItemListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ListItems(
+        Guid id,
+        [FromQuery] string? status,
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 50,
+        CancellationToken ct = default)
+    {
+        QueueItemStatus? statusFilter = null;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<QueueItemStatus>(status, ignoreCase: true, out var parsed))
+                return BadRequest(new { error = $"Geçersiz status: {status}" });
+            statusFilter = parsed;
+        }
+
+        take = take is <= 0 or > 200 ? 50 : take;
+        var page = await _queueService.ListItemsAsync(id, statusFilter, skip, take, ct);
+
+        return Ok(new QueueItemListResponse
+        {
+            TotalCount = page.TotalCount,
+            Items = page.Items.Select(QueueItemDto.From).ToList(),
+        });
     }
 
     /// <summary>
@@ -69,6 +102,12 @@ public class QueuesController : ControllerBase
 
         return result is null ? NotFound() : Ok(QueueItemDto.From(result));
     }
+}
+
+public class QueueItemListResponse
+{
+    public int TotalCount { get; set; }
+    public List<QueueItemDto> Items { get; set; } = new();
 }
 
 public class UpdateQueueItemRequest

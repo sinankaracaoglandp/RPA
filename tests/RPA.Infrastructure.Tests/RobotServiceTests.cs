@@ -44,6 +44,21 @@ public class RobotServiceTests
         Assert.Equal(robot.Id, byName!.Id);
     }
 
+    [Fact]
+    public async Task ListAsync_ReturnsAllRobots_NewestRegisteredFirst()
+    {
+        var db = CreateInMemoryDb();
+        var service = CreateService(db);
+        await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "RPA-01", Mode = RobotMode.Unattended });
+        await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "RPA-02", Mode = RobotMode.Attended });
+
+        var all = await service.ListAsync();
+
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, r => r.MachineName == "RPA-01");
+        Assert.Contains(all, r => r.MachineName == "RPA-02");
+    }
+
     // ---- Register ----
 
     [Fact]

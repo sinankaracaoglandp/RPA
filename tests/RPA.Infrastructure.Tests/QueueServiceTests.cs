@@ -37,6 +37,47 @@ public class QueueServiceTests
         return (queue.Id, item.Id);
     }
 
+    // ---- ListItems (Orchestrator Kuyruklar ekranı — WP-6.1) ----
+
+    [Fact]
+    public async Task ListItems_FiltersByStatus_AndReturnsTotal()
+    {
+        var name = NewDbName();
+        using var db = Db(name);
+        var queue = new Queue { Name = "Q1", MaxRetries = 3 };
+        db.Queues.Add(queue);
+        db.QueueItems.AddRange(
+            new QueueItem { QueueId = queue.Id, IdempotencyKey = "a", Status = QueueItemStatus.New },
+            new QueueItem { QueueId = queue.Id, IdempotencyKey = "b", Status = QueueItemStatus.Failed },
+            new QueueItem { QueueId = queue.Id, IdempotencyKey = "c", Status = QueueItemStatus.Failed });
+        await db.SaveChangesAsync();
+
+        var page = await Service(db).ListItemsAsync(queue.Id, QueueItemStatus.Failed, skip: 0, take: 50);
+
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(2, page.Items.Count);
+        Assert.All(page.Items, i => Assert.Equal(QueueItemStatus.Failed, i.Status));
+    }
+
+    [Fact]
+    public async Task ListItems_NoStatusFilter_ReturnsAllForQueue()
+    {
+        var name = NewDbName();
+        using var db = Db(name);
+        var queue = new Queue { Name = "Q1", MaxRetries = 3 };
+        var other = new Queue { Name = "Q2", MaxRetries = 3 };
+        db.Queues.AddRange(queue, other);
+        db.QueueItems.AddRange(
+            new QueueItem { QueueId = queue.Id, IdempotencyKey = "a", Status = QueueItemStatus.New },
+            new QueueItem { QueueId = queue.Id, IdempotencyKey = "b", Status = QueueItemStatus.Successful },
+            new QueueItem { QueueId = other.Id, IdempotencyKey = "c", Status = QueueItemStatus.New });
+        await db.SaveChangesAsync();
+
+        var page = await Service(db).ListItemsAsync(queue.Id, status: null, skip: 0, take: 50);
+
+        Assert.Equal(2, page.TotalCount);
+    }
+
     // ---- GetNextItem / atama ----
 
     [Fact]

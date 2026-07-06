@@ -30,6 +30,31 @@ public sealed class EfQueueItemRepository : IQueueItemRepository
     public Task<QueueItem?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => _db.QueueItems.FirstOrDefaultAsync(qi => qi.Id == id, cancellationToken);
 
+    public async Task<QueueItemPage> ListItemsAsync(
+        Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default)
+    {
+        var q = _db.QueueItems.AsNoTracking().Where(qi => !qi.IsDeleted && qi.QueueId == queueId);
+
+        if (status is { } s)
+        {
+            q = q.Where(qi => qi.Status == s);
+        }
+
+        var total = await q.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        take = take <= 0 ? 50 : take;
+        skip = skip < 0 ? 0 : skip;
+
+        var items = await q
+            .OrderByDescending(qi => qi.CreatedAt)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new QueueItemPage(items, total);
+    }
+
     public Task<Queue?> FindQueueAsync(Guid queueId, CancellationToken cancellationToken = default)
         => _db.Queues.FirstOrDefaultAsync(q => q.Id == queueId && !q.IsDeleted, cancellationToken);
 

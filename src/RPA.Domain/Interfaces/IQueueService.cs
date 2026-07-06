@@ -1,6 +1,7 @@
 namespace RPA.Domain.Interfaces;
 
 using RPA.Domain.Entities;
+using RPA.Domain.Enums;
 
 /// <summary>
 /// Kuyruk motoru (Task 3.2, Spec Bölüm 7 — Queue &amp; Dispatch). Robotların iş kalemlerini
@@ -16,6 +17,13 @@ public interface IQueueService
     /// aynı anda birden çok robot çağırırsa yalnızca biri kalemi alır.
     /// </summary>
     Task<QueueItem?> GetNextItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Orchestrator Kuyruklar ekranı (WP-6.1): kuyruk kalemlerini opsiyonel durum filtresiyle
+    /// sayfalı listeler (en yeni önce). Salt okuma; atama/geçiş yapmaz.
+    /// </summary>
+    Task<QueueItemPage> ListItemsAsync(
+        Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default);
 
     /// <summary>Kalemi başarıyla tamamlandı (Successful) olarak işaretler. Bulunamazsa null.</summary>
     Task<QueueItem?> CompleteAsync(Guid itemId, CancellationToken cancellationToken = default);

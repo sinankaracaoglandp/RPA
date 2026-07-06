@@ -17,6 +17,9 @@ public interface IRobotRepository
     /// <summary>Son heartbeat'i verilen eşikten (UTC) daha eski olan Offline olmayan robotları döner.</summary>
     Task<IReadOnlyList<Robot>> FindStaleAsync(DateTime olderThanUtc, CancellationToken cancellationToken = default);
 
+    /// <summary>Tüm robotları döner (Orchestrator Robotlar ekranı — WP-6.1).</summary>
+    Task<IReadOnlyList<Robot>> ListAllAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Yeni robot ekler (henüz kalıcı değil; SaveChangesAsync gerekir).</summary>
     Task AddAsync(Robot robot, CancellationToken cancellationToken = default);
 

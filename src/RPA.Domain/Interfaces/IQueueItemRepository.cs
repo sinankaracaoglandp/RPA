@@ -1,6 +1,10 @@
 namespace RPA.Domain.Interfaces;
 
 using RPA.Domain.Entities;
+using RPA.Domain.Enums;
+
+/// <summary>Sayfalanmış QueueItem sonucu (toplam eşleşen + geçerli sayfa).</summary>
+public sealed record QueueItemPage(IReadOnlyList<QueueItem> Items, int TotalCount);
 
 /// <summary>
 /// QueueItem kalıcılık soyutlaması. Idempotency kontrolü referans anahtarı (IdempotencyKey)
@@ -16,6 +20,13 @@ public interface IQueueItemRepository
         Guid queueId, string idempotencyKey, CancellationToken cancellationToken = default);
 
     Task<QueueItem?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Orchestrator Kuyruklar ekranı (WP-6.1): bir kuyruğun kalemlerini opsiyonel durum
+    /// filtresiyle sayfalı döner (en yeni önce). Salt okuma.
+    /// </summary>
+    Task<QueueItemPage> ListItemsAsync(
+        Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kuyruktan sıradaki (en eski) New kalemi atomik olarak kilitler (SQL Server UPDLOCK/READPAST),
