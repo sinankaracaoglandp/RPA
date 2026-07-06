@@ -123,9 +123,17 @@
 
 **Web Activities (5.6):** Navigate/Click/SetText/GetText/WaitForSelector property editors, WebPropertyRouter (activity-type routing), expression-input entegrasyonu, i18n (tr/en).
 
-**Kalan (Faz 5 kapanış):**
-- ⏳ Whole-branch review (Opus, tüm Faz 5)
-- ⏳ Faz 5 → main merge
+**Faz 5 kapanış:**
+- ✅ Whole-branch review — 1 CONFIRMED bug (component publish metadata persist edilmiyordu) düzeltildi (commit eb3f3af, TDD)
+- ✅ Tam suite: 668/668 (Domain 4, Agent 83, Infrastructure 389, WebAPI 53, Studio 139)
+- ✅ Mainline = master (bu repoda ayrı `main` yok; tüm fazlar master'da). Stale branch feat/faz5-task1-canvas temizlendi.
 
-## Faz 6: TBD (5 task)
+## Faz 6: Orchestrator UI + Pilot (6 task)
+
+- [ ] WP-6.1: Orchestrator dashboard + işler/kuyruklar/robotlar ekranları (Sonnet)
+- [ ] WP-6.2: Action Center (Sonnet)
+- [ ] WP-6.3: Alerting motoru + Kibana dashboard şablonları (Haiku)
+- [ ] WP-6.4: Dev/Test/Prod + Publish/Approve uçtan uca test (Opus)
+- [ ] WP-6.5: Pilot senaryosu (OTP'li portal girişi + MM01) (Opus)
+- [ ] WP-6.6: Kurulum/operasyon dokümantasyonu (Haiku)
 
