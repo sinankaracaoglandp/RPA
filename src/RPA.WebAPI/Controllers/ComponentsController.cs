@@ -89,12 +89,11 @@ public class ComponentsController : ControllerBase
             request.JsonDefinition,
             request.InputOutputSchema ?? "{}",
             roles,
+            request.DisplayName,
+            request.Description,
+            request.Author,
+            request.Category,
             ct);
-
-        result.DisplayName = request.DisplayName;
-        result.Description = request.Description;
-        result.Author = request.Author;
-        result.Category = request.Category;
 
         return Ok(Map(result));
     }

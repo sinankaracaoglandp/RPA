@@ -34,6 +34,10 @@ public sealed class ComponentPublishService
         string jsonDefinition,
         string inputOutputSchema,
         IEnumerable<string> callerRoles,
+        string? displayName = null,
+        string? description = null,
+        string? author = null,
+        string? category = null,
         CancellationToken ct = default)
     {
         RequireRole(callerRoles, DeveloperRole, "yayına hazırlama");
@@ -55,6 +59,10 @@ public sealed class ComponentPublishService
             JsonDefinition = jsonDefinition,
             InputOutputSchema = inputOutputSchema ?? "{}",
             Status = ComponentStatus.Draft,
+            DisplayName = displayName,
+            Description = description,
+            Author = author,
+            Category = category,
         };
 
         return await _repository.AddAsync(entity, ct).ConfigureAwait(false);

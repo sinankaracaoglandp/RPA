@@ -168,6 +168,26 @@ public class SapLoginComponentTests
     }
 
     [Fact]
+    public async Task PublishAsync_PersistsLibraryMetadata_WhenProvided()
+    {
+        var repo = new InMemoryComponentPublishRepository();
+        var service = new ComponentPublishService(repo);
+
+        await service.PublishAsync(
+            SapLoginComponentId, "1.0.0", LoadComponentJson(), "{}", new[] { "Developer" },
+            displayName: "SAP Login", description: "OTP'li SAP oturumu",
+            author: "sinan", category: "SAP");
+
+        // Kütüphane metadata'sı KAYITTA kalıcı olmalı (yalnızca dönen nesnede değil).
+        var persisted = await repo.FindAsync(SapLoginComponentId, "1.0.0");
+        Assert.NotNull(persisted);
+        Assert.Equal("SAP Login", persisted!.DisplayName);
+        Assert.Equal("OTP'li SAP oturumu", persisted.Description);
+        Assert.Equal("sinan", persisted.Author);
+        Assert.Equal("SAP", persisted.Category);
+    }
+
+    [Fact]
     public async Task ApproveAsync_RequiresApproverRole()
     {
         var repo = new InMemoryComponentPublishRepository();
