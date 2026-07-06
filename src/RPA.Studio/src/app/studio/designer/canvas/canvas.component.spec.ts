@@ -192,4 +192,60 @@ describe('CanvasComponent', () => {
     await ready();
     await expect(component.addNode('A')).rejects.toThrow('read-only');
   });
+
+  describe('node click behaviour (regression: click must not delete)', () => {
+    it('keeps the node in the graph and emits nodeSelect when the card is clicked', async () => {
+      await ready();
+      const id = await component.addNode('Web.Click');
+      fixture.detectChanges();
+
+      const selections: (string | null)[] = [];
+      component.nodeSelect.subscribe((v) => selections.push(v));
+
+      const card: HTMLElement | null =
+        fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
+      expect(card).toBeTruthy();
+
+      // Gerçek kullanıcı tıklaması: pointerdown → pointerup → click sırası.
+      card!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      card!.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+      card!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(component.editor.getNodes().length).toBe(1); // SİLİNMEMELİ
+      expect(component.editor.getNode(id)).toBeDefined();
+      expect(selections).toContain(id);
+    });
+
+    it('keeps the node DOM card rendered after click (no visual disappearance)', async () => {
+      await ready();
+      await component.addNode('Web.Click');
+      fixture.detectChanges();
+
+      const card: HTMLElement =
+        fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
+      card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      fixture.detectChanges();
+      await new Promise((r) => setTimeout(r, 0)); // async destroy/mount kuyruğunu boşalt
+
+      const after = fixture.nativeElement.querySelectorAll('[data-testid="canvas-node"]');
+      expect(after.length).toBe(1);
+      expect(after[0].querySelector('[data-testid="canvas-node-title"]')).toBeTruthy();
+    });
+
+    it('deletes the node ONLY via the delete button', async () => {
+      await ready();
+      const id = await component.addNode('Web.Click');
+      fixture.detectChanges();
+
+      const del: HTMLElement =
+        fixture.nativeElement.querySelector('[data-testid="canvas-node-delete"]');
+      del.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      fixture.detectChanges();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(component.editor.getNode(id)).toBeUndefined();
+      expect(component.editor.getNodes().length).toBe(0);
+    });
+  });
 });

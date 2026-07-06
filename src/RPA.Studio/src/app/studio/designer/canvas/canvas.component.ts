@@ -253,6 +253,20 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     }
     const node = data.payload as FlowNode;
     try {
+      // Aynı node yeniden render ediliyorsa önce eski görünümü kaldır —
+      // yeni bileşen mount edildikten SONRA destroy etmek (eski kod) aynı
+      // host element'i paylaşan yeni DOM'u da siliyordu (kart "kayboluyor").
+      const existing = this.nodeRefs.get(node.id);
+      if (existing) {
+        if (existing.location.nativeElement === data.element) {
+          // Aynı element, bileşen zaten canlı: sadece girdiyi tazele.
+          existing.setInput('node', this.toView(node));
+          existing.changeDetectorRef.detectChanges();
+          return;
+        }
+        existing.destroy();
+        this.nodeRefs.delete(node.id);
+      }
       const ref = createComponent(NodeComponent, {
         environmentInjector: this.envInjector,
         hostElement: data.element,
@@ -262,7 +276,6 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       ref.instance.nodeDelete.subscribe((id: string) => void this.deleteNode(id));
       this.appRef.attachView(ref.hostView);
       ref.changeDetectorRef.detectChanges();
-      this.nodeRefs.get(node.id)?.destroy();
       this.nodeRefs.set(node.id, ref);
     } catch {
       // Headless/edge rendering failures must never corrupt the graph model.
