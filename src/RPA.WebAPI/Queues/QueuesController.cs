@@ -37,6 +37,17 @@ public class QueuesController : ControllerBase
     }
 
     /// <summary>
+    /// Orchestrator Kuyruklar ekranı (WP-6.1): tüm kuyrukları durum bazlı kalem sayaçlarıyla listeler.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<QueueSummary>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListQueues(CancellationToken ct)
+    {
+        var summaries = await _queueService.ListQueuesAsync(ct);
+        return Ok(summaries);
+    }
+
+    /// <summary>
     /// Orchestrator Kuyruklar ekranı (WP-6.1): kuyruğun kalemlerini opsiyonel durum filtresiyle
     /// sayfalı listeler (en yeni önce). status geçersizse 400.
     /// </summary>

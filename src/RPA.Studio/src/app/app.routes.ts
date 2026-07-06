@@ -40,5 +40,10 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./orchestrator/robots/robots.component').then((m) => m.RobotsComponent),
   },
+  {
+    path: 'orchestrator/queues',
+    canActivate: [authGuard],
+    loadComponent: () => import('./orchestrator/queues/queues.component').then((m) => m.QueuesComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

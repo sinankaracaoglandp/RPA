@@ -37,6 +37,34 @@ public class QueueServiceTests
         return (queue.Id, item.Id);
     }
 
+    // ---- ListQueues (Orchestrator Kuyruklar ekranı — WP-6.1) ----
+
+    [Fact]
+    public async Task ListQueues_ReturnsQueuesWithStatusCounts()
+    {
+        var name = NewDbName();
+        using var db = Db(name);
+        var q1 = new Queue { Name = "Q1", MaxRetries = 5 };
+        var q2 = new Queue { Name = "Q2", MaxRetries = 3 };
+        db.Queues.AddRange(q1, q2);
+        db.QueueItems.AddRange(
+            new QueueItem { QueueId = q1.Id, IdempotencyKey = "a", Status = QueueItemStatus.New },
+            new QueueItem { QueueId = q1.Id, IdempotencyKey = "b", Status = QueueItemStatus.New },
+            new QueueItem { QueueId = q1.Id, IdempotencyKey = "c", Status = QueueItemStatus.Failed });
+        await db.SaveChangesAsync();
+
+        var summaries = await Service(db).ListQueuesAsync();
+
+        Assert.Equal(2, summaries.Count);
+        var s1 = summaries.First(s => s.Name == "Q1");
+        Assert.Equal(2, s1.NewCount);
+        Assert.Equal(1, s1.FailedCount);
+        Assert.Equal(3, s1.Total);
+        Assert.Equal(5, s1.MaxRetries);
+        var s2 = summaries.First(s => s.Name == "Q2");
+        Assert.Equal(0, s2.Total);
+    }
+
     // ---- ListItems (Orchestrator Kuyruklar ekranı — WP-6.1) ----
 
     [Fact]

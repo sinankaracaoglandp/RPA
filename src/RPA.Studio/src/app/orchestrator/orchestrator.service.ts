@@ -7,6 +7,7 @@ import {
   JobRunListResponse,
   JobRunQuery,
   QueueItemListResponse,
+  QueueSummary,
   Robot,
 } from './orchestrator.models';
 
@@ -47,6 +48,11 @@ export class OrchestratorService {
   /** Tüm robotlar. */
   listRobots(): Observable<Robot[]> {
     return this.http.get<Robot[]>('/api/robots');
+  }
+
+  /** Tüm kuyruklar + durum bazlı sayaçlar. */
+  listQueues(): Observable<QueueSummary[]> {
+    return this.http.get<QueueSummary[]>('/api/queues');
   }
 
   /** Bir kuyruğun kalemleri (opsiyonel durum filtresi + sayfalama). */

@@ -30,6 +30,38 @@ public sealed class EfQueueItemRepository : IQueueItemRepository
     public Task<QueueItem?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => _db.QueueItems.FirstOrDefaultAsync(qi => qi.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyList<QueueSummary>> ListQueueSummariesAsync(CancellationToken cancellationToken = default)
+    {
+        var queues = await _db.Queues.AsNoTracking()
+            .Where(q => !q.IsDeleted)
+            .OrderBy(q => q.Name)
+            .Select(q => new { q.Id, q.Name, q.MaxRetries, q.SlaSeconds })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Durum bazlı sayımlar tek sorguda (queueId + status gruplandırma).
+        var counts = await _db.QueueItems.AsNoTracking()
+            .Where(qi => !qi.IsDeleted)
+            .GroupBy(qi => new { qi.QueueId, qi.Status })
+            .Select(g => new { g.Key.QueueId, g.Key.Status, Count = g.Count() })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return queues.Select(q =>
+        {
+            int CountFor(QueueItemStatus s) =>
+                counts.FirstOrDefault(c => c.QueueId == q.Id && c.Status == s)?.Count ?? 0;
+
+            var total = counts.Where(c => c.QueueId == q.Id).Sum(c => c.Count);
+            return new QueueSummary(
+                q.Id, q.Name, q.MaxRetries, q.SlaSeconds,
+                CountFor(QueueItemStatus.New),
+                CountFor(QueueItemStatus.InProgress),
+                CountFor(QueueItemStatus.Failed),
+                total);
+        }).ToList();
+    }
+
     public async Task<QueueItemPage> ListItemsAsync(
         Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default)
     {

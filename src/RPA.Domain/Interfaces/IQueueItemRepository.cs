@@ -6,6 +6,17 @@ using RPA.Domain.Enums;
 /// <summary>Sayfalanmış QueueItem sonucu (toplam eşleşen + geçerli sayfa).</summary>
 public sealed record QueueItemPage(IReadOnlyList<QueueItem> Items, int TotalCount);
 
+/// <summary>Kuyruk özeti: temel bilgiler + durum bazlı kalem sayaçları (Orchestrator Kuyruklar ekranı).</summary>
+public sealed record QueueSummary(
+    Guid Id,
+    string Name,
+    int MaxRetries,
+    int? SlaSeconds,
+    int NewCount,
+    int InProgressCount,
+    int FailedCount,
+    int Total);
+
 /// <summary>
 /// QueueItem kalıcılık soyutlaması. Idempotency kontrolü referans anahtarı (IdempotencyKey)
 /// üzerinden yapılır — Spec Bölüm 4 (QueueItem), 5.2 (Idempotency/Checkpoint).
@@ -27,6 +38,9 @@ public interface IQueueItemRepository
     /// </summary>
     Task<QueueItemPage> ListItemsAsync(
         Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default);
+
+    /// <summary>Tüm kuyrukları durum bazlı kalem sayaçlarıyla döner (Orchestrator Kuyruklar ekranı).</summary>
+    Task<IReadOnlyList<QueueSummary>> ListQueueSummariesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kuyruktan sıradaki (en eski) New kalemi atomik olarak kilitler (SQL Server UPDLOCK/READPAST),

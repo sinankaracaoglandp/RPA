@@ -37,6 +37,17 @@ export interface Robot {
   lastHeartbeat?: string | null;
 }
 
+export interface QueueSummary {
+  id: string;
+  name: string;
+  maxRetries: number;
+  slaSeconds: number | null;
+  newCount: number;
+  inProgressCount: number;
+  failedCount: number;
+  total: number;
+}
+
 export interface QueueItem {
   id: string;
   queueId: string;

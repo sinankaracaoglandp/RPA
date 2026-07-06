@@ -63,6 +63,13 @@ describe('OrchestratorService', () => {
     req.flush([{ id: '1', machineName: 'RPA-01', mode: 'Unattended', status: 'Online' }]);
   });
 
+  it('lists queues', () => {
+    service.listQueues().subscribe((q) => expect(q.length).toBe(1));
+    const req = httpMock.expectOne('/api/queues');
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: 'q1', name: 'Q1', maxRetries: 3, slaSeconds: null, newCount: 0, inProgressCount: 0, failedCount: 0, total: 0 }]);
+  });
+
   it('lists queue items with status filter', () => {
     service.listQueueItems('q1', 'Failed', 0, 50).subscribe();
     const req = httpMock.expectOne((r) => r.url === '/api/queues/q1/items');

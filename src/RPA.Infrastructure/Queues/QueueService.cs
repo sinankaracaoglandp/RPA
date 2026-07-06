@@ -24,6 +24,9 @@ public sealed class QueueService : IQueueService
         Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default)
         => _repository.ListItemsAsync(queueId, status, skip, take, cancellationToken);
 
+    public Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(CancellationToken cancellationToken = default)
+        => _repository.ListQueueSummariesAsync(cancellationToken);
+
     public async Task<QueueItem?> GetNextItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default)
     {
         var item = await _repository.ClaimNextNewItemAsync(queueId, robotId, cancellationToken);
