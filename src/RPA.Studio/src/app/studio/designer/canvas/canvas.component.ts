@@ -124,6 +124,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private selectedNodeId: string | null = null;
   private ready = false;
   private suppressEvents = false;
+  private pendingConnectionFrom: string | null = null;
+  private pendingPath?: SVGPathElement;
+  private selectedConnectionId: string | null = null;
 
   /** Resolves once the editor and plugins are wired up (awaited by tests). */
   initialized: Promise<void> = Promise.resolve();
@@ -181,6 +184,22 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.setupConnectionLayer(container);
     this.registerRenderPipe();
     this.registerChangePipes();
+
+    container.addEventListener('pointermove', (e: PointerEvent) =>
+      this.updatePendingPath(e.clientX, e.clientY),
+    );
+    container.addEventListener('pointerup', () => this.cancelConnection());
+    container.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.cancelConnection();
+      }
+    });
+    // Bağlantı path'ine tıklayınca seç (event delegation — path'ler her çizimde yenilenir).
+    this.connectionSvg?.addEventListener('click', (e: MouseEvent) => {
+      const target = e.target as SVGElement;
+      const connId = target?.getAttribute?.('data-connection-id');
+      this.selectConnection(connId ?? null);
+    });
 
     this.ready = true;
   }
@@ -274,6 +293,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       ref.setInput('node', this.toView(node));
       ref.instance.nodeSelect.subscribe((id: string) => this.select(id));
       ref.instance.nodeDelete.subscribe((id: string) => void this.deleteNode(id));
+      ref.instance.connectStart.subscribe((id: string) => this.beginConnection(id));
+      ref.instance.connectDrop.subscribe((id: string) => void this.completeConnection(id));
       this.appRef.attachView(ref.hostView);
       ref.changeDetectorRef.detectChanges();
       this.nodeRefs.set(node.id, ref);
@@ -346,7 +367,13 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       }
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', ConnectionComponent.buildPath(from, to));
-      path.setAttribute('class', 'canvas-connections__path');
+      path.setAttribute(
+        'class',
+        conn.id === this.selectedConnectionId
+          ? 'canvas-connections__path canvas-connections__path--selected'
+          : 'canvas-connections__path',
+      );
+      path.setAttribute('pointer-events', 'stroke');
       path.setAttribute('data-connection-id', conn.id);
       path.setAttribute('data-testid', 'canvas-connection-path');
       path.setAttribute('fill', 'none');
@@ -404,12 +431,63 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     if (!source || !target || fromId === toId) {
       return null;
     }
+    const duplicate = this.editor
+      .getConnections()
+      .some((c) => c.source === fromId && c.target === toId);
+    if (duplicate) {
+      return null;
+    }
     const connection: FlowConnection = new ClassicPreset.Connection<
       ClassicPreset.Node,
       ClassicPreset.Node
     >(source, 'out', target, 'in');
     await this.editor.addConnection(connection);
     return connection.id;
+  }
+
+  /** Out soketinden bağlantı sürüklemesi başlatır (geçici kesikli çizgi). */
+  beginConnection(nodeId: string): void {
+    this.assertWritable();
+    if (!this.editor.getNode(nodeId)) {
+      return;
+    }
+    this.pendingConnectionFrom = nodeId;
+    this.ensurePendingPath();
+  }
+
+  /** Sürüklemeyi hedef node üzerinde tamamlar; kural ihlalinde null döner. */
+  async completeConnection(targetNodeId: string): Promise<string | null> {
+    const from = this.pendingConnectionFrom;
+    this.cancelConnection();
+    if (!from) {
+      return null;
+    }
+    return this.connectNodes(from, targetNodeId);
+  }
+
+  /** Bekleyen bağlantı sürüklemesini iptal eder ve geçici çizgiyi kaldırır. */
+  cancelConnection(): void {
+    this.pendingConnectionFrom = null;
+    this.pendingPath?.remove();
+    this.pendingPath = undefined;
+  }
+
+  selectConnection(connectionId: string | null): void {
+    this.selectedConnectionId = connectionId;
+    this.redrawConnections();
+  }
+
+  get selectedConnection(): string | null {
+    return this.selectedConnectionId;
+  }
+
+  async deleteSelectedConnection(): Promise<boolean> {
+    if (!this.selectedConnectionId) {
+      return false;
+    }
+    const id = this.selectedConnectionId;
+    this.selectedConnectionId = null;
+    return this.deleteConnection(id);
   }
 
   async deleteNode(nodeId: string): Promise<boolean> {
@@ -608,5 +686,43 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private nextPosition(): NodePosition {
     const count = this.editor.getNodes().length;
     return { x: 80 + (count % 4) * 220, y: 80 + Math.floor(count / 4) * 140 };
+  }
+
+  private ensurePendingPath(): void {
+    if (!this.connectionGroup || this.pendingPath) {
+      return;
+    }
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'canvas-connections__path canvas-connections__path--pending');
+    path.setAttribute('data-testid', 'canvas-connection-pending');
+    path.setAttribute('fill', 'none');
+    this.connectionGroup.appendChild(path);
+    this.pendingPath = path;
+  }
+
+  /** Container koordinatındaki imleç konumuna göre geçici çizgiyi günceller. */
+  private updatePendingPath(clientX: number, clientY: number): void {
+    if (!this.pendingConnectionFrom || !this.pendingPath) {
+      return;
+    }
+    const from = this.socketPosition(this.pendingConnectionFrom, 'out');
+    if (!from) {
+      return;
+    }
+    const rect = this.reteContainer.nativeElement.getBoundingClientRect();
+    const t = this.area.area.transform;
+    const to: NodePosition = {
+      x: (clientX - rect.left - t.x) / t.k,
+      y: (clientY - rect.top - t.y) / t.k,
+    };
+    this.pendingPath.setAttribute('d', ConnectionComponent.buildPath(from, to));
+  }
+
+  onDeleteKey(): void {
+    if (this.selectedConnectionId) {
+      void this.deleteSelectedConnection();
+    } else if (this.selectedNodeId) {
+      void this.deleteNode(this.selectedNodeId);
+    }
   }
 }

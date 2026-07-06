@@ -102,6 +102,11 @@
     border-radius: 9999px;
     background: #2563eb;
     border: 2px solid #ffffff;
+    cursor: crosshair;
+
+    &:hover {
+      transform: translateX(-50%) scale(1.4);
+    }
 
     &--in {
       top: -6px;

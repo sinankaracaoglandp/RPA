@@ -52,4 +52,28 @@ describe('NodeComponent', () => {
     const el = fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
     expect(el.getAttribute('aria-selected')).toBe('true');
   });
+
+  it('emits connectStart on pointerdown at the out socket', () => {
+    const emitted: string[] = [];
+    component.connectStart.subscribe((id) => emitted.push(id));
+    fixture.detectChanges();
+
+    const outSocket: HTMLElement =
+      fixture.nativeElement.querySelector('[data-testid="canvas-node-socket-out"]');
+    outSocket.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+
+    expect(emitted).toEqual([component.node.id]);
+  });
+
+  it('emits connectDrop on pointerup over the card', () => {
+    const emitted: string[] = [];
+    component.connectDrop.subscribe((id) => emitted.push(id));
+    fixture.detectChanges();
+
+    const card: HTMLElement =
+      fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
+    card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+
+    expect(emitted).toEqual([component.node.id]);
+  });
 });

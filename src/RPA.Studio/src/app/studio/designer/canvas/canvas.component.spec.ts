@@ -259,4 +259,82 @@ describe('CanvasComponent', () => {
       expect(component.editor.getNodes().length).toBe(0);
     });
   });
+
+  describe('interactive connection lifecycle', () => {
+    it('creates a connection via beginConnection → completeConnection', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+
+      component.beginConnection(a);
+      const connId = await component.completeConnection(b);
+
+      expect(connId).toBeTruthy();
+      expect(component.editor.getConnections().length).toBe(1);
+      const conn = component.editor.getConnections()[0];
+      expect(conn.source).toBe(a);
+      expect(conn.target).toBe(b);
+    });
+
+    it('cancelConnection drops the pending connection without creating one', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+
+      component.beginConnection(a);
+      component.cancelConnection();
+      const connId = await component.completeConnection(b);
+
+      expect(connId).toBeNull(); // pending yoktu
+      expect(component.editor.getConnections().length).toBe(0);
+    });
+
+    it('refuses a duplicate connection between the same pair', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+      await component.connectNodes(a, b);
+
+      const dup = await component.connectNodes(a, b);
+
+      expect(dup).toBeNull();
+      expect(component.editor.getConnections().length).toBe(1);
+    });
+
+    it('completeConnection on the source node itself refuses (self-connection)', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      component.beginConnection(a);
+      const connId = await component.completeConnection(a);
+      expect(connId).toBeNull();
+      expect(component.editor.getConnections().length).toBe(0);
+    });
+
+    it('selects a connection and deletes it via deleteSelectedConnection', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+      const connId = await component.connectNodes(a, b);
+
+      component.selectConnection(connId!);
+      expect(component.selectedConnection).toBe(connId);
+
+      await component.deleteSelectedConnection();
+      expect(component.editor.getConnections().length).toBe(0);
+      expect(component.selectedConnection).toBeNull();
+    });
+
+    it('emits graphChanged when a connection is created interactively', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      const b = await component.addNode('B');
+      const events: unknown[] = [];
+      component.graphChanged.subscribe((g) => events.push(g));
+
+      component.beginConnection(a);
+      await component.completeConnection(b);
+
+      expect(events.length).toBeGreaterThan(0);
+    });
+  });
 });

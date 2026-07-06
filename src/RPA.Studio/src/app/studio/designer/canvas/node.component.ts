@@ -40,6 +40,8 @@ export class NodeComponent {
 
   @Output() readonly nodeSelect = new EventEmitter<string>();
   @Output() readonly nodeDelete = new EventEmitter<string>();
+  @Output() readonly connectStart = new EventEmitter<string>();
+  @Output() readonly connectDrop = new EventEmitter<string>();
 
   select(): void {
     this.nodeSelect.emit(this.node.id);
@@ -48,5 +50,16 @@ export class NodeComponent {
   remove(event: Event): void {
     event.stopPropagation();
     this.nodeDelete.emit(this.node.id);
+  }
+
+  onOutSocketDown(event: Event): void {
+    // Rete'nin node-drag yakalamasını engelle; bağlantı sürüklemesi başlasın.
+    event.stopPropagation();
+    event.preventDefault();
+    this.connectStart.emit(this.node.id);
+  }
+
+  onPointerUp(): void {
+    this.connectDrop.emit(this.node.id);
   }
 }

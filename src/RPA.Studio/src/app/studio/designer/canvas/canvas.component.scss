@@ -78,3 +78,13 @@
     fill: none;
   }
 }
+
+.canvas-connections__path--pending {
+  stroke-dasharray: 6 4;
+  opacity: 0.6;
+}
+
+.canvas-connections__path--selected {
+  stroke: #2563eb;
+  stroke-width: 3;
+}

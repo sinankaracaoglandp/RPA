@@ -59,7 +59,7 @@
     tabindex="0"
     role="application"
     [attr.aria-label]="'canvas.ariaLabel' | translate"
-    (keydown.delete)="selected && deleteNode(selected)"
-    (keydown.backspace)="selected && deleteNode(selected)"
+    (keydown.delete)="onDeleteKey()"
+    (keydown.backspace)="onDeleteKey()"
   ></div>
 </div>

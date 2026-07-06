@@ -15,11 +15,16 @@
   (click)="select()"
   (keydown.enter)="select()"
   (keydown.space)="select()"
+  (pointerup)="onPointerUp()"
 >
   @if (node.breakpoint) {
     <span class="canvas-node__breakpoint" data-testid="canvas-node-breakpoint" aria-hidden="true"></span>
   }
-  <span class="canvas-node__socket canvas-node__socket--in" aria-hidden="true"></span>
+  <span
+    class="canvas-node__socket canvas-node__socket--in"
+    data-testid="canvas-node-socket-in"
+    aria-hidden="true"
+  ></span>
 
   <header class="canvas-node__header">
     <span class="canvas-node__icon" aria-hidden="true">{{ node.icon || '▸' }}</span>
@@ -39,5 +44,10 @@
     <p class="canvas-node__subtitle">{{ node.activityId }}</p>
   }
 
-  <span class="canvas-node__socket canvas-node__socket--out" aria-hidden="true"></span>
+  <span
+    class="canvas-node__socket canvas-node__socket--out"
+    data-testid="canvas-node-socket-out"
+    aria-hidden="true"
+    (pointerdown)="onOutSocketDown($event)"
+  ></span>
 </div>
