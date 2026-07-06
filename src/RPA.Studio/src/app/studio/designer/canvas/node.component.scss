@@ -104,6 +104,15 @@
     border: 2px solid #ffffff;
     cursor: crosshair;
 
+    // Görünmez genişletilmiş tutma alanı: 12px'lik nokta elle hedeflenemeyecek
+    // kadar küçük; 28px'lik hit-area sürükleme başlatmayı kolaylaştırır.
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      border-radius: 9999px;
+    }
+
     &:hover {
       transform: translateX(-50%) scale(1.4);
     }
