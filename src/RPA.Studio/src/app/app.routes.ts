@@ -12,5 +12,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./studio/designer/designer.component').then((m) => m.DesignerComponent),
   },
+  {
+    path: 'component-library',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./studio/component-library/component-library.component').then((m) => m.ComponentLibraryComponent),
+  },
   { path: '**', redirectTo: '' },
 ];
