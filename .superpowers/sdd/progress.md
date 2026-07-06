@@ -98,5 +98,26 @@
 - [x] Task 4.4: UI Spy (Opus) — complete (commit 204ec15, review pending, 27 tests)
 - [x] Task 4.5: SAP Login component (Sonnet) — complete (commits 617377d..4130571, review approved, 8 tests)
 
-## Faz 5–6: TBD (11 task)
+## Faz 4: ✅ COMPLETE (5 task, 503 tests passing, 16 commits)
+
+**Final Status:**
+- Task 4.1: SAP GUI Scripting (42 tests, 75.97% coverage)
+- Task 4.2: SAP NCo Channel (38 tests, 90.61% coverage)
+- Task 4.3: OTP Module (32 tests, 92.77% coverage)
+- Task 4.4: UI Spy (27 tests)
+- Task 4.5: SAP Login Component (9 tests + fix)
+- Merged to master (73dcbe1)
+
+## Faz 5: Studio UI (6 task)
+
+### Tasks (SDD execution order)
+
+- [x] Task 5.1: Canvas & Rete.js 2 (Opus) — APPROVED_WITH_NOTES (commits 73dcbe1..c76a74a, 32 tests, 92.9% coverage, merged)
+- [x] Task 5.2: Toolbox & Activity Catalog (Sonnet) — APPROVED_WITH_NOTES (commits c76a74a..8972a2f, 43 tests, 86.46% coverage, merged)
+- [ ] Task 5.3: Component Library & Publish Wizard (Sonnet)
+- [ ] Task 5.4: Debug/Step-Through (Opus)
+- [ ] Task 5.5: Simple Mode & Templates (Sonnet)
+- [ ] Task 5.6: Web Activities (Sonnet)
+
+## Faz 6: TBD (5 task)
 

@@ -1,0 +1,178 @@
+<div
+  class="component-library"
+  data-testid="component-library-root"
+  [attr.aria-label]="'componentLibrary.ariaLabel' | translate"
+>
+  <!-- Header -->
+  <div class="component-library__header">
+    <h1 class="component-library__title">{{ 'componentLibrary.title' | translate }}</h1>
+  </div>
+
+  <!-- Search -->
+  <div class="component-library__search">
+    <label class="sr-only" for="component-search">{{ 'componentLibrary.searchLabel' | translate }}</label>
+    <input
+      id="component-search"
+      type="text"
+      data-testid="component-search"
+      class="component-library__search-input"
+      [attr.aria-label]="'componentLibrary.searchLabel' | translate"
+      [placeholder]="'componentLibrary.searchPlaceholder' | translate"
+      [value]="searchTerm()"
+      (input)="onSearchChange($any($event.target).value)"
+    />
+  </div>
+
+  <!-- Filters -->
+  <div
+    class="component-library__filters"
+    role="group"
+    [attr.aria-label]="'componentLibrary.filterAriaLabel' | translate"
+  >
+    <button
+      type="button"
+      class="component-library__filter-btn"
+      [class.component-library__filter-btn--active]="selectedFilter() === 'All'"
+      data-testid="filter-all"
+      (click)="selectFilter('All')"
+    >
+      {{ 'componentLibrary.filterAll' | translate }}
+    </button>
+    <button
+      type="button"
+      class="component-library__filter-btn"
+      [class.component-library__filter-btn--active]="selectedFilter() === 'Draft'"
+      data-testid="filter-draft"
+      (click)="selectFilter('Draft')"
+    >
+      {{ 'componentLibrary.filterDraft' | translate }}
+    </button>
+    <button
+      type="button"
+      class="component-library__filter-btn"
+      [class.component-library__filter-btn--active]="selectedFilter() === 'Published'"
+      data-testid="filter-published"
+      (click)="selectFilter('Published')"
+    >
+      {{ 'componentLibrary.filterPublished' | translate }}
+    </button>
+  </div>
+
+  <!-- Components List -->
+  <div class="component-library__content">
+    <p *ngIf="loading()" class="component-library__status" data-testid="component-library-loading">
+      {{ 'componentLibrary.loading' | translate }}
+    </p>
+    <p *ngIf="error()" class="component-library__status component-library__status--error" data-testid="component-library-error">
+      {{ 'componentLibrary.error' | translate }}
+    </p>
+    <p
+      *ngIf="!loading() && !error() && filteredComponents().length === 0"
+      class="component-library__status"
+      data-testid="component-library-empty"
+    >
+      {{ 'componentLibrary.empty' | translate }}
+    </p>
+
+    <div class="component-library__grid">
+      <button
+        *ngFor="let comp of filteredComponents(); trackBy: trackByComponentId"
+        type="button"
+        class="component-library__card"
+        data-testid="component-card"
+        [attr.aria-label]="comp.displayName"
+        (click)="selectComponent(comp)"
+      >
+        <div class="component-card__content">
+          <h2 class="component-card__name">{{ comp.displayName }}</h2>
+          <p *ngIf="comp.description" class="component-card__description">{{ comp.description }}</p>
+          <div class="component-card__meta">
+            <span class="component-card__meta-item">
+              <strong>{{ 'componentLibrary.card.version' | translate }}:</strong> {{ comp.version }}
+            </span>
+            <span *ngIf="comp.author" class="component-card__meta-item">
+              <strong>{{ 'componentLibrary.card.author' | translate }}:</strong> {{ comp.author }}
+            </span>
+          </div>
+          <div class="component-card__status">
+            <span
+              class="component-card__status-badge"
+              [class.component-card__status-badge--draft]="comp.status === 'Draft'"
+              [class.component-card__status-badge--published]="comp.status === 'Published'"
+            >
+              {{ comp.status }}
+            </span>
+          </div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Details Panel -->
+  <div
+    *ngIf="selectedComponent()"
+    class="component-library__details-overlay"
+    (click)="closeDetails()"
+    [attr.aria-modal]="true"
+  >
+    <div class="component-library__details-panel" data-testid="component-details-panel" (click)="$event.stopPropagation()">
+      <button
+        type="button"
+        class="component-library__close-btn"
+        [attr.aria-label]="'componentLibrary.details.closeAriaLabel' | translate"
+        (click)="closeDetails()"
+      >
+        ✕
+      </button>
+
+      <div class="component-details__content">
+        <h2 class="component-details__title">{{ selectedComponent()?.displayName }}</h2>
+
+        <div class="component-details__section">
+          <p *ngIf="selectedComponent()?.description" class="component-details__description">
+            {{ selectedComponent()?.description }}
+          </p>
+        </div>
+
+        <div class="component-details__metadata">
+          <div class="component-details__meta-row">
+            <strong>{{ 'componentLibrary.details.version' | translate }}:</strong>
+            <span>{{ selectedComponent()?.version }}</span>
+          </div>
+          <div class="component-details__meta-row">
+            <strong>{{ 'componentLibrary.details.status' | translate }}:</strong>
+            <span
+              [class.component-card__status-badge--draft]="selectedComponent()?.status === 'Draft'"
+              [class.component-card__status-badge--published]="selectedComponent()?.status === 'Published'"
+            >
+              {{ selectedComponent()?.status }}
+            </span>
+          </div>
+          <div *ngIf="selectedComponent()?.author" class="component-details__meta-row">
+            <strong>{{ 'componentLibrary.details.author' | translate }}:</strong>
+            <span>{{ selectedComponent()?.author }}</span>
+          </div>
+        </div>
+
+        <div class="component-details__buttons">
+          <button
+            type="button"
+            class="component-details__btn component-details__btn--primary"
+            data-testid="component-publish-btn"
+            [disabled]="selectedComponent()?.status !== 'Draft'"
+          >
+            {{ 'componentLibrary.details.publish' | translate }}
+          </button>
+          <button
+            type="button"
+            class="component-details__btn component-details__btn--secondary"
+            data-testid="component-approve-btn"
+            [disabled]="selectedComponent()?.status !== 'Published'"
+          >
+            {{ 'componentLibrary.details.approve' | translate }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

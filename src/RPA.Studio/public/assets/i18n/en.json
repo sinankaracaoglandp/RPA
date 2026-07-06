@@ -44,5 +44,64 @@
       "addButton": "Add to canvas",
       "dragHint": "Drag to canvas or press Enter to add"
     }
+  },
+  "componentLibrary": {
+    "ariaLabel": "Component library",
+    "title": "Component Library",
+    "searchLabel": "Search components",
+    "searchPlaceholder": "Search by name...",
+    "filterAriaLabel": "Filter by status",
+    "filterAll": "All",
+    "filterDraft": "Draft",
+    "filterPublished": "Published",
+    "empty": "No components found.",
+    "loading": "Loading components...",
+    "error": "Failed to load components.",
+    "card": {
+      "ariaLabel": "Component",
+      "version": "Version",
+      "author": "Author",
+      "status": "Status",
+      "viewDetails": "View details"
+    },
+    "details": {
+      "title": "Component Details",
+      "closeAriaLabel": "Close details",
+      "version": "Version",
+      "status": "Status",
+      "author": "Author",
+      "description": "Description",
+      "definition": "JSON Definition",
+      "schema": "Input/Output Schema",
+      "publish": "Publish",
+      "approve": "Approve",
+      "publishRequirements": "Requires Developer role",
+      "approveRequirements": "Requires Approver role"
+    },
+    "publishWizard": {
+      "title": "Publish Component",
+      "closeAriaLabel": "Close wizard",
+      "stepLabel": "Step",
+      "step1Title": "Component Info",
+      "step1Description": "Enter component name and version",
+      "nameLabel": "Component Name",
+      "namePlaceholder": "My Component",
+      "versionLabel": "Version",
+      "versionPlaceholder": "1.0.0",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Component description...",
+      "step2Title": "JSON Definition",
+      "step2Description": "Paste component JSON definition",
+      "step3Title": "Test Cases",
+      "step3Description": "Add test cases (optional)",
+      "testCasesPlaceholder": "Test cases JSON array...",
+      "previousButton": "Previous",
+      "nextButton": "Next",
+      "publishButton": "Publish",
+      "publishingButton": "Publishing...",
+      "successMessage": "Component published successfully",
+      "errorMessage": "Failed to publish component",
+      "validationError": "Please fill in all required fields"
+    }
   }
 }

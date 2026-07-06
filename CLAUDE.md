@@ -153,6 +153,25 @@ tabanlı sıralı fallback sözleşmede explicit hale getirildi.
 
 ---
 
+## Kontrat Değişikliği — 2026-07-06 (WP-Faz5-Backend)
+
+**Backend Component APIs generalization** — Components controller & publish service expanded from hardcoded SAP Login to generic component support.
+
+**Before (WP-4.5):** Hardcoded routes (`POST /api/components/sap-login/publish`, `POST /api/components/sap-login/{version}/approve`), single-component-only.
+
+**After:** Generalized routes:
+- `GET /api/components` → list all published components
+- `GET /api/components/{componentId}/{version}` → fetch specific version
+- `POST /api/components/{componentId}/publish` → publish any component (body: { version, jsonDefinition, inputOutputSchema, ... })
+- `POST /api/components/{componentId}/{version}/approve` → approve any version
+- `ComponentVersion` fields extended: add `displayName`, `description`, `author`, `category` (optional, for library metadata)
+
+**Etkilenen paketler:** WP-4.5 (SAP Login publish path — now uses generalized routes instead of hardcoded), WP-5.3 (Component Library UI — consumes generalized API).
+
+**Gerekçe:** Faz 5 Studio requires a generic component library with publish/approve UX. Faz 4 Task 4.5 only implemented SAP Login component as a single-component proof-of-concept. Generalizing the API enables Task 5.3 without TODOs or stubs.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

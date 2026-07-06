@@ -44,5 +44,64 @@
       "addButton": "Tuvale ekle",
       "dragHint": "Tuvale sürükleyin veya eklemek için Enter'a basın"
     }
+  },
+  "componentLibrary": {
+    "ariaLabel": "Bileşen kütüphanesi",
+    "title": "Bileşen Kütüphanesi",
+    "searchLabel": "Bileşenleri ara",
+    "searchPlaceholder": "Ada göre ara...",
+    "filterAriaLabel": "Duruma göre filtrele",
+    "filterAll": "Tümü",
+    "filterDraft": "Taslak",
+    "filterPublished": "Yayınlanmış",
+    "empty": "Bileşen bulunamadı.",
+    "loading": "Bileşenler yükleniyor...",
+    "error": "Bileşenler yüklenemedi.",
+    "card": {
+      "ariaLabel": "Bileşen",
+      "version": "Sürüm",
+      "author": "Yazar",
+      "status": "Durum",
+      "viewDetails": "Ayrıntıları görüntüle"
+    },
+    "details": {
+      "title": "Bileşen Ayrıntıları",
+      "closeAriaLabel": "Ayrıntıları kapat",
+      "version": "Sürüm",
+      "status": "Durum",
+      "author": "Yazar",
+      "description": "Açıklama",
+      "definition": "JSON Tanımı",
+      "schema": "Giriş/Çıkış Şeması",
+      "publish": "Yayınla",
+      "approve": "Onayla",
+      "publishRequirements": "Geliştirici rolü gerekli",
+      "approveRequirements": "Onaylayan rolü gerekli"
+    },
+    "publishWizard": {
+      "title": "Bileşeni Yayınla",
+      "closeAriaLabel": "Sihirbazı kapat",
+      "stepLabel": "Adım",
+      "step1Title": "Bileşen Bilgileri",
+      "step1Description": "Bileşen adını ve sürümünü girin",
+      "nameLabel": "Bileşen Adı",
+      "namePlaceholder": "Benim Bileşenim",
+      "versionLabel": "Sürüm",
+      "versionPlaceholder": "1.0.0",
+      "descriptionLabel": "Açıklama",
+      "descriptionPlaceholder": "Bileşen açıklaması...",
+      "step2Title": "JSON Tanımı",
+      "step2Description": "Bileşen JSON tanımını yapıştırın",
+      "step3Title": "Test Vakaları",
+      "step3Description": "Test vakaları ekleyin (isteğe bağlı)",
+      "testCasesPlaceholder": "Test vakaları JSON dizisi...",
+      "previousButton": "Önceki",
+      "nextButton": "Sonraki",
+      "publishButton": "Yayınla",
+      "publishingButton": "Yayınlanıyor...",
+      "successMessage": "Bileşen başarıyla yayınlandı",
+      "errorMessage": "Bileşen yayınlanırken hata oluştu",
+      "validationError": "Lütfen tüm zorunlu alanları doldurun"
+    }
   }
 }
