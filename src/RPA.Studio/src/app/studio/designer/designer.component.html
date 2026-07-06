@@ -1,16 +1,25 @@
 <div class="designer flex h-full w-full">
-  <app-toolbox [canvas]="canvas"></app-toolbox>
+  @if (isSimpleMode()) {
+    <app-simplified-toolbox [canvas]="canvas"></app-simplified-toolbox>
+  } @else {
+    <app-toolbox [canvas]="canvas"></app-toolbox>
+  }
   <main class="designer__canvas relative flex-1">
-    <button
-      type="button"
-      class="designer__debug-toggle"
-      data-testid="designer-debug-toggle"
-      [attr.aria-pressed]="debugMode()"
-      [attr.aria-label]="'debug.panel.title' | translate"
-      (click)="toggleDebug()"
-    >
-      {{ 'debug.panel.title' | translate }}
-    </button>
+    <div class="designer__header">
+      <app-simple-mode-toggle></app-simple-mode-toggle>
+      @if (!isSimpleMode()) {
+        <button
+          type="button"
+          class="designer__debug-toggle"
+          data-testid="designer-debug-toggle"
+          [attr.aria-pressed]="debugMode()"
+          [attr.aria-label]="'debug.panel.title' | translate"
+          (click)="toggleDebug()"
+        >
+          {{ 'debug.panel.title' | translate }}
+        </button>
+      }
+    </div>
     <app-canvas
       [workflow]="workflow()"
       [breakpointNodeIds]="breakpointNodeIds()"
@@ -19,7 +28,7 @@
       (graphChanged)="onGraphChanged($event)"
     ></app-canvas>
   </main>
-  @if (debugMode()) {
+  @if (!isSimpleMode() && debugMode()) {
     <app-debug-panel
       [workflow]="currentGraph() ?? workflow()"
       (currentNodeChange)="onDebugCurrentNode($event)"

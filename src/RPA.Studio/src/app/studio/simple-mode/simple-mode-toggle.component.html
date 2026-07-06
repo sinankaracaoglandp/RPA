@@ -1,0 +1,27 @@
+<div
+  class="mode-toggle"
+  data-testid="mode-toggle-root"
+  role="group"
+  [attr.aria-label]="'modeToggle.ariaLabel' | translate"
+>
+  <button
+    type="button"
+    class="mode-toggle__btn"
+    [class.mode-toggle__btn--active]="!isSimple()"
+    data-testid="mode-toggle-advanced"
+    [attr.aria-pressed]="!isSimple()"
+    (click)="selectAdvanced()"
+  >
+    {{ 'modeToggle.advanced' | translate }}
+  </button>
+  <button
+    type="button"
+    class="mode-toggle__btn"
+    [class.mode-toggle__btn--active]="isSimple()"
+    data-testid="mode-toggle-simple"
+    [attr.aria-pressed]="isSimple()"
+    (click)="selectSimple()"
+  >
+    {{ 'modeToggle.simple' | translate }}
+  </button>
+</div>

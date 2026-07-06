@@ -1,0 +1,28 @@
+<div
+  class="simplified-toolbox"
+  data-testid="simplified-toolbox-root"
+  [attr.aria-label]="'simpleMode.toolbox.ariaLabel' | translate"
+>
+  <h2 class="simplified-toolbox__title">{{ 'simpleMode.toolbox.title' | translate }}</h2>
+
+  <p *ngIf="loading()" class="simplified-toolbox__status" data-testid="simplified-toolbox-loading">
+    {{ 'toolbox.loading' | translate }}
+  </p>
+  <p *ngIf="error()" class="simplified-toolbox__status simplified-toolbox__status--error" data-testid="simplified-toolbox-error">
+    {{ 'toolbox.error' | translate }}
+  </p>
+
+  <ul class="simplified-toolbox__list" [attr.aria-label]="'simpleMode.toolbox.listAriaLabel' | translate">
+    <li *ngFor="let activity of simplifiedActivities(); trackBy: trackByActivityId">
+      <button
+        type="button"
+        class="simplified-toolbox__item"
+        data-testid="simplified-activity-item"
+        [attr.aria-label]="activity.displayName"
+        (click)="addActivity(activity.activityId)"
+      >
+        {{ activity.displayName }}
+      </button>
+    </li>
+  </ul>
+</div>

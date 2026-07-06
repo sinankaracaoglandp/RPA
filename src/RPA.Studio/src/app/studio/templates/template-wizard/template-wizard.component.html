@@ -1,0 +1,127 @@
+<div
+  class="template-wizard"
+  role="dialog"
+  data-testid="template-wizard-root"
+  [attr.aria-modal]="true"
+  [attr.aria-labelledby]="'template-wizard-title'"
+>
+  <div class="template-wizard__header">
+    <h2 id="template-wizard-title" class="template-wizard__title">
+      {{ 'templates.wizard.title' | translate }}
+    </h2>
+    <button
+      type="button"
+      class="template-wizard__close-btn"
+      [attr.aria-label]="'templates.wizard.closeAriaLabel' | translate"
+      (click)="closeWizard()"
+    >
+      ✕
+    </button>
+  </div>
+
+  <div class="template-wizard__progress">
+    <span class="template-wizard__step-number" [class.template-wizard__step-number--active]="currentStep() >= 1">1</span>
+    <span class="template-wizard__step-connector" [class.template-wizard__step-connector--active]="currentStep() >= 2"></span>
+    <span class="template-wizard__step-number" [class.template-wizard__step-number--active]="currentStep() >= 2">2</span>
+    <span class="template-wizard__step-connector" [class.template-wizard__step-connector--active]="currentStep() >= 3"></span>
+    <span class="template-wizard__step-number" [class.template-wizard__step-number--active]="currentStep() >= 3">3</span>
+  </div>
+
+  <div class="template-wizard__content">
+    <div class="template-wizard__step-title" data-testid="template-wizard-step-title">
+      {{ stepTitle() | translate }}
+    </div>
+
+    <!-- Step 1: Confirm template -->
+    <div *ngIf="currentStep() === 1" class="template-wizard__step" data-testid="template-wizard-step-1">
+      <div class="template-wizard__icon" aria-hidden="true">{{ template.icon || '📄' }}</div>
+      <h3>{{ template.name }}</h3>
+      <p *ngIf="template.description">{{ template.description }}</p>
+      <span class="template-wizard__category">{{ template.category }}</span>
+    </div>
+
+    <!-- Step 2: Customize -->
+    <form [formGroup]="formData">
+      <div *ngIf="currentStep() === 2" class="template-wizard__step" data-testid="template-wizard-step-2">
+        <div class="form-group">
+          <label for="template-wizard-name" class="form-label">
+            {{ 'templates.wizard.nameLabel' | translate }}
+            <span class="form-label__required">*</span>
+          </label>
+          <input
+            id="template-wizard-name"
+            type="text"
+            data-testid="template-wizard-name-input"
+            class="form-input"
+            formControlName="name"
+          />
+        </div>
+        <div class="form-group">
+          <label for="template-wizard-description" class="form-label">
+            {{ 'templates.wizard.descriptionLabel' | translate }}
+          </label>
+          <textarea
+            id="template-wizard-description"
+            data-testid="template-wizard-description-input"
+            class="form-textarea"
+            formControlName="description"
+            rows="4"
+          ></textarea>
+        </div>
+      </div>
+    </form>
+
+    <!-- Step 3: Review -->
+    <div *ngIf="currentStep() === 3" class="template-wizard__step" data-testid="template-wizard-step-3">
+      <div class="template-wizard__review-row">
+        <strong>{{ 'templates.wizard.nameLabel' | translate }}:</strong>
+        <span data-testid="template-wizard-review-name">{{ formData.get('name')?.value }}</span>
+      </div>
+      <div class="template-wizard__review-row">
+        <strong>{{ 'templates.wizard.descriptionLabel' | translate }}:</strong>
+        <span>{{ formData.get('description')?.value }}</span>
+      </div>
+      <div class="template-wizard__review-row">
+        <strong>{{ 'componentLibrary.card.version' | translate }} / {{ 'componentLibrary.details.status' | translate }}:</strong>
+        <span>{{ template.category }}</span>
+      </div>
+    </div>
+
+    <div *ngIf="errorMessage()" class="template-wizard__message" role="alert" data-testid="template-wizard-error">
+      {{ 'templates.wizard.validationError' | translate }}
+    </div>
+  </div>
+
+  <div class="template-wizard__footer">
+    <button
+      type="button"
+      class="template-wizard__btn template-wizard__btn--secondary"
+      data-testid="template-wizard-prev-btn"
+      [disabled]="currentStep() === 1"
+      (click)="previousStep()"
+    >
+      {{ 'componentLibrary.publishWizard.previousButton' | translate }}
+    </button>
+
+    <button
+      *ngIf="currentStep() < 3"
+      type="button"
+      class="template-wizard__btn template-wizard__btn--primary"
+      data-testid="template-wizard-next-btn"
+      [disabled]="currentStep() === 2 && !isStep2Valid()"
+      (click)="nextStep()"
+    >
+      {{ 'componentLibrary.publishWizard.nextButton' | translate }}
+    </button>
+
+    <button
+      *ngIf="currentStep() === 3"
+      type="button"
+      class="template-wizard__btn template-wizard__btn--primary"
+      data-testid="template-wizard-create-btn"
+      (click)="create()"
+    >
+      {{ 'templates.wizard.createButton' | translate }}
+    </button>
+  </div>
+</div>

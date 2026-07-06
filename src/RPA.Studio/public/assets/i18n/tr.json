@@ -104,6 +104,42 @@
       "validationError": "Lütfen tüm zorunlu alanları doldurun"
     }
   },
+  "modeToggle": {
+    "ariaLabel": "Tasarımcı modu",
+    "advanced": "Gelişmiş",
+    "simple": "Basit"
+  },
+  "simpleMode": {
+    "toolbox": {
+      "ariaLabel": "Basit aktivite listesi",
+      "title": "Sık Kullanılan Aktiviteler",
+      "listAriaLabel": "Sık kullanılan aktivite listesi"
+    }
+  },
+  "templates": {
+    "gallery": {
+      "ariaLabel": "Şablon galerisi",
+      "title": "Şablon Galerisi",
+      "searchLabel": "Şablon ara",
+      "searchPlaceholder": "Ada göre ara...",
+      "filterAriaLabel": "Kategoriye göre filtrele",
+      "filterAll": "Tümü",
+      "empty": "Şablon bulunamadı.",
+      "loading": "Şablonlar yükleniyor...",
+      "error": "Şablonlar yüklenemedi."
+    },
+    "wizard": {
+      "title": "Şablondan İş Akışı Oluştur",
+      "closeAriaLabel": "Sihirbazı kapat",
+      "step1Title": "Şablonu Onayla",
+      "step2Title": "Özelleştir",
+      "step3Title": "Gözden Geçir ve Oluştur",
+      "nameLabel": "İş Akışı Adı",
+      "descriptionLabel": "Açıklama",
+      "createButton": "İş Akışı Oluştur",
+      "validationError": "Lütfen bir iş akışı adı girin."
+    }
+  },
   "debug": {
     "panel": {
       "ariaLabel": "İş akışı hata ayıklayıcı",

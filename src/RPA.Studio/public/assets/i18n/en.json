@@ -104,6 +104,42 @@
       "validationError": "Please fill in all required fields"
     }
   },
+  "modeToggle": {
+    "ariaLabel": "Designer mode",
+    "advanced": "Advanced",
+    "simple": "Simple"
+  },
+  "simpleMode": {
+    "toolbox": {
+      "ariaLabel": "Simple activity list",
+      "title": "Common Activities",
+      "listAriaLabel": "Common activity list"
+    }
+  },
+  "templates": {
+    "gallery": {
+      "ariaLabel": "Template gallery",
+      "title": "Template Gallery",
+      "searchLabel": "Search templates",
+      "searchPlaceholder": "Search by name...",
+      "filterAriaLabel": "Filter by category",
+      "filterAll": "All",
+      "empty": "No templates found.",
+      "loading": "Loading templates...",
+      "error": "Failed to load templates."
+    },
+    "wizard": {
+      "title": "Create Workflow from Template",
+      "closeAriaLabel": "Close wizard",
+      "step1Title": "Confirm Template",
+      "step2Title": "Customize",
+      "step3Title": "Review & Create",
+      "nameLabel": "Workflow Name",
+      "descriptionLabel": "Description",
+      "createButton": "Create Workflow",
+      "validationError": "Please provide a workflow name."
+    }
+  },
   "debug": {
     "panel": {
       "ariaLabel": "Workflow debugger",

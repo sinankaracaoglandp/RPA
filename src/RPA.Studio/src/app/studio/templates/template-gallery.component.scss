@@ -1,0 +1,37 @@
+.template-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.template-gallery__filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.template-gallery__filter-btn {
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  cursor: pointer;
+
+  &--active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+}
+
+.template-gallery__wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}

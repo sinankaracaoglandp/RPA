@@ -1,0 +1,12 @@
+<button
+  type="button"
+  class="template-card"
+  data-testid="template-card"
+  [attr.aria-label]="template.name"
+  (click)="onSelect()"
+>
+  <div class="template-card__icon" aria-hidden="true">{{ template.icon || '📄' }}</div>
+  <h3 class="template-card__name">{{ template.name }}</h3>
+  <p *ngIf="template.description" class="template-card__description">{{ template.description }}</p>
+  <span class="template-card__category">{{ template.category }}</span>
+</button>
