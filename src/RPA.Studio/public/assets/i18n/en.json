@@ -29,5 +29,20 @@
       "undo": "Undo",
       "redo": "Redo"
     }
+  },
+  "toolbox": {
+    "ariaLabel": "Activity toolbox",
+    "searchLabel": "Search activities",
+    "searchPlaceholder": "Search activities...",
+    "categoriesAriaLabel": "Activity categories",
+    "categoryAll": "All",
+    "listAriaLabel": "Activity list",
+    "empty": "No activities found.",
+    "loading": "Loading activities...",
+    "error": "Failed to load activities.",
+    "item": {
+      "addButton": "Add to canvas",
+      "dragHint": "Drag to canvas or press Enter to add"
+    }
   }
 }

@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, ViewChild, signal } from '@angular/core';
 import { WorkflowVersion } from '../../shared/models/workflow.model';
 import { CanvasComponent } from './canvas/canvas.component';
+import { ToolboxComponent } from './toolbox/toolbox.component';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -10,7 +11,7 @@ import { CanvasComponent } from './canvas/canvas.component';
 @Component({
   selector: 'app-designer',
   standalone: true,
-  imports: [CommonModule, CanvasComponent],
+  imports: [CommonModule, CanvasComponent, ToolboxComponent],
   templateUrl: './designer.component.html',
 })
 export class DesignerComponent {

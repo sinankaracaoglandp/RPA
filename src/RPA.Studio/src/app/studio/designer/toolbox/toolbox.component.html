@@ -1,0 +1,75 @@
+<div class="toolbox" data-testid="toolbox-root" [attr.aria-label]="'toolbox.ariaLabel' | translate">
+  <div class="toolbox__search">
+    <label class="sr-only" for="toolbox-search">{{ 'toolbox.searchLabel' | translate }}</label>
+    <input
+      id="toolbox-search"
+      type="text"
+      data-testid="toolbox-search"
+      class="toolbox__search-input"
+      [attr.aria-label]="'toolbox.searchLabel' | translate"
+      [placeholder]="'toolbox.searchPlaceholder' | translate"
+      [value]="searchTerm()"
+      (input)="onSearchChange($any($event.target).value)"
+    />
+  </div>
+
+  <div
+    class="toolbox__categories"
+    role="tablist"
+    data-testid="toolbox-categories"
+    [attr.aria-label]="'toolbox.categoriesAriaLabel' | translate"
+  >
+    <button
+      type="button"
+      role="tab"
+      class="toolbox__category"
+      data-testid="toolbox-category-all"
+      [class.toolbox__category--active]="selectedCategory() === ALL_CATEGORIES"
+      [attr.aria-selected]="selectedCategory() === ALL_CATEGORIES"
+      (click)="selectCategory(ALL_CATEGORIES)"
+    >
+      {{ 'toolbox.categoryAll' | translate }}
+    </button>
+    <button
+      *ngFor="let category of categories()"
+      type="button"
+      role="tab"
+      class="toolbox__category"
+      data-testid="toolbox-category"
+      [attr.data-category]="category"
+      [class.toolbox__category--active]="selectedCategory() === category"
+      [attr.aria-selected]="selectedCategory() === category"
+      (click)="selectCategory(category)"
+    >
+      {{ category }}
+    </button>
+  </div>
+
+  <div
+    class="toolbox__list"
+    data-testid="toolbox-list"
+    cdkDropList
+    [cdkDropListData]="filteredActivities()"
+    [attr.aria-label]="'toolbox.listAriaLabel' | translate"
+    (cdkDropListDropped)="onCanvasDrop($event)"
+  >
+    <p *ngIf="loading()" class="toolbox__status" data-testid="toolbox-loading">
+      {{ 'toolbox.loading' | translate }}
+    </p>
+    <p *ngIf="error()" class="toolbox__status toolbox__status--error" data-testid="toolbox-error">
+      {{ 'toolbox.error' | translate }}
+    </p>
+    <p
+      *ngIf="!loading() && !error() && filteredActivities().length === 0"
+      class="toolbox__status"
+      data-testid="toolbox-empty"
+    >
+      {{ 'toolbox.empty' | translate }}
+    </p>
+    <app-activity-item
+      *ngFor="let activity of filteredActivities(); trackBy: trackByActivityId"
+      [activity]="activity"
+      (activate)="addActivity($event)"
+    ></app-activity-item>
+  </div>
+</div>

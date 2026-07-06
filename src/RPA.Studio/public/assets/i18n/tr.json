@@ -29,5 +29,20 @@
       "undo": "Geri al",
       "redo": "Yinele"
     }
+  },
+  "toolbox": {
+    "ariaLabel": "Aktivite kutusu",
+    "searchLabel": "Aktivite ara",
+    "searchPlaceholder": "Aktivite ara...",
+    "categoriesAriaLabel": "Aktivite kategorileri",
+    "categoryAll": "Tümü",
+    "listAriaLabel": "Aktivite listesi",
+    "empty": "Aktivite bulunamadı.",
+    "loading": "Aktiviteler yükleniyor...",
+    "error": "Aktiviteler yüklenemedi.",
+    "item": {
+      "addButton": "Tuvale ekle",
+      "dragHint": "Tuvale sürükleyin veya eklemek için Enter'a basın"
+    }
   }
 }

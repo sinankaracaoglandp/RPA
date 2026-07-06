@@ -1,0 +1,32 @@
+<div
+  class="activity-item"
+  data-testid="activity-item"
+  [attr.data-activity-id]="activity.activityId"
+  cdkDrag
+  [cdkDragData]="activity.activityId"
+  (cdkDragStarted)="onDragStarted($event)"
+  tabindex="0"
+  role="button"
+  [attr.aria-label]="activity.displayName + ' — ' + (activity.category ?? '')"
+  [title]="('toolbox.item.dragHint' | translate)"
+  (keydown)="onKeydown($event)"
+  (dblclick)="onActivate()"
+>
+  <div class="activity-item__icon" aria-hidden="true">{{ icon }}</div>
+  <div class="activity-item__body">
+    <div class="activity-item__name" data-testid="activity-item-name">{{ activity.displayName }}</div>
+    <div class="activity-item__category" data-testid="activity-item-category">{{ activity.category }}</div>
+    <div class="activity-item__description" data-testid="activity-item-description">
+      {{ activity.description }}
+    </div>
+  </div>
+  <button
+    type="button"
+    class="activity-item__add"
+    data-testid="activity-item-add"
+    [attr.aria-label]="'toolbox.item.addButton' | translate"
+    (click)="onActivate()"
+  >
+    +
+  </button>
+</div>
