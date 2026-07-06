@@ -44,6 +44,8 @@ export class DesignerComponent {
 
   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
   readonly selectedNodeId = signal<string | null>(null);
+  readonly selectedActivityType = signal<string | undefined>(undefined);
+  readonly selectedProperties = signal<Record<string, unknown>>({});
   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
   readonly debugMode = signal(false);
 
@@ -82,9 +84,24 @@ export class DesignerComponent {
 
   onNodeSelect(nodeId: string | null): void {
     this.selectedNodeId.set(nodeId);
+    if (nodeId && this.canvas) {
+      this.selectedActivityType.set(this.canvas.getNodeActivityId(nodeId));
+      this.selectedProperties.set(this.canvas.getNodeProperties(nodeId));
+    } else {
+      this.selectedActivityType.set(undefined);
+      this.selectedProperties.set({});
+    }
     // In debug mode (Advanced only), clicking a node toggles its breakpoint.
     if (!this.isSimpleMode() && this.debugMode() && nodeId) {
       this.debug.toggleBreakpoint(nodeId);
+    }
+  }
+
+  onPropertiesChange(properties: Record<string, unknown>): void {
+    const nodeId = this.selectedNodeId();
+    if (nodeId) {
+      this.canvas?.updateNodeProperties(nodeId, properties);
+      this.selectedProperties.set(properties);
     }
   }
 

@@ -3,7 +3,7 @@
   data-testid="properties-panel"
   [attr.aria-label]="'properties.panel.ariaLabel' | translate"
 >
-  @if (!selectedNodeId) {
+  @if (!activityType) {
     <p class="properties-panel__empty" data-testid="properties-panel-empty">
       {{ 'properties.panel.empty' | translate }}
     </p>

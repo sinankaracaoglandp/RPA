@@ -34,6 +34,10 @@
       (currentNodeChange)="onDebugCurrentNode($event)"
     ></app-debug-panel>
   } @else {
-    <app-properties-panel [canvas]="canvas" [selectedNodeId]="selectedNodeId()"></app-properties-panel>
+    <app-properties-panel
+      [activityType]="selectedActivityType()"
+      [properties]="selectedProperties()"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-properties-panel>
   }
 </div>

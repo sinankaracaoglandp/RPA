@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
 import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.model';
@@ -19,6 +19,7 @@ import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.
 })
 export class GenericPropertyComponent {
   private readonly catalog = inject(ActivityCatalogService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   private _activityType?: string;
   metadata?: ActivityMetadata;
@@ -92,10 +93,12 @@ export class GenericPropertyComponent {
       next: (meta) => {
         this.metadata = meta;
         this.loading = false;
+        this.cdr.markForCheck();
       },
       error: () => {
         this.error = true;
         this.loading = false;
+        this.cdr.markForCheck();
       },
     });
   }
