@@ -156,5 +156,10 @@
   - PilotScenarioTests: gerçek BaseRunner + RetryHandler + ExceptionClassifier ile 100 kayıtlık batch
   - Business (%33 katı, malzeme zaten mevcut) → Action Center; geçici System (portal timeout) → retry ile toparlanır
   - Sonuç: %97 başarı (≥%95 hedef), 0 hard failure; Infrastructure +3 (427)
-- [ ] WP-6.6: Kurulum/operasyon dokümantasyonu (Haiku)
+- [x] WP-6.6: Kurulum/operasyon dokümantasyonu (Haiku) — DONE (commit 79c21a4)
+  - docs/operations/installation.md — bileşen envanteri, harici bağımlılıklar, kurulum (DB/API/Studio/Agent/Kibana), appsettings yapılandırması (auth/vault/serilog/alerting), operasyon (sağlık/izleme/istisna/deployment governance/yedekleme), test/doğrulama, sorun giderme
+
+## Faz 6: ✅ COMPLETE (6 WP: 6.1 dashboard/işler/kuyruklar/robotlar, 6.2 Action Center, 6.3 Alerting+Kibana, 6.4 ortam yönetimi+deployment governance, 6.5 pilot senaryosu, 6.6 dokümantasyon)
+
+## 🎉 TÜM FAZLAR TAMAMLANDI (Faz 1-6). Testler: .NET 585 (Domain 4, Agent 83, Infrastructure 427, WebAPI 74) + Studio 171. Production build temiz.
 
