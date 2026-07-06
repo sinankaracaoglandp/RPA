@@ -166,4 +166,41 @@ describe('ComponentLibraryComponent', () => {
     const detailsPanel = fixture.nativeElement.querySelector('[data-testid="component-details-panel"]');
     expect(detailsPanel).toBeFalsy();
   });
+
+  it('approves a published component', () => {
+    fixture.detectChanges();
+
+    const req = httpMock.expectOne('/api/components');
+    req.flush(MOCK_COMPONENTS);
+    fixture.detectChanges();
+
+    component.selectedComponent.set(MOCK_COMPONENTS[0]);
+    fixture.detectChanges();
+
+    component.approveComponent();
+
+    const approveReq = httpMock.expectOne(`/api/components/${MOCK_COMPONENTS[0].componentId}/${MOCK_COMPONENTS[0].version}/approve`);
+    expect(approveReq.request.method).toBe('POST');
+
+    approveReq.flush(MOCK_COMPONENTS[0]);
+    expect(component.approveSuccess()).toBeTruthy();
+  });
+
+  it('shows error message on approve failure', () => {
+    fixture.detectChanges();
+
+    const req = httpMock.expectOne('/api/components');
+    req.flush(MOCK_COMPONENTS);
+    fixture.detectChanges();
+
+    component.selectedComponent.set(MOCK_COMPONENTS[0]);
+    fixture.detectChanges();
+
+    component.approveComponent();
+
+    const approveReq = httpMock.expectOne(`/api/components/${MOCK_COMPONENTS[0].componentId}/${MOCK_COMPONENTS[0].version}/approve`);
+    approveReq.flush('Unauthorized', { status: 403, statusText: 'Forbidden' });
+
+    expect(component.approveError()).toBeTruthy();
+  });
 });

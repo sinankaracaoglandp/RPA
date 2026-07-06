@@ -108,6 +108,21 @@
     </div>
   </div>
 
+  <!-- Publish Wizard Modal -->
+  <div
+    *ngIf="selectedComponent() && showPublishWizard()"
+    class="component-library__wizard-overlay"
+    (click)="closePublishWizard()"
+  >
+    <div class="component-library__wizard-container" (click)="$event.stopPropagation()">
+      <app-publish-wizard
+        [component]="selectedComponent()!"
+        (close)="closePublishWizard()"
+        (published)="onComponentPublished($event)"
+      ></app-publish-wizard>
+    </div>
+  </div>
+
   <!-- Details Panel -->
   <div
     *ngIf="selectedComponent()"
@@ -154,12 +169,21 @@
           </div>
         </div>
 
+        <!-- Status Messages -->
+        <div *ngIf="approveSuccess()" class="component-details__message component-details__message--success" role="status">
+          {{ 'componentLibrary.publishWizard.successMessage' | translate }}
+        </div>
+        <div *ngIf="approveError()" class="component-details__message component-details__message--error" role="alert">
+          {{ 'componentLibrary.publishWizard.errorMessage' | translate }}
+        </div>
+
         <div class="component-details__buttons">
           <button
             type="button"
             class="component-details__btn component-details__btn--primary"
             data-testid="component-publish-btn"
             [disabled]="selectedComponent()?.status !== 'Draft'"
+            (click)="openPublishWizard()"
           >
             {{ 'componentLibrary.details.publish' | translate }}
           </button>
@@ -167,9 +191,11 @@
             type="button"
             class="component-details__btn component-details__btn--secondary"
             data-testid="component-approve-btn"
-            [disabled]="selectedComponent()?.status !== 'Published'"
+            [disabled]="selectedComponent()?.status !== 'Published' || isApproving()"
+            (click)="approveComponent()"
           >
-            {{ 'componentLibrary.details.approve' | translate }}
+            <span *ngIf="!isApproving()">{{ 'componentLibrary.details.approve' | translate }}</span>
+            <span *ngIf="isApproving()">{{ 'componentLibrary.publishWizard.publishingButton' | translate }}</span>
           </button>
         </div>
       </div>
