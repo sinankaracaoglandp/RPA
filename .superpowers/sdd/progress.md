@@ -135,7 +135,10 @@
   - ✅ 6.1b/c Frontend: Dashboard + İşler + Robotlar + Kuyruklar ekranları + OrchestratorService (16 test, Studio 154/154)
   - Route'lar: /orchestrator, /orchestrator/jobs, /orchestrator/robots, /orchestrator/queues
   - ⏳ WP-6.1 genişletme (sonraya/ayrı dilim): Zamanlama/Tetikleyiciler, Ortam yönetimi, Kullanıcı/Rol, Audit görüntüleyici ekranları (Spec 8.2)
-- [ ] WP-6.2: Action Center (Sonnet)
+- [x] WP-6.2: Action Center (Sonnet) — DONE
+  - Backend: ActionItem DbSet + migration, IActionItemRepository/EfActionItemRepository, ActionCenterService (ListPending/Assign/Resolve), ActionCenterController
+  - Frontend: Action Center ekranı (tip filtresi + satır içi çözümleme/not), /orchestrator/action-center
+  - 20 test; .NET 552, Studio 159, build temiz
 - [ ] WP-6.3: Alerting motoru + Kibana dashboard şablonları (Haiku)
 - [ ] WP-6.4: Dev/Test/Prod + Publish/Approve uçtan uca test (Opus)
 - [ ] WP-6.5: Pilot senaryosu (OTP'li portal girişi + MM01) (Opus)
