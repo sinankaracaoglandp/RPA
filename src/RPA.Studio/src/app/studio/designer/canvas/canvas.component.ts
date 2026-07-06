@@ -464,6 +464,15 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     }
     this.pendingConnectionFrom = nodeId;
     this.ensurePendingPath();
+    // Basıldığı anda görsel geri bildirim: imleç henüz oynamadan soketten
+    // kısa bir başlangıç çizgisi göster (pointermove gelince gerçek uca uzar).
+    const from = this.socketPosition(nodeId, 'out');
+    if (from && this.pendingPath) {
+      this.pendingPath.setAttribute(
+        'd',
+        ConnectionComponent.buildPath(from, { x: from.x, y: from.y + 24 }),
+      );
+    }
   }
 
   /** Sürüklemeyi hedef node üzerinde tamamlar; kural ihlalinde null döner. */
