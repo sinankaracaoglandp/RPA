@@ -16,6 +16,26 @@
     border-color: #94a3b8;
   }
 
+  &--breakpoint {
+    border-color: #dc2626;
+  }
+
+  &--current {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4);
+  }
+
+  &__breakpoint {
+    position: absolute;
+    top: 0.4rem;
+    left: -0.35rem;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: #dc2626;
+    box-shadow: 0 0 0 2px #ffffff;
+  }
+
   &:focus-visible {
     outline: 2px solid #2563eb;
     outline-offset: 2px;

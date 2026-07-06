@@ -1,0 +1,71 @@
+<div
+  class="step-controls"
+  role="toolbar"
+  [attr.aria-label]="'debug.stepControls.ariaLabel' | translate"
+  data-testid="step-controls"
+>
+  <button
+    type="button"
+    class="step-controls__btn"
+    data-testid="step-resume"
+    [disabled]="!canControl() || !paused()"
+    [attr.aria-label]="'debug.stepControls.resume' | translate"
+    [title]="'debug.stepControls.resume' | translate"
+    (click)="onResume()"
+  >
+    <span aria-hidden="true">▶</span>
+    <span class="step-controls__label">{{ 'debug.stepControls.resume' | translate }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="step-controls__btn"
+    data-testid="step-into"
+    [disabled]="!canControl() || !paused()"
+    [attr.aria-label]="'debug.stepControls.stepInto' | translate"
+    [title]="'debug.stepControls.stepInto' | translate"
+    (click)="onStepInto()"
+  >
+    <span aria-hidden="true">⤓</span>
+    <span class="step-controls__label">{{ 'debug.stepControls.stepInto' | translate }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="step-controls__btn"
+    data-testid="step-over"
+    [disabled]="!canControl() || !paused()"
+    [attr.aria-label]="'debug.stepControls.stepOver' | translate"
+    [title]="'debug.stepControls.stepOver' | translate"
+    (click)="onStepOver()"
+  >
+    <span aria-hidden="true">⤼</span>
+    <span class="step-controls__label">{{ 'debug.stepControls.stepOver' | translate }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="step-controls__btn"
+    data-testid="step-pause"
+    [disabled]="!canControl() || !running()"
+    [attr.aria-label]="'debug.stepControls.pause' | translate"
+    [title]="'debug.stepControls.pause' | translate"
+    (click)="onPause()"
+  >
+    <span aria-hidden="true">⏸</span>
+    <span class="step-controls__label">{{ 'debug.stepControls.pause' | translate }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="step-controls__btn step-controls__btn--stop"
+    data-testid="step-stop"
+    [disabled]="!canControl()"
+    [attr.aria-label]="'debug.stepControls.stop' | translate"
+    [title]="'debug.stepControls.stop' | translate"
+    (click)="onStop()"
+  >
+    <span aria-hidden="true">⏹</span>
+    <span class="step-controls__label">{{ 'debug.stepControls.stop' | translate }}</span>
+  </button>
+</div>

@@ -103,5 +103,53 @@
       "errorMessage": "Failed to publish component",
       "validationError": "Please fill in all required fields"
     }
+  },
+  "debug": {
+    "panel": {
+      "ariaLabel": "Workflow debugger",
+      "title": "Debugger",
+      "execute": "Run with Debugging",
+      "viewerNotice": "Your role does not permit executing workflows."
+    },
+    "connection": {
+      "connected": "Agent Online",
+      "disconnected": "Agent Offline",
+      "connecting": "Connecting...",
+      "reconnecting": "Reconnecting..."
+    },
+    "state": {
+      "idle": "Idle",
+      "running": "Running",
+      "paused": "Paused",
+      "stopped": "Stopped",
+      "error": "Error"
+    },
+    "stepControls": {
+      "ariaLabel": "Step controls",
+      "resume": "Resume",
+      "stepInto": "Step Into",
+      "stepOver": "Step Over",
+      "pause": "Pause",
+      "stop": "Stop"
+    },
+    "breakpoints": {
+      "ariaLabel": "Breakpoints",
+      "title": "Breakpoints",
+      "empty": "No breakpoints set. Click a node to add one.",
+      "toggleAriaLabel": "Enable or disable breakpoint",
+      "removeAriaLabel": "Remove breakpoint"
+    },
+    "watch": {
+      "ariaLabel": "Variable watch",
+      "treeAriaLabel": "Variable tree",
+      "title": "Watch",
+      "empty": "No variables to display.",
+      "scope": {
+        "argument": "Arguments",
+        "global": "Global",
+        "component": "Component",
+        "local": "Local"
+      }
+    }
   }
 }

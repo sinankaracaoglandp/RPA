@@ -1,10 +1,28 @@
 <div class="designer flex h-full w-full">
   <app-toolbox [canvas]="canvas"></app-toolbox>
   <main class="designer__canvas relative flex-1">
+    <button
+      type="button"
+      class="designer__debug-toggle"
+      data-testid="designer-debug-toggle"
+      [attr.aria-pressed]="debugMode()"
+      [attr.aria-label]="'debug.panel.title' | translate"
+      (click)="toggleDebug()"
+    >
+      {{ 'debug.panel.title' | translate }}
+    </button>
     <app-canvas
       [workflow]="workflow()"
+      [breakpointNodeIds]="breakpointNodeIds()"
+      [currentNodeId]="debugCurrentNodeId()"
       (nodeSelect)="onNodeSelect($event)"
       (graphChanged)="onGraphChanged($event)"
     ></app-canvas>
   </main>
+  @if (debugMode()) {
+    <app-debug-panel
+      [workflow]="currentGraph() ?? workflow()"
+      (currentNodeChange)="onDebugCurrentNode($event)"
+    ></app-debug-panel>
+  }
 </div>

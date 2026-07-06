@@ -1,0 +1,76 @@
+<aside
+  class="debug-panel"
+  [attr.aria-label]="'debug.panel.ariaLabel' | translate"
+  data-testid="debug-panel"
+>
+  <header class="debug-panel__header">
+    <h2 class="debug-panel__title">{{ 'debug.panel.title' | translate }}</h2>
+
+    <div class="debug-panel__status">
+      <span
+        class="debug-panel__badge"
+        [class.debug-panel__badge--online]="connectionStatus() === 'connected'"
+        [class.debug-panel__badge--offline]="connectionStatus() === 'disconnected'"
+        data-testid="connection-status"
+        role="status"
+        [attr.aria-label]="connectionStatusKey | translate"
+      >
+        <span class="debug-panel__dot" aria-hidden="true"></span>
+        {{ connectionStatusKey | translate }}
+      </span>
+
+      <span
+        class="debug-panel__badge debug-panel__badge--state"
+        [attr.data-state]="executionState()"
+        data-testid="execution-state"
+        role="status"
+      >
+        {{ executionStateKey | translate }}
+      </span>
+    </div>
+  </header>
+
+  <div class="debug-panel__actions">
+    <button
+      type="button"
+      class="debug-panel__execute"
+      data-testid="debug-execute"
+      [disabled]="!canExecute() || !workflow()"
+      [attr.aria-label]="'debug.panel.execute' | translate"
+      (click)="onExecute()"
+    >
+      <span aria-hidden="true">▶</span>
+      {{ 'debug.panel.execute' | translate }}
+    </button>
+
+    @if (!hasExecutePermission) {
+      <p class="debug-panel__permission" data-testid="debug-permission-note" role="note">
+        {{ 'debug.panel.viewerNotice' | translate }}
+      </p>
+    }
+  </div>
+
+  <app-step-controls
+    [paused]="isPaused()"
+    [running]="isRunning()"
+    [canControl]="canControl()"
+    (resume)="onResume()"
+    (stepInto)="onStepInto()"
+    (stepOver)="onStepOver()"
+    (pause)="onPause()"
+    (stop)="onStop()"
+  ></app-step-controls>
+
+  @if (error()) {
+    <p class="debug-panel__error" data-testid="debug-error" role="alert">{{ error() }}</p>
+  }
+
+  <app-breakpoint-list
+    [breakpoints]="breakpoints()"
+    [currentNodeId]="currentNodeId()"
+    (toggleEnabled)="onToggleBreakpointEnabled($event)"
+    (remove)="onRemoveBreakpoint($event)"
+  ></app-breakpoint-list>
+
+  <app-watch-window [groups]="variableGroups()"></app-watch-window>
+</aside>

@@ -17,6 +17,10 @@ export interface CanvasNodeView {
   activityId?: string;
   icon?: string;
   selected?: boolean;
+  /** A breakpoint is set on this node (debug mode). */
+  breakpoint?: boolean;
+  /** Execution is currently paused on this node (debug mode). */
+  current?: boolean;
 }
 
 /**

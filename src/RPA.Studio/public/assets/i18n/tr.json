@@ -103,5 +103,53 @@
       "errorMessage": "Bileşen yayınlanırken hata oluştu",
       "validationError": "Lütfen tüm zorunlu alanları doldurun"
     }
+  },
+  "debug": {
+    "panel": {
+      "ariaLabel": "İş akışı hata ayıklayıcı",
+      "title": "Hata Ayıklayıcı",
+      "execute": "Hata Ayıklayarak Çalıştır",
+      "viewerNotice": "Rolünüz iş akışı çalıştırmaya izin vermiyor."
+    },
+    "connection": {
+      "connected": "Agent Çevrimiçi",
+      "disconnected": "Agent Çevrimdışı",
+      "connecting": "Bağlanıyor...",
+      "reconnecting": "Yeniden bağlanıyor..."
+    },
+    "state": {
+      "idle": "Boşta",
+      "running": "Çalışıyor",
+      "paused": "Duraklatıldı",
+      "stopped": "Durduruldu",
+      "error": "Hata"
+    },
+    "stepControls": {
+      "ariaLabel": "Adım denetimleri",
+      "resume": "Devam Et",
+      "stepInto": "İçine Gir",
+      "stepOver": "Üzerinden Geç",
+      "pause": "Duraklat",
+      "stop": "Durdur"
+    },
+    "breakpoints": {
+      "ariaLabel": "Kesme noktaları",
+      "title": "Kesme Noktaları",
+      "empty": "Kesme noktası yok. Eklemek için bir düğüme tıklayın.",
+      "toggleAriaLabel": "Kesme noktasını etkinleştir veya devre dışı bırak",
+      "removeAriaLabel": "Kesme noktasını kaldır"
+    },
+    "watch": {
+      "ariaLabel": "Değişken izleme",
+      "treeAriaLabel": "Değişken ağacı",
+      "title": "İzleme",
+      "empty": "Görüntülenecek değişken yok.",
+      "scope": {
+        "argument": "Argümanlar",
+        "global": "Genel",
+        "component": "Bileşen",
+        "local": "Yerel"
+      }
+    }
   }
 }

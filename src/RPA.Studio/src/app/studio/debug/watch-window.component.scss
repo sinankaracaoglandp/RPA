@@ -1,0 +1,75 @@
+.watch-window {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+
+  &__title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--rpa-text-muted, #9aa0aa);
+    margin: 0;
+  }
+
+  &__empty {
+    font-size: 0.8125rem;
+    color: var(--rpa-text-muted, #9aa0aa);
+    margin: 0;
+  }
+
+  &__tree {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  &__scope {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--rpa-text, #e6e8ec);
+    padding: 0.15rem 0;
+  }
+
+  &__vars {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  &__var {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr);
+    gap: 0.5rem;
+    align-items: baseline;
+    font-size: 0.8125rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 0.25rem;
+
+    &:focus-visible {
+      outline: 2px solid var(--rpa-accent, #4c8bf5);
+    }
+  }
+
+  &__name {
+    color: var(--rpa-text, #e6e8ec);
+    font-family: var(--rpa-mono, monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__type {
+    font-size: 0.7rem;
+    color: var(--rpa-text-muted, #9aa0aa);
+  }
+
+  &__value {
+    color: var(--rpa-accent, #4c8bf5);
+    font-family: var(--rpa-mono, monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

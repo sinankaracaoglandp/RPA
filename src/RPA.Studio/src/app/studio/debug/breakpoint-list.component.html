@@ -1,0 +1,45 @@
+<section
+  class="breakpoint-list"
+  [attr.aria-label]="'debug.breakpoints.ariaLabel' | translate"
+  data-testid="breakpoint-list"
+>
+  <h3 class="breakpoint-list__title">{{ 'debug.breakpoints.title' | translate }}</h3>
+
+  @if (breakpoints().length === 0) {
+    <p class="breakpoint-list__empty" data-testid="breakpoint-list-empty">
+      {{ 'debug.breakpoints.empty' | translate }}
+    </p>
+  } @else {
+    <ul class="breakpoint-list__items" role="list">
+      @for (bp of breakpoints(); track trackByNodeId($index, bp)) {
+        <li
+          class="breakpoint-list__item"
+          [class.breakpoint-list__item--current]="bp.nodeId === currentNodeId()"
+          data-testid="breakpoint-item"
+        >
+          <label class="breakpoint-list__toggle">
+            <input
+              type="checkbox"
+              [checked]="bp.enabled"
+              [attr.aria-label]="'debug.breakpoints.toggleAriaLabel' | translate"
+              (change)="onToggle(bp.nodeId)"
+            />
+            <span class="breakpoint-list__node" [class.breakpoint-list__node--disabled]="!bp.enabled">
+              {{ bp.nodeId }}
+            </span>
+          </label>
+          <button
+            type="button"
+            class="breakpoint-list__remove"
+            data-testid="breakpoint-remove"
+            [attr.aria-label]="'debug.breakpoints.removeAriaLabel' | translate"
+            [title]="'debug.breakpoints.removeAriaLabel' | translate"
+            (click)="onRemove(bp.nodeId)"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</section>

@@ -1,0 +1,41 @@
+.step-controls {
+  display: flex;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  align-items: center;
+
+  &__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8125rem;
+    border: 1px solid var(--rpa-border, #3a3f4b);
+    border-radius: 0.375rem;
+    background: var(--rpa-surface, #23272f);
+    color: var(--rpa-text, #e6e8ec);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--rpa-surface-hover, #2c313b);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--rpa-accent, #4c8bf5);
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    &--stop {
+      color: var(--rpa-danger, #f26d6d);
+    }
+  }
+
+  &__label {
+    white-space: nowrap;
+  }
+}

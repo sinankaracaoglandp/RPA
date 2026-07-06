@@ -91,6 +91,27 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   @Input() workflow?: WorkflowVersion;
   /** Disables mutation (used by the read-only debugger view). */
   @Input() readOnly = false;
+  /** Node ids that carry a breakpoint (debug mode). */
+  @Input()
+  set breakpointNodeIds(ids: string[]) {
+    this._breakpointNodeIds = new Set(ids ?? []);
+    this.refreshViews();
+  }
+  get breakpointNodeIds(): string[] {
+    return [...this._breakpointNodeIds];
+  }
+  /** Node currently paused on during execution (debug mode). */
+  @Input()
+  set currentNodeId(id: string | null) {
+    this._currentNodeId = id;
+    this.refreshViews();
+  }
+  get currentNodeId(): string | null {
+    return this._currentNodeId;
+  }
+
+  private _breakpointNodeIds = new Set<string>();
+  private _currentNodeId: string | null = null;
 
   @Output() readonly nodeSelect = new EventEmitter<string | null>();
   @Output() readonly graphChanged = new EventEmitter<WorkflowVersion>();
@@ -265,6 +286,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       nodeType: node.nodeType,
       activityId: node.activityId,
       selected: node.id === this.selectedNodeId,
+      breakpoint: this._breakpointNodeIds.has(node.id),
+      current: node.id === this._currentNodeId,
     };
   }
 

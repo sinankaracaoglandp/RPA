@@ -1,17 +1,24 @@
 <div
   class="canvas-node"
   [class.canvas-node--selected]="node.selected"
+  [class.canvas-node--breakpoint]="node.breakpoint"
+  [class.canvas-node--current]="node.current"
   role="button"
   tabindex="0"
   [attr.aria-label]="('canvas.node.ariaLabel' | translate) + ': ' + node.label"
   [attr.aria-selected]="!!node.selected"
   [attr.data-node-id]="node.id"
   [attr.data-node-type]="node.nodeType"
+  [attr.data-breakpoint]="!!node.breakpoint"
+  [attr.data-current]="!!node.current"
   data-testid="canvas-node"
   (click)="select()"
   (keydown.enter)="select()"
   (keydown.space)="select()"
 >
+  @if (node.breakpoint) {
+    <span class="canvas-node__breakpoint" data-testid="canvas-node-breakpoint" aria-hidden="true"></span>
+  }
   <span class="canvas-node__socket canvas-node__socket--in" aria-hidden="true"></span>
 
   <header class="canvas-node__header">

@@ -1,0 +1,34 @@
+<section
+  class="watch-window"
+  [attr.aria-label]="'debug.watch.ariaLabel' | translate"
+  data-testid="watch-window"
+>
+  <h3 class="watch-window__title">{{ 'debug.watch.title' | translate }}</h3>
+
+  @if (isEmpty()) {
+    <p class="watch-window__empty" data-testid="watch-window-empty">
+      {{ 'debug.watch.empty' | translate }}
+    </p>
+  } @else {
+    <div class="watch-window__tree" role="tree" [attr.aria-label]="'debug.watch.treeAriaLabel' | translate">
+      @for (group of groups(); track trackByScope($index, group)) {
+        <div class="watch-window__group" role="treeitem" [attr.aria-expanded]="true">
+          <div class="watch-window__scope" data-testid="watch-scope">
+            {{ scopeLabelKey(group.scope) | translate }}
+          </div>
+          <ul class="watch-window__vars" role="group">
+            @for (variable of group.variables; track trackByName($index, variable)) {
+              <li class="watch-window__var" role="treeitem" data-testid="watch-variable" tabindex="0">
+                <span class="watch-window__name">{{ variable.name }}</span>
+                @if (variable.type) {
+                  <span class="watch-window__type">{{ variable.type }}</span>
+                }
+                <span class="watch-window__value" data-testid="watch-value">{{ formatValue(variable.value) }}</span>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    </div>
+  }
+</section>
