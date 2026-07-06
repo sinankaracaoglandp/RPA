@@ -371,12 +371,22 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   /** Adds a node (activity by default) and returns its generated id. */
   async addNode(
     activityId: string,
-    options: { type?: WorkflowNodeType; label?: string; position?: NodePosition } = {},
+    options: {
+      type?: WorkflowNodeType;
+      label?: string;
+      position?: NodePosition;
+      properties?: Record<string, unknown>;
+    } = {},
   ): Promise<string> {
     this.assertWritable();
     const type = options.type ?? 'activity';
     const label = options.label ?? activityId;
-    const node = new FlowNode(label, type, type === 'activity' ? activityId : undefined);
+    const node = new FlowNode(
+      label,
+      type,
+      type === 'activity' ? activityId : undefined,
+      { ...(options.properties ?? {}) },
+    );
     await this.editor.addNode(node);
     const position = options.position ?? this.nextPosition();
     await this.area.translate(node.id, position);

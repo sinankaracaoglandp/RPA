@@ -82,7 +82,11 @@ export class SimplifiedToolboxComponent {
 
   async addActivity(activityId: string): Promise<void> {
     if (this.canvas) {
-      await this.canvas.addNode(activityId);
+      const meta = this.activities().find((a) => a.activityId === activityId);
+      await this.canvas.addNode(activityId, {
+        ...(meta?.displayName ? { label: meta.displayName } : {}),
+        ...(meta?.defaultProperties ? { properties: { ...meta.defaultProperties } } : {}),
+      });
     }
     this.activityAdded.emit({ activityId });
   }

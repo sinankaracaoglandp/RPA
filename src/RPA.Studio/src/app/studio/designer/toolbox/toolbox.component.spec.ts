@@ -129,7 +129,34 @@ describe('ToolboxComponent', () => {
 
     await component.addActivity('Web.Click');
 
-    expect(addNode).toHaveBeenCalledWith('Web.Click', {});
+    expect(addNode).toHaveBeenCalledWith('Web.Click', {
+      label: 'Click Element',
+    });
+  });
+
+  it('passes displayName and defaultProperties to the canvas when adding an activity', async () => {
+    const activitiesWithDefaults: ActivityMetadata[] = [
+      {
+        activityId: 'Logic.Delay',
+        displayName: 'Bekle',
+        category: 'Mantık',
+        description: 'Waits for a specified duration',
+        defaultProperties: { durationMs: 1000 },
+      },
+    ];
+    fixture.detectChanges();
+    flushActivities(activitiesWithDefaults);
+    fixture.detectChanges();
+
+    const addNode = vi.fn().mockResolvedValue('node-1');
+    component.canvas = { addNode } as unknown as ToolboxComponent['canvas'];
+
+    await component.addActivity('Logic.Delay');
+
+    expect(addNode).toHaveBeenCalledWith('Logic.Delay', {
+      label: 'Bekle',
+      properties: { durationMs: 1000 },
+    });
   });
 
   it('emits activityAdded when an activity is added', async () => {

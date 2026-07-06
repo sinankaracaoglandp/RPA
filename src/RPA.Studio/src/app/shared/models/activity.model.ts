@@ -17,4 +17,6 @@ export interface ActivityMetadata {
   icon?: string;
   inputs?: ActivityPort[];
   outputs?: ActivityPort[];
+  /** Katalogda tanımlı başlangıç özellik değerleri (node oluşturmada kopyalanır). */
+  defaultProperties?: Record<string, unknown>;
 }

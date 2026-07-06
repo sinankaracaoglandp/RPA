@@ -193,6 +193,17 @@ describe('CanvasComponent', () => {
     await expect(component.addNode('A')).rejects.toThrow('read-only');
   });
 
+  it('creates a node with the provided initial properties and label', async () => {
+    await ready();
+    const id = await component.addNode('Logic.Delay', {
+      label: 'Bekle',
+      properties: { durationMs: 1000 },
+    });
+    const node = component.editor.getNode(id)!;
+    expect(node.label).toBe('Bekle');
+    expect(node.properties).toEqual({ durationMs: 1000 });
+  });
+
   describe('node click behaviour (regression: click must not delete)', () => {
     it('keeps the node in the graph and emits nodeSelect when the card is clicked', async () => {
       await ready();

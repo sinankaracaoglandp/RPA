@@ -99,7 +99,12 @@ export class ToolboxComponent {
 
   async addActivity(activityId: string, position?: { x: number; y: number }): Promise<void> {
     if (this.canvas) {
-      await this.canvas.addNode(activityId, position ? { position } : {});
+      const meta = this.activities().find((a) => a.activityId === activityId);
+      await this.canvas.addNode(activityId, {
+        ...(position ? { position } : {}),
+        ...(meta?.displayName ? { label: meta.displayName } : {}),
+        ...(meta?.defaultProperties ? { properties: { ...meta.defaultProperties } } : {}),
+      });
     }
     this.activityAdded.emit({ activityId, position });
   }

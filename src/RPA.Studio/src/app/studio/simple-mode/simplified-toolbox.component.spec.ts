@@ -53,6 +53,8 @@ describe('SimplifiedToolboxComponent', () => {
 
     await component.addActivity('Web.Click');
 
-    expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click');
+    expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click', {
+      label: 'Click Element',
+    });
   });
 });
