@@ -279,16 +279,16 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `perf`
 
 ## Live Database
 
-**Local development:** SQL Server LocalDB (instalasyon yapma `sqllocaldb create mssqllocaldb`):
+**Local development:** PostgreSQL 14+ (Npgsql sağlayıcısı). Docker: `docker run -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rpa_dev -p 5432:5432 postgres:16`:
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"
+    "DefaultConnection": "Host=localhost;Port=5432;Database=rpa_dev;Username=postgres;Password=postgres;"
   }
 }
 ```
 
-**Test:** In-memory database (`Microsoft.EntityFrameworkCore.InMemory`) veya Test Containers (SQL Server docker).
+**Test:** In-memory database (`Microsoft.EntityFrameworkCore.InMemory`); migration script/metadata testleri SQLite ile.
 
 Migrations: `dotnet ef migrations add <name> --project src/RPA.Infrastructure` sonra `dotnet ef database update`.
 

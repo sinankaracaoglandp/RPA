@@ -45,7 +45,7 @@ public class TriggerMigrationTests
         using var db = CreateSqliteDb(connection);
 
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
-        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("AddTriggerScheduleJobRun"));
+        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("InitialCreate"));
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class TriggerMigrationTests
         connection.Open();
         using var db = CreateSqliteDb(connection);
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
-        var migration = migrationsAssembly.Migrations.Single(m => m.Key.Contains("AddTriggerScheduleJobRun"));
+        var migration = migrationsAssembly.Migrations.Single(m => m.Key.Contains("InitialCreate"));
         var instance = migrationsAssembly.CreateMigration(migration.Value, "Sqlite");
 
         Assert.NotEmpty(instance.UpOperations);

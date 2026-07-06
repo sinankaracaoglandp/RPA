@@ -69,7 +69,7 @@ public class RobotMigrationTests
         using var db = CreateSqliteDb(connection);
 
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
-        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("AddRobot"));
+        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("InitialCreate"));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class RobotMigrationTests
 
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
         var migration = migrationsAssembly.Migrations
-            .Single(m => m.Key.Contains("AddRobot"));
+            .Single(m => m.Key.Contains("InitialCreate"));
         var instance = migrationsAssembly.CreateMigration(migration.Value, "Sqlite");
 
         // BuildTargetModel kod yolunu tetikler ve Robot varlığını doğrular.
@@ -97,6 +97,6 @@ public class RobotMigrationTests
         connection.Open();
         using var db = CreateSqliteDb(connection);
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
-        return migrationsAssembly.Migrations.Keys.Single(k => k.Contains("AddRobot"));
+        return migrationsAssembly.Migrations.Keys.Single(k => k.Contains("InitialCreate"));
     }
 }

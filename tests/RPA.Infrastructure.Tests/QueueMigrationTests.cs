@@ -43,7 +43,7 @@ public class QueueMigrationTests
         using var db = CreateSqliteDb(connection);
 
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
-        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("AddQueueClaimIndex"));
+        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("InitialCreate"));
     }
 
     [Fact]
@@ -53,9 +53,9 @@ public class QueueMigrationTests
         connection.Open();
         using var db = CreateSqliteDb(connection);
         var migrationsAssembly = db.GetService<IMigrationsAssembly>();
-        var migrationId = migrationsAssembly.Migrations.Keys.Single(k => k.Contains("AddQueueClaimIndex"));
+        var migrationId = migrationsAssembly.Migrations.Keys.Single(k => k.Contains("InitialCreate"));
 
-        var migration = migrationsAssembly.Migrations.Single(m => m.Key.Contains("AddQueueClaimIndex"));
+        var migration = migrationsAssembly.Migrations.Single(m => m.Key.Contains("InitialCreate"));
         var instance = migrationsAssembly.CreateMigration(migration.Value, "Sqlite");
 
         Assert.NotEmpty(instance.UpOperations);

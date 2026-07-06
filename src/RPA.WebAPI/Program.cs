@@ -17,6 +17,10 @@ using RPA.WebAPI.Hubs;
 using RPA.WebAPI.Middleware;
 using Serilog;
 
+// PostgreSQL (Npgsql): DateTime alanlarını 'timestamp without time zone' olarak yaz —
+// Kind=Unspecified/Local değerlerde timestamptz kısıtlaması hata vermesin (Spec: UTC saklama).
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Serilog Configuration (Spec Bölüm 11) ---
@@ -41,9 +45,9 @@ builder.Services.AddVaultServices(builder.Configuration);
 // Persistence: RpaDbContext (kuyruk/idempotency repository'lerinin bağımlılığı) — Spec Bölüm 4.
 // AddWorkflowServices IQueueItemRepository/IIdempotencyService kaydeder; bunlar RpaDbContext'e muhtaç.
 builder.Services.AddDbContext<RpaDbContext>(options =>
-    options.UseSqlServer(
+    options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"));
+        ?? "Host=localhost;Port=5432;Database=rpa_dev;Username=postgres;Password=postgres;"));
 
 // Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
 builder.Services.AddWorkflowServices();

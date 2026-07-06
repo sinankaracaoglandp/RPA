@@ -10,6 +10,9 @@ using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
 using Serilog;
 
+// PostgreSQL (Npgsql): DateTime alanlarını 'timestamp without time zone' olarak yaz.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 // --- Serilog (Spec Bölüm 11): Elasticsearch'e correlation ID = Robot/JobRun ile loglar ---
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(new ConfigurationBuilder()
@@ -31,9 +34,9 @@ try
 
     // --- Infrastructure bağımlılıkları (paylaşılan DB üzerinden Orchestrator ile iletişim) ---
     builder.Services.AddDbContext<RpaDbContext>(options =>
-        options.UseSqlServer(
+        options.UseNpgsql(
             builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"));
+            ?? "Host=localhost;Port=5432;Database=rpa_dev;Username=postgres;Password=postgres;"));
 
     builder.Services.AddVaultServices(builder.Configuration); // Orchestrator/Vault kimlik bilgileri.
     builder.Services.AddWorkflowServices();                   // IWorkflowRunner (BaseRunner).

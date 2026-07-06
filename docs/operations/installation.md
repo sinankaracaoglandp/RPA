@@ -18,7 +18,7 @@ Mimari ve gereksinim detayları için `docs/specs/2026-07-04-rpa-platform-v3-des
 
 | Servis | Amaç | Zorunlu mu? |
 |--------|------|-------------|
-| **SQL Server** (2019+/LocalDB) | Ana veri deposu | Evet |
+| **PostgreSQL 14+** | Ana veri deposu | Evet |
 | **Elasticsearch 7.x** + **Kibana** | Log toplama + panolar | Üretimde evet |
 | **HashiCorp Vault** *(veya DPAPI)* | Credential saklama | Evet (DPAPI tek-makine fallback) |
 | **AD / LDAP** | SSO kimlik doğrulama | Üretimde evet |
@@ -31,7 +31,7 @@ Mimari ve gereksinim detayları için `docs/specs/2026-07-04-rpa-platform-v3-des
 
 - **.NET SDK 10.0** (`global.json` → `rollForward: latestFeature`)
 - **Node.js 20+** ve **npm 11+** (Studio)
-- **SQL Server** veya LocalDB (`sqllocaldb create mssqllocaldb`)
+- **PostgreSQL 14+** (yerel kurulum veya Docker: `docker run -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rpa_dev -p 5432:5432 postgres:16`)
 - Robot Agent makinelerinde: SAP GUI (SAP GUI aktiviteleri için), SAP NCo runtime
 
 ---
@@ -41,15 +41,16 @@ Mimari ve gereksinim detayları için `docs/specs/2026-07-04-rpa-platform-v3-des
 ### 3.1 Veritabanı
 
 ```bash
-# LocalDB (geliştirme)
-sqllocaldb create mssqllocaldb
-
-# Şemayı migration'larla oluştur
+# PostgreSQL çalışır durumda olmalı (yerel veya Docker). Ardından şemayı migration'larla oluştur:
 dotnet ef database update --project src/RPA.Infrastructure --startup-project src/RPA.WebAPI
 ```
 
 Bağlantı dizesi `appsettings.json` → `ConnectionStrings:DefaultConnection`. Varsayılan:
-`Server=(localdb)\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;`
+`Host=localhost;Port=5432;Database=rpa_dev;Username=postgres;Password=postgres;`
+
+> Sağlayıcı: **Npgsql** (`Npgsql.EntityFrameworkCore.PostgreSQL`). Kuyruk claim'i
+> `FOR UPDATE SKIP LOCKED` ile atomiktir (çoklu robot güvenli). DateTime alanları
+> `Npgsql.EnableLegacyTimestampBehavior` ile `timestamp` olarak yazılır (UTC saklama).
 
 ### 3.2 Orchestrator API
 
@@ -206,7 +207,7 @@ Teams kanalı için alarm kuralında webhook URL'si alıcı olarak verilir.
 
 ### 5.5 Yedekleme
 
-- **SQL Server:** düzenli tam + log yedeği (JobRun, kuyruk, audit, deployment durumu).
+- **PostgreSQL:** düzenli `pg_dump` / WAL arşivleme (JobRun, kuyruk, audit, deployment durumu).
 - **Vault:** kendi yedekleme prosedürü (HashiCorp); DPAPI için makine anahtarı korunur.
 - **Elasticsearch:** snapshot politikası (log saklama süresine göre).
 

@@ -92,8 +92,8 @@ public sealed class EfQueueItemRepository : IQueueItemRepository
 
     public async Task<QueueItem?> ClaimNextNewItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default)
     {
-        if (_db.Database.IsSqlServer())
-            return await ClaimWithUpdLockAsync(queueId, robotId, cancellationToken);
+        if (_db.Database.IsNpgsql())
+            return await ClaimWithSkipLockedAsync(queueId, robotId, cancellationToken);
 
         // Sağlayıcı satır kilidi desteklemiyor (test): kuyruk bazında süreç-içi seri hale getir.
         var gate = ClaimLocks.GetOrAdd(queueId, _ => new SemaphoreSlim(1, 1));
@@ -117,17 +117,19 @@ public sealed class EfQueueItemRepository : IQueueItemRepository
         }
     }
 
-    private async Task<QueueItem?> ClaimWithUpdLockAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken)
+    private async Task<QueueItem?> ClaimWithSkipLockedAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken)
     {
-        // UPDLOCK: sıradaki satırı yazma amaçlı kilitle. READPAST: başka robotun kilitlediği satırı
-        // atla (bekleme). ROWLOCK: satır seviyesinde kilit. Böylece 5 robot aynı anda çağırsa bile
-        // her biri farklı (veya boş) satır alır; aynı kalem iki kez atanmaz.
+        // FOR UPDATE: sıradaki satırı yazma amaçlı kilitle. SKIP LOCKED: başka robotun kilitlediği
+        // satırı atla (bekleme). Böylece N robot aynı anda çağırsa bile her biri farklı (veya boş)
+        // satır alır; aynı kalem iki kez atanmaz. (SQL Server UPDLOCK+READPAST'ın PostgreSQL karşılığı.)
         var status = (int)QueueItemStatus.New;
         var item = await _db.QueueItems
             .FromSqlInterpolated($@"
-                SELECT TOP(1) * FROM [QueueItems] WITH (UPDLOCK, READPAST, ROWLOCK)
-                WHERE [QueueId] = {queueId} AND [Status] = {status} AND [IsDeleted] = 0
-                ORDER BY [CreatedAt]")
+                SELECT * FROM ""QueueItems""
+                WHERE ""QueueId"" = {queueId} AND ""Status"" = {status} AND ""IsDeleted"" = false
+                ORDER BY ""CreatedAt""
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED")
             .FirstOrDefaultAsync(cancellationToken);
         if (item is null)
             return null;
