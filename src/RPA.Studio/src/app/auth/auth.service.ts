@@ -44,6 +44,22 @@ export class AuthService {
     return raw ? (JSON.parse(raw) as string[]) : [];
   }
 
+  /** JWT `sub` claim'inden kullanıcı adını çözer (yalnızca gösterim amaçlı). */
+  getUsername(): string | null {
+    const token = this.getToken();
+    if (!token) {
+      return null;
+    }
+    try {
+      const payload = token.split('.')[1];
+      const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+      const claims = JSON.parse(json) as { sub?: string };
+      return claims.sub ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private setToken(token: string): void {
     localStorage.setItem(TOKEN_KEY, token);
   }

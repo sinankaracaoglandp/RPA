@@ -1,0 +1,120 @@
+<div class="min-h-screen bg-slate-100">
+  <!-- Üst bar -->
+  <header class="border-b border-slate-200 bg-white">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <div class="flex items-center gap-3">
+        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">
+          R
+        </div>
+        <span class="text-lg font-semibold text-slate-800">{{ 'dashboard.brand' | translate }}</span>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div class="flex gap-1 text-sm">
+          <button
+            type="button"
+            class="rounded px-2 py-1 text-slate-600 hover:bg-slate-100"
+            [class.font-bold]="translationService.currentLang() === 'tr'"
+            [class.text-blue-600]="translationService.currentLang() === 'tr'"
+            (click)="changeLanguage('tr')"
+            data-testid="lang-tr"
+          >
+            TR
+          </button>
+          <button
+            type="button"
+            class="rounded px-2 py-1 text-slate-600 hover:bg-slate-100"
+            [class.font-bold]="translationService.currentLang() === 'en'"
+            [class.text-blue-600]="translationService.currentLang() === 'en'"
+            (click)="changeLanguage('en')"
+            data-testid="lang-en"
+          >
+            EN
+          </button>
+        </div>
+
+        @if (username) {
+          <span class="hidden text-sm text-slate-600 sm:inline" data-testid="dashboard-username">
+            {{ username }}
+          </span>
+        }
+
+        <button
+          type="button"
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          (click)="logout()"
+          data-testid="logout-button"
+        >
+          {{ 'dashboard.logout' | translate }}
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-10">
+    <!-- Karşılama -->
+    <div class="mb-10">
+      <h1 class="text-2xl font-semibold text-slate-800">
+        {{ 'dashboard.greeting' | translate }}@if (username) {, {{ username }}}
+      </h1>
+      <p class="mt-1 text-slate-500">{{ 'dashboard.subtitle' | translate }}</p>
+      <p class="mt-2 text-sm text-slate-400">
+        {{ 'dashboard.rolesLabel' | translate }}: {{ rolesCount() }}
+      </p>
+    </div>
+
+    <!-- Studio bölümü -->
+    <section class="mb-12">
+      <div class="mb-4">
+        <h2 class="text-lg font-semibold text-slate-700">{{ 'dashboard.sectionStudio' | translate }}</h2>
+        <p class="text-sm text-slate-500">{{ 'dashboard.sectionStudioDesc' | translate }}</p>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        @for (card of studioCards; track card.route) {
+          <a
+            [routerLink]="card.route"
+            class="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
+            [attr.data-testid]="'nav-card-' + card.route"
+          >
+            <div class="mb-3 flex h-11 w-11 items-center justify-center rounded-lg" [ngClass]="card.accent">
+              <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="card.icon" />
+              </svg>
+            </div>
+            <h3 class="font-medium text-slate-800 group-hover:text-blue-700">
+              {{ card.titleKey | translate }}
+            </h3>
+            <p class="mt-1 text-sm text-slate-500">{{ card.descKey | translate }}</p>
+          </a>
+        }
+      </div>
+    </section>
+
+    <!-- Orchestrator bölümü -->
+    <section>
+      <div class="mb-4">
+        <h2 class="text-lg font-semibold text-slate-700">{{ 'dashboard.sectionOrchestrator' | translate }}</h2>
+        <p class="text-sm text-slate-500">{{ 'dashboard.sectionOrchestratorDesc' | translate }}</p>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        @for (card of orchestratorCards; track card.route) {
+          <a
+            [routerLink]="card.route"
+            class="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
+            [attr.data-testid]="'nav-card-' + card.route"
+          >
+            <div class="mb-3 flex h-11 w-11 items-center justify-center rounded-lg" [ngClass]="card.accent">
+              <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="card.icon" />
+              </svg>
+            </div>
+            <h3 class="font-medium text-slate-800 group-hover:text-blue-700">
+              {{ card.titleKey | translate }}
+            </h3>
+            <p class="mt-1 text-sm text-slate-500">{{ card.descKey | translate }}</p>
+          </a>
+        }
+      </div>
+    </section>
+  </main>
+</div>
