@@ -65,6 +65,37 @@ describe('NodeComponent', () => {
     expect(emitted).toEqual([component.node.id]);
   });
 
+  it('emits connectStart even when an ancestor swallows bubbling pointerdown (Rete drag simulation)', () => {
+    // rete-area-plugin mounts NodeComponent directly onto its own node-host
+    // element (createComponent hostElement) and attaches a bubble-phase
+    // pointerdown listener there that calls stopPropagation() once it fires
+    // (Drag.down). Wrap the fixture root in such an ancestor to reproduce
+    // the real DOM shape and assert the socket still wins the race via the
+    // capture-phase safeguard in ngAfterViewInit.
+    const ancestor = document.createElement('div');
+    ancestor.appendChild(fixture.nativeElement);
+    document.body.appendChild(ancestor);
+    let ancestorSaw = false;
+    ancestor.addEventListener('pointerdown', (e) => {
+      ancestorSaw = true;
+      e.stopPropagation();
+    });
+
+    const emitted: string[] = [];
+    component.connectStart.subscribe((id) => emitted.push(id));
+    fixture.detectChanges();
+
+    const outSocket: HTMLElement =
+      fixture.nativeElement.querySelector('[data-testid="canvas-node-socket-out"]');
+    outSocket.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+
+    expect(emitted).toEqual([component.node.id]);
+    expect(ancestorSaw).toBe(false);
+
+    ancestor.removeChild(fixture.nativeElement);
+    document.body.removeChild(ancestor);
+  });
+
   it('emits connectDrop on pointerup over the card', () => {
     const emitted: string[] = [];
     component.connectDrop.subscribe((id) => emitted.push(id));

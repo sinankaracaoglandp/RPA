@@ -347,6 +347,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.classList.add('canvas-connections');
     svg.setAttribute('data-testid', 'canvas-connections');
+    // Stil sayfası henüz uygulanmamış olsa bile (ör. FOUC penceresi) overlay'in
+    // hit-testable olmaması garanti edilsin — asıl kural yine SCSS'te.
+    svg.setAttribute('pointer-events', 'none');
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.appendChild(group);
     container.appendChild(svg);
@@ -708,6 +711,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     path.setAttribute('class', 'canvas-connections__path canvas-connections__path--pending');
     path.setAttribute('data-testid', 'canvas-connection-pending');
     path.setAttribute('fill', 'none');
+    // Bu çizgi imleci birebir takip eder; hit-testable olursa pointerup
+    // hedef node yerine bu path'e düşer ve bağlantı tamamlanmaz.
+    path.setAttribute('pointer-events', 'none');
     this.connectionGroup.appendChild(path);
     this.pendingPath = path;
   }

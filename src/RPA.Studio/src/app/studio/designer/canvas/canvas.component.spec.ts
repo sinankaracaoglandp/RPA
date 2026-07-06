@@ -276,6 +276,20 @@ describe('CanvasComponent', () => {
       expect(conn.target).toBe(b);
     });
 
+    it('keeps the connection overlay and pending path non-hit-testable (drop must reach the node card)', async () => {
+      await ready();
+      const a = await component.addNode('A');
+      component.beginConnection(a);
+
+      const svg = fixture.nativeElement.querySelector('[data-testid="canvas-connections"]');
+      expect(svg.getAttribute('pointer-events')).toBe('none');
+
+      const pending = fixture.nativeElement.querySelector(
+        '[data-testid="canvas-connection-pending"]',
+      );
+      expect(pending.getAttribute('pointer-events')).toBe('none');
+    });
+
     it('cancelConnection drops the pending connection without creating one', async () => {
       await ready();
       const a = await component.addNode('A');

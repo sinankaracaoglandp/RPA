@@ -1,6 +1,18 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  Output,
+  inject,
+} from '@angular/core';
 import { TranslatePipe } from '../../../core/translate.pipe';
+
+const OUT_SOCKET_SELECTOR = '[data-testid="canvas-node-socket-out"]';
 
 /**
  * View-model handed to the node renderer. Kept independent of the Rete
@@ -35,13 +47,44 @@ export interface CanvasNodeView {
   templateUrl: './node.component.html',
   styleUrls: ['./node.component.scss'],
 })
-export class NodeComponent {
+export class NodeComponent implements AfterViewInit, OnDestroy {
   @Input({ required: true }) node!: CanvasNodeView;
 
   @Output() readonly nodeSelect = new EventEmitter<string>();
   @Output() readonly nodeDelete = new EventEmitter<string>();
   @Output() readonly connectStart = new EventEmitter<string>();
   @Output() readonly connectDrop = new EventEmitter<string>();
+
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly capturePointerDown = (event: Event): void => {
+    const target = event.target as HTMLElement | null;
+    const socket = target?.closest?.(OUT_SOCKET_SELECTOR);
+    if (!socket) {
+      return;
+    }
+    // Rete'nin node-host elementine bağladığı sürükleme dinleyicisi de aynı
+    // elementte (Angular hostElement mount modu) bubble aşamasında pointerdown
+    // dinliyor. Gerçek tarayıcıda soket üzerindeki bırakma sırası garanti
+    // edilemediğinden (bkz. rete-area-plugin Drag.down → stopPropagation),
+    // capture aşamasında müdahale ederek bağlantı sürüklemesinin node
+    // taşımaya "kaçırılmasını" kesin olarak engelliyoruz.
+    event.stopPropagation();
+    (event as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
+    event.preventDefault();
+    this.connectStart.emit(this.node.id);
+  };
+
+  ngAfterViewInit(): void {
+    this.elementRef.nativeElement.addEventListener('pointerdown', this.capturePointerDown, {
+      capture: true,
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.elementRef.nativeElement.removeEventListener('pointerdown', this.capturePointerDown, {
+      capture: true,
+    });
+  }
 
   select(): void {
     this.nodeSelect.emit(this.node.id);
