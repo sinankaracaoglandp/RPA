@@ -145,7 +145,12 @@
   - Persistence: AlertRule DbSet + migration + EfAlertRuleRepository + AlertRulesController (CRUD/toggle)
   - Frontend: Alarm Kuralları ekranı (/orchestrator/alert-rules); Kibana: deploy/kibana/rpa-dashboards.ndjson
   - 30 test; .NET 567, Studio 164, build temiz
-- [ ] WP-6.4: Dev/Test/Prod + Publish/Approve uçtan uca test (Opus)
+- [x] WP-6.4: Dev/Test/Prod + Publish/Approve uçtan uca test (Opus) — DONE (commit 114fa16)
+  - Ortam yönetimi: IEnvironmentRepository + EnvironmentService (EnsureDefaults idempotent Dev/Test/Prod, benzersiz ad) + EnvironmentsController + Ortamlar ekranı (/orchestrator/environments)
+  - Deployment governance: IWorkflowVersionRepository + WorkflowDeploymentService (Draft→Test Developer, Test→Published/Prod Approver; Draft doğrudan onaylanamaz, approve idempotent) + WorkflowDeploymentController (list/publish/approve)
+  - RpaDbContext: Environment + WorkflowVersion DbSet + config + migration (System.Environment ad çakışması alias ile giderildi)
+  - OrchestratorService: publish/approveWorkflowVersion + list/createEnvironment
+  - Testler: Infrastructure +11 (424), WebAPI +7 (74), Studio +7 (171); .NET 585, build temiz
 - [ ] WP-6.5: Pilot senaryosu (OTP'li portal girişi + MM01) (Opus)
 - [ ] WP-6.6: Kurulum/operasyon dokümantasyonu (Haiku)
 
