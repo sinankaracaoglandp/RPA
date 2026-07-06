@@ -11,4 +11,10 @@ public interface IComponentStore
 {
     /// <summary>Belirtilen component için bilinen tüm versiyonları döndürür (sırasız olabilir).</summary>
     IReadOnlyList<ComponentVersion> GetVersions(string componentId);
+
+    /// <summary>
+    /// Tüm component'ler arasında Status == Published olan versiyonları döndürür
+    /// (Faz 5 Task 5.3 Component Library UI — GET /api/components listesi).
+    /// </summary>
+    Task<List<ComponentVersion>> GetPublishedVersionsAsync();
 }

@@ -10,4 +10,10 @@ public class ComponentVersion : BaseEntity
     public string JsonDefinition { get; set; } = "{}";
     public string InputOutputSchema { get; set; } = "{}";
     public ComponentStatus Status { get; set; } = ComponentStatus.Draft;
+
+    // Kütüphane görüntüleme metaverisi (opsiyonel — Faz 5 Task 5.3 Component Library UI).
+    public string? DisplayName { get; set; }
+    public string? Description { get; set; }
+    public string? Author { get; set; }
+    public string? Category { get; set; }
 }

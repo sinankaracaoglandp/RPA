@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.Workflow;
 
 using RPA.Domain.Entities;
+using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
 
 /// <summary>
@@ -47,5 +48,15 @@ public sealed class InMemoryComponentStore : IComponentStore
             return list;
         }
         return Array.Empty<ComponentVersion>();
+    }
+
+    /// <inheritdoc />
+    public Task<List<ComponentVersion>> GetPublishedVersionsAsync()
+    {
+        var published = _byKey.Values
+            .SelectMany(v => v)
+            .Where(v => v.Status == ComponentStatus.Published)
+            .ToList();
+        return Task.FromResult(published);
     }
 }

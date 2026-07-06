@@ -80,4 +80,18 @@ public sealed class InMemoryComponentPublishRepository : IComponentPublishReposi
         }
         return Array.Empty<ComponentVersion>();
     }
+
+    /// <inheritdoc />
+    public Task<List<ComponentVersion>> GetPublishedVersionsAsync()
+    {
+        var published = new List<ComponentVersion>();
+        foreach (var list in _byComponent.Values)
+        {
+            lock (list)
+            {
+                published.AddRange(list.Where(v => v.Status == ComponentStatus.Published));
+            }
+        }
+        return Task.FromResult(published);
+    }
 }
