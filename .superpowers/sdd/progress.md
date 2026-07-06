@@ -151,6 +151,10 @@
   - RpaDbContext: Environment + WorkflowVersion DbSet + config + migration (System.Environment ad çakışması alias ile giderildi)
   - OrchestratorService: publish/approveWorkflowVersion + list/createEnvironment
   - Testler: Infrastructure +11 (424), WebAPI +7 (74), Studio +7 (171); .NET 585, build temiz
-- [ ] WP-6.5: Pilot senaryosu (OTP'li portal girişi + MM01) (Opus)
+- [x] WP-6.5: Pilot senaryosu (OTP'li portal girişi + MM01) (Opus) — DONE (commit 4e7053c)
+  - pilot/mm01-material-creation.workflow.json (4 node: login/fetch/create/done) + pilot/README.md
+  - PilotScenarioTests: gerçek BaseRunner + RetryHandler + ExceptionClassifier ile 100 kayıtlık batch
+  - Business (%33 katı, malzeme zaten mevcut) → Action Center; geçici System (portal timeout) → retry ile toparlanır
+  - Sonuç: %97 başarı (≥%95 hedef), 0 hard failure; Infrastructure +3 (427)
 - [ ] WP-6.6: Kurulum/operasyon dokümantasyonu (Haiku)
 
