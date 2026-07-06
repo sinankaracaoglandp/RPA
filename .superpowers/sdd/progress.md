@@ -139,7 +139,12 @@
   - Backend: ActionItem DbSet + migration, IActionItemRepository/EfActionItemRepository, ActionCenterService (ListPending/Assign/Resolve), ActionCenterController
   - Frontend: Action Center ekranı (tip filtresi + satır içi çözümleme/not), /orchestrator/action-center
   - 20 test; .NET 552, Studio 159, build temiz
-- [ ] WP-6.3: Alerting motoru + Kibana dashboard şablonları (Haiku)
+- [x] WP-6.3: Alerting motoru + Kibana dashboard şablonları (Haiku) — DONE
+  - Motor: AlertConditionEvaluator + AlertMetricsProvider + AlertEvaluationService + AlertEvaluationHostedService
+  - Bildirim: ChannelNotificationSender (Teams webhook HTTP + email seam) + SmtpAlertEmailSender (MailKit)
+  - Persistence: AlertRule DbSet + migration + EfAlertRuleRepository + AlertRulesController (CRUD/toggle)
+  - Frontend: Alarm Kuralları ekranı (/orchestrator/alert-rules); Kibana: deploy/kibana/rpa-dashboards.ndjson
+  - 30 test; .NET 567, Studio 164, build temiz
 - [ ] WP-6.4: Dev/Test/Prod + Publish/Approve uçtan uca test (Opus)
 - [ ] WP-6.5: Pilot senaryosu (OTP'li portal girişi + MM01) (Opus)
 - [ ] WP-6.6: Kurulum/operasyon dokümantasyonu (Haiku)
