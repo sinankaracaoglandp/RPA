@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0",
+  "id": "6a5f0000-0000-0000-0000-000000000001",
+  "name": "Pilot — Müşteri Portalından Veri ile SAP MM01 Malzeme Açma",
+  "version": "1.0.0",
+  "arguments": {
+    "in": [
+      { "name": "recordId", "type": "int" },
+      { "name": "materialName", "type": "string" }
+    ],
+    "out": [
+      { "name": "materialNumber", "type": "string" },
+      { "name": "result", "type": "string" }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "login",
+      "type": "activity",
+      "activity": "Web.Portal.Login",
+      "properties": { "recordId": "${recordId}" }
+    },
+    {
+      "id": "fetch",
+      "type": "activity",
+      "activity": "Web.Portal.FetchMaterial",
+      "properties": { "recordId": "${recordId}", "materialName": "${materialName}" }
+    },
+    {
+      "id": "create",
+      "type": "activity",
+      "activity": "Sap.Nco.CreateMaterial",
+      "properties": { "recordId": "${recordId}", "materialName": "${materialName}" }
+    },
+    {
+      "id": "done",
+      "type": "assign",
+      "variableName": "result",
+      "value": "Malzeme ${materialNumber} oluşturuldu"
+    }
+  ],
+  "connections": [
+    { "from": "login", "to": "fetch" },
+    { "from": "fetch", "to": "create" },
+    { "from": "create", "to": "done" }
+  ]
+}
