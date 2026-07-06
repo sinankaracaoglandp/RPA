@@ -24,5 +24,21 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./studio/templates/template-gallery.component').then((m) => m.TemplateGalleryComponent),
   },
+  {
+    path: 'orchestrator',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./orchestrator/dashboard/orchestrator-dashboard.component').then((m) => m.OrchestratorDashboardComponent),
+  },
+  {
+    path: 'orchestrator/jobs',
+    canActivate: [authGuard],
+    loadComponent: () => import('./orchestrator/jobs/jobs.component').then((m) => m.JobsComponent),
+  },
+  {
+    path: 'orchestrator/robots',
+    canActivate: [authGuard],
+    loadComponent: () => import('./orchestrator/robots/robots.component').then((m) => m.RobotsComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

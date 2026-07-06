@@ -1,0 +1,51 @@
+<section class="p-8">
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Orchestrator — Robotlar</h1>
+    <button type="button" class="rounded border px-3 py-1 text-sm hover:bg-gray-50" (click)="load()">
+      Yenile
+    </button>
+  </header>
+
+  @if (loading()) {
+    <p class="text-gray-500">Yükleniyor…</p>
+  } @else if (error()) {
+    <p class="text-red-600" role="alert">{{ error() }}</p>
+  } @else {
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="border-b text-left text-gray-500">
+          <tr>
+            <th class="py-2 pr-4">Makine</th>
+            <th class="py-2 pr-4">Mod</th>
+            <th class="py-2 pr-4">Durum</th>
+            <th class="py-2 pr-4">Sürüm</th>
+            <th class="py-2 pr-4">Son Heartbeat</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (robot of robots(); track robot.id) {
+            <tr class="border-b" data-testid="robot-row">
+              <td class="py-2 pr-4">{{ robot.machineName }}</td>
+              <td class="py-2 pr-4">{{ robot.mode }}</td>
+              <td class="py-2 pr-4">
+                <span
+                  class="inline-block rounded px-2 py-0.5 text-xs"
+                  [class.bg-green-100]="robot.status === 'Online'"
+                  [class.text-green-700]="robot.status === 'Online'"
+                  [class.bg-gray-100]="robot.status !== 'Online'"
+                  [class.text-gray-600]="robot.status !== 'Online'"
+                >{{ robot.status }}</span>
+              </td>
+              <td class="py-2 pr-4">{{ robot.agentVersion ?? '—' }}</td>
+              <td class="py-2 pr-4">{{ robot.lastHeartbeat ?? '—' }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="py-4 text-gray-400" colspan="5">Kayıtlı robot yok.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

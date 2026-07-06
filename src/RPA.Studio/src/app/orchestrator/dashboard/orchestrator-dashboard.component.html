@@ -1,0 +1,45 @@
+<section class="p-8">
+  <header class="mb-6 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Orchestrator — Dashboard</h1>
+    <button
+      type="button"
+      class="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+      (click)="load()"
+    >
+      Yenile
+    </button>
+  </header>
+
+  @if (loading()) {
+    <p class="text-gray-500">Yükleniyor…</p>
+  } @else if (error()) {
+    <p class="text-red-600" role="alert">{{ error() }}</p>
+  } @else if (summary(); as s) {
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="rounded-lg border p-4">
+        <div class="text-2xl font-bold" data-testid="total">{{ s.total }}</div>
+        <div class="text-sm text-gray-500">Bugünkü işler</div>
+      </div>
+      <div class="rounded-lg border p-4">
+        <div class="text-2xl font-bold text-blue-600" data-testid="running">{{ s.running }}</div>
+        <div class="text-sm text-gray-500">Çalışıyor</div>
+      </div>
+      <div class="rounded-lg border p-4">
+        <div class="text-2xl font-bold text-green-600" data-testid="successful">{{ s.successful }}</div>
+        <div class="text-sm text-gray-500">Başarılı</div>
+      </div>
+      <div class="rounded-lg border p-4">
+        <div class="text-2xl font-bold text-red-600" data-testid="failed">{{ s.failed }}</div>
+        <div class="text-sm text-gray-500">Başarısız</div>
+      </div>
+      <div class="rounded-lg border p-4">
+        <div class="text-2xl font-bold text-amber-600" data-testid="business">{{ s.businessException }}</div>
+        <div class="text-sm text-gray-500">İş İstisnası</div>
+      </div>
+      <div class="rounded-lg border p-4">
+        <div class="text-2xl font-bold" data-testid="success-rate">{{ s.successRate }}%</div>
+        <div class="text-sm text-gray-500">Başarı oranı</div>
+      </div>
+    </div>
+  }
+</section>
