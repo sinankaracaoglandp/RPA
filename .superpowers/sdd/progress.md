@@ -130,10 +130,11 @@
 
 ## Faz 6: Orchestrator UI + Pilot (6 task)
 
-- [~] WP-6.1: Orchestrator dashboard + işler/kuyruklar/robotlar ekranları (Sonnet) — IN PROGRESS
-  - ✅ 6.1a Backend read-side: JobRun list/detay/dashboard (commit 32f2f06'ncesi), Robots list, Queue items list (12 test)
-  - ✅ 6.1b/c Frontend: Dashboard + İşler + Robotlar ekranları + OrchestratorService (12 test, Studio 151/151)
-  - ⏳ Kalan: Kuyruklar ekranı (UI + GET /api/queues liste ucu), Zamanlama/Tetikleyiciler, Ortam yönetimi, Kullanıcı/Rol, Audit görüntüleyici ekranları (Spec 8.2 envanteri)
+- [x] WP-6.1 (çekirdek): Orchestrator dashboard + işler/kuyruklar/robotlar (Sonnet) — DONE
+  - ✅ 6.1a Backend read-side: JobRun list/detay/dashboard, Robots list, Queue items list + Queue summaries (16 test)
+  - ✅ 6.1b/c Frontend: Dashboard + İşler + Robotlar + Kuyruklar ekranları + OrchestratorService (16 test, Studio 154/154)
+  - Route'lar: /orchestrator, /orchestrator/jobs, /orchestrator/robots, /orchestrator/queues
+  - ⏳ WP-6.1 genişletme (sonraya/ayrı dilim): Zamanlama/Tetikleyiciler, Ortam yönetimi, Kullanıcı/Rol, Audit görüntüleyici ekranları (Spec 8.2)
 - [ ] WP-6.2: Action Center (Sonnet)
 - [ ] WP-6.3: Alerting motoru + Kibana dashboard şablonları (Haiku)
 - [ ] WP-6.4: Dev/Test/Prod + Publish/Approve uçtan uca test (Opus)
