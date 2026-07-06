@@ -3,6 +3,7 @@ import { Component, Input } from '@angular/core';
 import { TranslatePipe } from '../../../core/translate.pipe';
 import { CanvasComponent } from '../canvas/canvas.component';
 import { WebPropertyRouterComponent, isWebActivityType } from './web-property-router.component';
+import { GenericPropertyComponent } from './generic-property.component';
 
 /**
  * Properties panel shown alongside the canvas (Faz 5 Task 5.6). Reads the
@@ -14,7 +15,7 @@ import { WebPropertyRouterComponent, isWebActivityType } from './web-property-ro
 @Component({
   selector: 'app-properties-panel',
   standalone: true,
-  imports: [CommonModule, TranslatePipe, WebPropertyRouterComponent],
+  imports: [CommonModule, TranslatePipe, WebPropertyRouterComponent, GenericPropertyComponent],
   templateUrl: './properties-panel.component.html',
 })
 export class PropertiesPanelComponent {

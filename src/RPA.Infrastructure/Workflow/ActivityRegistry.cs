@@ -94,7 +94,12 @@ public static class ActivityRegistry
         const string cap = "sap-gui";
         b.Activity("Sap.Gui.Connect").DisplayName("SAP GUI Bağlan").Category(CatSapGui).Capability(cap)
             .Description("SAP GUI Scripting oturumuna bağlanır.")
-            .Input("connectionName", "string").Output("session", "JSON");
+            .Input("systemId", "string", required: true, description: "SAP System ID (örn. DEV) — SAP Logon sistem girişi")
+            .Input("client", "string", required: true, description: "SAP Client (örn. 100)")
+            .Input("userId", "string", required: true, description: "SAP kullanıcı adı")
+            .Input("credentialName", "Credential", required: true, description: "Şifre için Vault key referansı")
+            .Input("language", "string", required: false, defaultValue: "EN", description: "Oturum dili (örn. TR, EN)")
+            .Output("session", "JSON");
 
         b.Activity("Sap.Gui.Login").DisplayName("SAP GUI Giriş").Category(CatSapGui).Capability(cap)
             .Description("Client/kullanıcı ile SAP oturumu açar (credential Vault'tan).")

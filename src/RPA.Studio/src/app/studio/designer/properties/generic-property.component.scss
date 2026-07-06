@@ -1,0 +1,79 @@
+.generic-property {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+
+  &__header {
+    margin-bottom: 0.75rem;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  &__desc {
+    margin: 0.25rem 0 0;
+    font-size: 0.78rem;
+    color: #64748b;
+  }
+
+  &__status {
+    font-size: 0.82rem;
+    color: #64748b;
+
+    &--error {
+      color: #dc2626;
+    }
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  &__label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #334155;
+
+    &--inline {
+      flex-direction: row;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+  }
+
+  &__req {
+    color: #dc2626;
+    margin-left: 0.15rem;
+  }
+
+  &__input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    font-size: 0.85rem;
+
+    &:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+  }
+
+  &__hint {
+    font-size: 0.7rem;
+    color: #94a3b8;
+  }
+}

@@ -14,8 +14,10 @@
       (propertiesChange)="onPropertiesChange($event)"
     ></app-web-property-router>
   } @else {
-    <p class="properties-panel__empty" data-testid="properties-panel-unsupported">
-      {{ 'properties.panel.unsupported' | translate }}
-    </p>
+    <app-generic-property
+      [activityType]="activityType"
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-generic-property>
   }
 </aside>

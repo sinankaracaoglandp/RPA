@@ -1,0 +1,55 @@
+<div class="generic-property" data-testid="generic-property">
+  @if (loading) {
+    <p class="generic-property__status">Yükleniyor...</p>
+  } @else if (error) {
+    <p class="generic-property__status generic-property__status--error">
+      Aktivite bilgisi yüklenemedi.
+    </p>
+  } @else if (metadata) {
+    <div class="generic-property__header">
+      <h3 class="generic-property__title">{{ metadata.displayName }}</h3>
+      @if (metadata.description) {
+        <p class="generic-property__desc">{{ metadata.description }}</p>
+      }
+    </div>
+
+    @if (inputs.length === 0) {
+      <p class="generic-property__status">Bu aktivitenin düzenlenebilir alanı yok.</p>
+    } @else {
+      <form class="generic-property__form">
+        @for (port of inputs; track port.name) {
+          <div class="generic-property__field">
+            @if (inputType(port) === 'checkbox') {
+              <label class="generic-property__label generic-property__label--inline">
+                <input
+                  type="checkbox"
+                  [checked]="boolValue(port)"
+                  (change)="onValueChange(port, $any($event.target).checked)"
+                  [attr.data-testid]="'prop-' + port.name"
+                />
+                <span>{{ port.description || port.name }}</span>
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+            } @else {
+              <label class="generic-property__label" [attr.for]="'prop-' + port.name">
+                {{ port.description || port.name }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <input
+                [id]="'prop-' + port.name"
+                [type]="inputType(port)"
+                [value]="value(port)"
+                (input)="onValueChange(port, $any($event.target).value)"
+                [placeholder]="port.name"
+                class="generic-property__input"
+                [attr.data-testid]="'prop-' + port.name"
+                autocomplete="off"
+              />
+              <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            }
+          </div>
+        }
+      </form>
+    }
+  }
+</div>
