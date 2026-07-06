@@ -13,3 +13,4 @@ C:\Source\RPA\src\RPA.Application\obj\Debug\net10.0\RPA.Application.dll
 C:\Source\RPA\src\RPA.Application\obj\Debug\net10.0\refint\RPA.Application.dll
 C:\Source\RPA\src\RPA.Application\obj\Debug\net10.0\RPA.Application.pdb
 C:\Source\RPA\src\RPA.Application\obj\Debug\net10.0\ref\RPA.Application.dll
+C:\Source\RPA\src\RPA.Application\obj\Debug\net10.0\RPA.Application.sourcelink.json

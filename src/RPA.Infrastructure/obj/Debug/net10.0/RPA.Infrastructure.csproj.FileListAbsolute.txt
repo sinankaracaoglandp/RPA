@@ -15,3 +15,4 @@ C:\Source\RPA\src\RPA.Infrastructure\obj\Debug\net10.0\RPA.Infrastructure.dll
 C:\Source\RPA\src\RPA.Infrastructure\obj\Debug\net10.0\refint\RPA.Infrastructure.dll
 C:\Source\RPA\src\RPA.Infrastructure\obj\Debug\net10.0\RPA.Infrastructure.pdb
 C:\Source\RPA\src\RPA.Infrastructure\obj\Debug\net10.0\ref\RPA.Infrastructure.dll
+C:\Source\RPA\src\RPA.Infrastructure\obj\Debug\net10.0\RPA.Infrastructure.sourcelink.json

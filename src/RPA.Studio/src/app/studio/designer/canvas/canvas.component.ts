@@ -396,9 +396,16 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     if (!view || !node) {
       return null;
     }
+    // Gerçek render boyutunu kullan: FlowNode.width/height sabitleri (180x90)
+    // kartın CSS'ten gelen fiili boyutundan farklı — uçlar soketlere oturmalı.
+    const card = this.nodeRefs
+      .get(nodeId)
+      ?.location.nativeElement.querySelector('[data-testid="canvas-node"]') as HTMLElement | null;
+    const width = card?.offsetWidth || node.width;
+    const height = card?.offsetHeight || node.height;
     return {
-      x: view.position.x + node.width / 2,
-      y: view.position.y + (port === 'out' ? node.height : 0),
+      x: view.position.x + width / 2,
+      y: view.position.y + (port === 'out' ? height : 0),
     };
   }
 

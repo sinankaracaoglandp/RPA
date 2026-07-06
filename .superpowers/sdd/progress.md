@@ -163,3 +163,16 @@
 
 ## 🎉 TÜM FAZLAR TAMAMLANDI (Faz 1-6). Testler: .NET 585 (Domain 4, Agent 83, Infrastructure 427, WebAPI 74) + Studio 171. Production build temiz.
 
+
+## Paket A: Canvas Onarımı (plan: docs/superpowers/plans/2026-07-06-paket-a-canvas-onarim.md)
+
+- [x] Task A.1: complete (commit f13cc51, review approved; kök neden H2 çift-mount, tarayıcı elle doğrulaması paket sonunda)
+- [x] Task A.2: complete (commit d450318, review approved; + zoneless CD markForCheck düzeltmesi. Minor: designer sinyal wiring doğrudan test edilmedi)
+- [x] Task A.3: complete (commit baed01f, review approved, sıfır bulgu)
+- [x] Task A.4: complete (commits 30b6c76+4b23d71, review approved after fix; Minor: setup() listener cleanup yok, void-promise subscriptions — final review triyajına)
+- [x] Task A.5: complete (commit cf63fed, review approved, test-only, backend 430 + frontend 193 pass)
+
+Paket A: ✅ COMPLETE (5 task, commits f13cc51..cf63fed, final Opus review: Ready to ship, 0 Critical/Important)
+Testler: Studio 193/193, Infrastructure 430/430.
+Deferred Minors (Paket B temizliğine): setup() listener cleanup, void-promise subscriptions, designer sinyal wiring doğrudan testi, onValueChange @Input reassign, node/connection seçim gölgelenmesi (Delete önceliği UX).
+Bekleyen: kullanıcı elle tarayıcı doğrulaması (tıkla-seç + soket sürükleme).

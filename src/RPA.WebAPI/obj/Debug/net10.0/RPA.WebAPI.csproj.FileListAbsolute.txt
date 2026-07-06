@@ -167,3 +167,4 @@ C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Otp.NET.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Npgsql.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\staticwebassets.upToDateCheck.txt
+C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.sourcelink.json
