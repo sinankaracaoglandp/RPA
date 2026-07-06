@@ -1,0 +1,138 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Source\\RPA\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\controllers\\activitiescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\controllers\\activitiescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\authentication\\ldapfornetconnector.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\authentication\\ldapfornetconnector.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\authentication\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\authentication\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\migrations\\20260706113244_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\migrations\\20260706113244_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\middleware\\correlationidmiddleware.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\middleware\\correlationidmiddleware.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\workflow\\workflowservicecollectionextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\workflow\\workflowservicecollectionextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "ActivitiesController.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\ActivitiesController.cs",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Controllers\\ActivitiesController.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\ActivitiesController.cs",
+              "RelativeToolTip": "src\\RPA.WebAPI\\Controllers\\ActivitiesController.cs",
+              "ViewState": "AgIAABkAAAAAAAAAAAAgwCYAAAAuAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-06T14:20:23.208Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\appsettings.json",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\appsettings.json",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\appsettings.json",
+              "RelativeToolTip": "src\\RPA.WebAPI\\appsettings.json",
+              "ViewState": "AgIAADkAAAAAAAAAAAAAABMAAAAHAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-07-06T14:08:32.988Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "LdapForNetConnector.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Authentication\\LdapForNetConnector.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Authentication\\LdapForNetConnector.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Authentication\\LdapForNetConnector.cs",
+              "RelativeToolTip": "src\\RPA.Infrastructure\\Authentication\\LdapForNetConnector.cs",
+              "ViewState": "AgIAACIAAAAAAAAAAAAMwDEAAAAMAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-06T13:19:21.001Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "AuthController.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Authentication\\AuthController.cs",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Authentication\\AuthController.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Authentication\\AuthController.cs",
+              "RelativeToolTip": "src\\RPA.WebAPI\\Authentication\\AuthController.cs",
+              "ViewState": "AgIAABwAAAAAAAAAAAAgwCMAAAAJAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-06T13:13:09.839Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "20260706113244_InitialCreate.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
+              "RelativeToolTip": "src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
+              "ViewState": "AgIAAGEAAAAAAAAAAAAgwGwAAABQAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-06T11:53:46.818Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "CorrelationIdMiddleware.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Middleware\\CorrelationIdMiddleware.cs",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Middleware\\CorrelationIdMiddleware.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Middleware\\CorrelationIdMiddleware.cs",
+              "RelativeToolTip": "src\\RPA.WebAPI\\Middleware\\CorrelationIdMiddleware.cs",
+              "ViewState": "AgIAADYAAACAzMzMzMwuwEcAAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-04T20:43:29.266Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "WorkflowServiceCollectionExtensions.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Workflow\\WorkflowServiceCollectionExtensions.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Workflow\\WorkflowServiceCollectionExtensions.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Workflow\\WorkflowServiceCollectionExtensions.cs",
+              "RelativeToolTip": "src\\RPA.Infrastructure\\Workflow\\WorkflowServiceCollectionExtensions.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAQAAAAZAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-04T20:42:46.394Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

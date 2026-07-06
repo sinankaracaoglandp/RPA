@@ -1,0 +1,6 @@
+{
+  "RPA.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Source\\RPA\\src\\RPA.Application",
+  "RPA.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Source\\RPA\\src\\RPA.Domain",
+  "RPA.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Source\\RPA\\src\\RPA.Infrastructure",
+  "RPA.WebAPI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Source\\RPA\\src\\RPA.WebAPI"
+}
