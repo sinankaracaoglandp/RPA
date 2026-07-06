@@ -63,6 +63,21 @@ describe('OrchestratorService', () => {
     req.flush([{ id: '1', machineName: 'RPA-01', mode: 'Unattended', status: 'Online' }]);
   });
 
+  it('lists action items with type filter', () => {
+    service.listActionItems('Approval').subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/action-center');
+    expect(req.request.params.get('type')).toBe('Approval');
+    req.flush([]);
+  });
+
+  it('resolves an action item with a note', () => {
+    service.resolveActionItem('a1', 'ok').subscribe();
+    const req = httpMock.expectOne('/api/action-center/a1/resolve');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ note: 'ok' });
+    req.flush({});
+  });
+
   it('lists queues', () => {
     service.listQueues().subscribe((q) => expect(q.length).toBe(1));
     const req = httpMock.expectOne('/api/queues');

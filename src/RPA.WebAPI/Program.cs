@@ -60,6 +60,11 @@ builder.Services.AddSchedulerServices();
 builder.Services.AddScoped<RPA.Domain.Interfaces.IJobRunQueryRepository,
     RPA.Infrastructure.Persistence.EfJobRunQueryRepository>();
 
+// Action Center servisi (bekleyen kayıt listeleme/atama/çözümleme) — WP-6.2.
+builder.Services.AddScoped<RPA.Domain.Interfaces.IActionItemRepository,
+    RPA.Infrastructure.Persistence.EfActionItemRepository>();
+builder.Services.AddScoped<RPA.Infrastructure.ActionCenter.ActionCenterService>();
+
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
 

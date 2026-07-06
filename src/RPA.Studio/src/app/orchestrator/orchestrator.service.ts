@@ -2,6 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
+  ActionItem,
   DashboardSummary,
   JobRun,
   JobRunListResponse,
@@ -48,6 +49,29 @@ export class OrchestratorService {
   /** Tüm robotlar. */
   listRobots(): Observable<Robot[]> {
     return this.http.get<Robot[]>('/api/robots');
+  }
+
+  /** Action Center: bekleyen kayıtlar (opsiyonel type filtresi). */
+  listActionItems(type?: string): Observable<ActionItem[]> {
+    let params = new HttpParams();
+    if (type) params = params.set('type', type);
+    return this.http.get<ActionItem[]>('/api/action-center', { params });
+  }
+
+  /** Action Center kaydını çözümler (not ile). */
+  resolveActionItem(id: string, note: string): Observable<ActionItem> {
+    return this.http.post<ActionItem>(
+      `/api/action-center/${encodeURIComponent(id)}/resolve`,
+      { note },
+    );
+  }
+
+  /** Action Center kaydını bir kullanıcıya atar. */
+  assignActionItem(id: string, userId: string): Observable<ActionItem> {
+    return this.http.post<ActionItem>(
+      `/api/action-center/${encodeURIComponent(id)}/assign`,
+      { userId },
+    );
   }
 
   /** Tüm kuyruklar + durum bazlı sayaçlar. */

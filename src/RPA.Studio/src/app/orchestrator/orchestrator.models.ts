@@ -63,6 +63,19 @@ export interface QueueItemListResponse {
   items: QueueItem[];
 }
 
+export interface ActionItem {
+  id: string;
+  type: string;
+  status: string;
+  jobRunId: string | null;
+  queueItemId: string | null;
+  assignedUserId: string | null;
+  resolutionNote: string | null;
+  resolvedAt: string | null;
+  timeoutAt: string | null;
+  createdAt: string;
+}
+
 export interface JobRunQuery {
   status?: string;
   environmentId?: string;

@@ -40,6 +40,9 @@ public class RpaDbContext : DbContext
 
     public DbSet<JobRun> JobRuns => Set<JobRun>();
 
+    /// <summary>WP-6.2 — Action Center kayıtları (BusinessException/OTP/Onay).</summary>
+    public DbSet<ActionItem> ActionItems => Set<ActionItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -70,6 +73,13 @@ public class RpaDbContext : DbContext
             // Project/Items navigasyonları tam şema paketinde (WP-1.2) yapılandırılacak.
             entity.Ignore(q => q.Project);
             entity.Ignore(q => q.Items);
+        });
+
+        modelBuilder.Entity<ActionItem>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Type).HasMaxLength(64).IsRequired();
+            entity.Property(a => a.Status).HasMaxLength(32).IsRequired();
         });
 
         modelBuilder.Entity<QueueItem>(entity =>

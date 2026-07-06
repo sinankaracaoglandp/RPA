@@ -1,0 +1,91 @@
+<section class="p-8">
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Action Center</h1>
+    <div class="flex items-center gap-2">
+      <select
+        class="rounded border px-2 py-1 text-sm"
+        aria-label="Tip filtresi"
+        [(ngModel)]="typeFilter"
+        (ngModelChange)="load()"
+      >
+        @for (t of types; track t) {
+          <option [value]="t">{{ t || 'Tümü' }}</option>
+        }
+      </select>
+      <button type="button" class="rounded border px-3 py-1 text-sm hover:bg-gray-50" (click)="load()">
+        Yenile
+      </button>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <p class="text-gray-500">Yükleniyor…</p>
+  } @else if (error()) {
+    <p class="text-red-600" role="alert">{{ error() }}</p>
+  } @else {
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="border-b text-left text-gray-500">
+          <tr>
+            <th class="py-2 pr-4">Tip</th>
+            <th class="py-2 pr-4">Durum</th>
+            <th class="py-2 pr-4">Oluşturulma</th>
+            <th class="py-2 pr-4">İşlem</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of items(); track item.id) {
+            <tr class="border-b align-top" data-testid="action-row">
+              <td class="py-2 pr-4">{{ item.type }}</td>
+              <td class="py-2 pr-4">{{ item.status }}</td>
+              <td class="py-2 pr-4">{{ item.createdAt }}</td>
+              <td class="py-2 pr-4">
+                @if (resolvingId() === item.id) {
+                  <div class="flex flex-col gap-2">
+                    <textarea
+                      class="w-64 rounded border p-1 text-sm"
+                      rows="2"
+                      placeholder="Çözüm notu"
+                      aria-label="Çözüm notu"
+                      [(ngModel)]="resolveNote"
+                    ></textarea>
+                    <div class="flex gap-2">
+                      <button
+                        type="button"
+                        class="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
+                        (click)="confirmResolve(item.id)"
+                        data-testid="confirm-resolve"
+                      >
+                        Çözümle
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded border px-2 py-0.5 text-xs hover:bg-gray-50"
+                        (click)="cancelResolve()"
+                      >
+                        İptal
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <button
+                    type="button"
+                    class="rounded border px-2 py-0.5 text-xs hover:bg-gray-50"
+                    (click)="startResolve(item.id)"
+                    data-testid="start-resolve"
+                  >
+                    Çözümle
+                  </button>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="py-4 text-gray-400" colspan="4">Bekleyen kayıt yok.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
