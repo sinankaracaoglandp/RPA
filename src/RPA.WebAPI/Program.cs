@@ -56,6 +56,10 @@ builder.Services.AddQueueServices();
 // Zamanlayıcı + tetikleyiciler (cron/manuel, OverlapPolicy) — Task 3.3, Spec Bölüm 7.
 builder.Services.AddSchedulerServices();
 
+// Orchestrator UI read-side sorguları (İşler/Dashboard) — WP-6.1.
+builder.Services.AddScoped<RPA.Domain.Interfaces.IJobRunQueryRepository,
+    RPA.Infrastructure.Persistence.EfJobRunQueryRepository>();
+
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
 
