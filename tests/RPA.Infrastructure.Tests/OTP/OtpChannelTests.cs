@@ -4,6 +4,7 @@ using Moq;
 using OtpNet;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
+using RPA.Domain.Interfaces;
 using RPA.Infrastructure.OTP;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
@@ -242,5 +243,222 @@ public class OtpChannelTests
         }
 
         Assert.Equal(target, request.Status);
+    }
+
+    [Fact]
+    public async Task HumanApprovalChannel_ExtractsCodeFromNoisyResponse()
+    {
+        var client = new Mock<IActionCenterClient>();
+        client.Setup(c => c.RequestOtpFromHumanAsync(
+                It.IsAny<OtpRequest>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("kod 445566 tesekkurler");
+
+        var channel = new OtpHumanApprovalChannel(client.Object, new OtpChannelSettings());
+
+        var code = await channel.GetOtpAsync(NewRequest(), Timeout, CancellationToken.None);
+
+        Assert.Equal("445566", code);
+    }
+
+    [Fact]
+    public async Task EmailChannel_CustomPattern_ExtractsFourDigits()
+    {
+        var reader = new Mock<IImapOtpReader>();
+        reader.Setup(r => r.FetchLatestMessageBodyAsync(
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("PIN: 4821");
+
+        var channel = new OtpEmailChannel(reader.Object, new OtpChannelSettings { CodePattern = @"\d{4}" });
+
+        var code = await channel.GetOtpAsync(NewRequest(), Timeout, CancellationToken.None);
+
+        Assert.Equal("4821", code);
+    }
+}
+
+/// <summary>OtpCodeExtractor birim testleri.</summary>
+public class OtpCodeExtractorTests
+{
+    [Theory]
+    [InlineData("Kodunuz: 123456", @"\d{6}", "123456")]
+    [InlineData("PIN 4821 girin", @"\d{4}", "4821")]
+    [InlineData("no digits here", @"\d{6}", null)]
+    [InlineData("", @"\d{6}", null)]
+    [InlineData(null, @"\d{6}", null)]
+    public void Extract_ReturnsExpected(string? body, string pattern, string? expected)
+    {
+        Assert.Equal(expected, OtpCodeExtractor.Extract(body, pattern));
+    }
+
+    [Fact]
+    public void Extract_EmptyPattern_FallsBackToSixDigits()
+    {
+        Assert.Equal("987654", OtpCodeExtractor.Extract("code 987654", ""));
+    }
+}
+
+/// <summary>GetOtpActivity çok kanallı fallback orkestrasyonu testleri (Spec Bölüm 7).</summary>
+public class GetOtpActivityTests
+{
+    private sealed class FakeCtx : IActivityExecutionContext
+    {
+        private readonly Dictionary<string, object?> _vars;
+        public FakeCtx(Dictionary<string, object?> vars) => _vars = vars;
+        public T GetVariable<T>(string name)
+        {
+            if (_vars.TryGetValue(name, out var v) && v is T t) return t;
+            return default!;
+        }
+        public void SetVariable(string name, object? value) => _vars[name] = value;
+        public Task<string> GetCredentialAsync(string name) => Task.FromResult("");
+        public Task<string?> GetAssetAsync(string name) => Task.FromResult<string?>(null);
+        public void Log(string message, LogLevel level = LogLevel.Information) { }
+        public string TimeZone => "UTC";
+        public Guid JobRunId { get; } = Guid.NewGuid();
+    }
+
+    private static GetOtpActivity Build(
+        out Mock<IOtpCodeProtector> protector,
+        out Mock<IOtpAuditSink> audit,
+        params IOtpChannel[] channels)
+    {
+        protector = new Mock<IOtpCodeProtector>();
+        protector.Setup(p => p.Encrypt(It.IsAny<string>())).Returns<string>(c => "enc:" + c);
+        protector.Setup(p => p.Mask(It.IsAny<string>())).Returns("[MASKED]");
+        audit = new Mock<IOtpAuditSink>();
+        audit.Setup(a => a.RecordAsync(It.IsAny<OtpRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var factory = new OtpChannelFactory(channels);
+        return new GetOtpActivity(factory, protector.Object, audit.Object);
+    }
+
+    private static IOtpChannel Succeeds(OtpChannel type, string code)
+    {
+        var m = new Mock<IOtpChannel>();
+        m.SetupGet(c => c.ChannelType).Returns(type);
+        m.Setup(c => c.GetOtpAsync(It.IsAny<OtpRequest>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(code);
+        return m.Object;
+    }
+
+    private static IOtpChannel TimesOut(OtpChannel type)
+    {
+        var m = new Mock<IOtpChannel>();
+        m.SetupGet(c => c.ChannelType).Returns(type);
+        m.Setup(c => c.GetOtpAsync(It.IsAny<OtpRequest>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException());
+        return m.Object;
+    }
+
+    [Fact]
+    public async Task Execute_FirstChannelSucceeds_ReturnsCode()
+    {
+        var activity = Build(out var protector, out var audit, Succeeds(OtpChannel.Email, "123456"));
+        var ctx = new FakeCtx(new()
+        {
+            ["portalReference"] = "https://p",
+            ["channels"] = new List<OtpChannel> { OtpChannel.Email }
+        });
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        Assert.Equal("123456", outputs["otpCode"]);
+        Assert.Equal("Email", outputs["channelUsed"]);
+        Assert.Equal("enc:123456", outputs["encryptedCode"]);
+        protector.Verify(p => p.Encrypt("123456"), Times.Once);
+        audit.Verify(a => a.RecordAsync(
+            It.Is<OtpRequest>(r => r.Status == OtpRequestStatus.Provided && r.ProvidedAt != null),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_FirstTimesOut_FallsBackToSecond()
+    {
+        var activity = Build(out _, out _,
+            TimesOut(OtpChannel.Email),
+            Succeeds(OtpChannel.GsmModem, "654321"));
+        var ctx = new FakeCtx(new()
+        {
+            ["portalReference"] = "https://p",
+            ["channels"] = new List<OtpChannel> { OtpChannel.Email, OtpChannel.GsmModem }
+        });
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        Assert.Equal("654321", outputs["otpCode"]);
+        Assert.Equal("GsmModem", outputs["channelUsed"]);
+    }
+
+    [Fact]
+    public async Task Execute_AllChannelsFail_ThrowsBusinessAndRecordsFailed()
+    {
+        var activity = Build(out _, out var audit,
+            TimesOut(OtpChannel.Email),
+            TimesOut(OtpChannel.GsmModem));
+        var ctx = new FakeCtx(new()
+        {
+            ["portalReference"] = "https://p",
+            ["channels"] = new List<OtpChannel> { OtpChannel.Email, OtpChannel.GsmModem }
+        });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx));
+        audit.Verify(a => a.RecordAsync(
+            It.Is<OtpRequest>(r => r.Status == OtpRequestStatus.Failed),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_MissingPortalReference_ThrowsBusiness()
+    {
+        var activity = Build(out _, out _, Succeeds(OtpChannel.Email, "1"));
+        var ctx = new FakeCtx(new() { ["channels"] = new List<OtpChannel> { OtpChannel.Email } });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx));
+    }
+
+    [Fact]
+    public async Task Execute_NoChannels_ThrowsBusiness()
+    {
+        var activity = Build(out _, out _, Succeeds(OtpChannel.Email, "1"));
+        var ctx = new FakeCtx(new() { ["portalReference"] = "https://p" });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx));
+    }
+
+    [Fact]
+    public async Task Execute_ChannelsFromCommaString_Parsed()
+    {
+        var activity = Build(out _, out _, Succeeds(OtpChannel.Totp, "222333"));
+        var ctx = new FakeCtx(new()
+        {
+            ["portalReference"] = "https://p",
+            ["channels"] = "Totp"
+        });
+
+        var outputs = await activity.ExecuteAsync(ctx);
+        Assert.Equal("222333", outputs["otpCode"]);
+    }
+
+    [Fact]
+    public async Task Execute_UnregisteredChannelSkipped_ThenNextSucceeds()
+    {
+        // Yalnızca GsmModem kayıtlı; istenen ilk kanal (Email) kayıtlı değil → atlanır.
+        var activity = Build(out _, out _, Succeeds(OtpChannel.GsmModem, "777888"));
+        var ctx = new FakeCtx(new()
+        {
+            ["portalReference"] = "https://p",
+            ["channels"] = new List<OtpChannel> { OtpChannel.Email, OtpChannel.GsmModem }
+        });
+
+        var outputs = await activity.ExecuteAsync(ctx);
+        Assert.Equal("GsmModem", outputs["channelUsed"]);
+    }
+
+    [Fact]
+    public void Metadata_HasExpectedId()
+    {
+        var activity = Build(out _, out _, Succeeds(OtpChannel.Email, "1"));
+        Assert.Equal("Otp.Get", activity.GetMetadata().ActivityId);
     }
 }
