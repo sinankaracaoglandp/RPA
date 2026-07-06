@@ -1,0 +1,171 @@
+<div class="publish-wizard" role="dialog" [attr.aria-modal]="true" [attr.aria-labelledby]="'wizard-title'">
+  <!-- Header -->
+  <div class="publish-wizard__header">
+    <h2 id="wizard-title" class="publish-wizard__title">
+      {{ 'componentLibrary.publishWizard.title' | translate }}
+    </h2>
+    <button
+      type="button"
+      class="publish-wizard__close-btn"
+      [attr.aria-label]="'componentLibrary.publishWizard.closeAriaLabel' | translate"
+      (click)="closeWizard()"
+    >
+      ✕
+    </button>
+  </div>
+
+  <!-- Progress Indicator -->
+  <div class="publish-wizard__progress">
+    <div class="publish-wizard__step-indicator">
+      <span class="publish-wizard__step-number" [class.publish-wizard__step-number--active]="currentStep() >= 1">
+        1
+      </span>
+      <span class="publish-wizard__step-connector" [class.publish-wizard__step-connector--active]="currentStep() >= 2"></span>
+      <span class="publish-wizard__step-number" [class.publish-wizard__step-number--active]="currentStep() >= 2">
+        2
+      </span>
+      <span class="publish-wizard__step-connector" [class.publish-wizard__step-connector--active]="currentStep() >= 3"></span>
+      <span class="publish-wizard__step-number" [class.publish-wizard__step-number--active]="currentStep() >= 3">
+        3
+      </span>
+    </div>
+  </div>
+
+  <!-- Step Content -->
+  <div class="publish-wizard__content">
+    <div class="publish-wizard__step-title" data-testid="wizard-step-title">
+      {{ stepTitle() | translate }}
+    </div>
+    <div class="publish-wizard__step-description">
+      {{ stepDescription() | translate }}
+    </div>
+
+    <form [formGroup]="formData" class="publish-wizard__form">
+      <!-- Step 1: Component Info -->
+      <div *ngIf="currentStep() === 1" class="publish-wizard__form-section">
+        <div class="form-group">
+          <label for="wizard-name" class="form-label">
+            {{ 'componentLibrary.publishWizard.nameLabel' | translate }}
+            <span class="form-label__required">*</span>
+          </label>
+          <input
+            id="wizard-name"
+            type="text"
+            data-testid="wizard-name-input"
+            class="form-input"
+            formControlName="name"
+            [placeholder]="'componentLibrary.publishWizard.namePlaceholder' | translate"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="wizard-version" class="form-label">
+            {{ 'componentLibrary.publishWizard.versionLabel' | translate }}
+            <span class="form-label__required">*</span>
+          </label>
+          <input
+            id="wizard-version"
+            type="text"
+            data-testid="wizard-version-input"
+            class="form-input"
+            formControlName="version"
+            [placeholder]="'componentLibrary.publishWizard.versionPlaceholder' | translate"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="wizard-description" class="form-label">
+            {{ 'componentLibrary.publishWizard.descriptionLabel' | translate }}
+          </label>
+          <textarea
+            id="wizard-description"
+            data-testid="wizard-description-input"
+            class="form-textarea"
+            formControlName="description"
+            [placeholder]="'componentLibrary.publishWizard.descriptionPlaceholder' | translate"
+            rows="4"
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- Step 2: JSON Definition -->
+      <div *ngIf="currentStep() === 2" class="publish-wizard__form-section">
+        <div class="form-group">
+          <label for="wizard-json" class="form-label">
+            {{ 'componentLibrary.details.definition' | translate }}
+            <span class="form-label__required">*</span>
+          </label>
+          <textarea
+            id="wizard-json"
+            data-testid="wizard-json-input"
+            class="form-textarea form-textarea--code"
+            formControlName="jsonDefinition"
+            placeholder='{"type": "object"}'
+            rows="10"
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- Step 3: Test Cases -->
+      <div *ngIf="currentStep() === 3" class="publish-wizard__form-section">
+        <div class="form-group">
+          <label for="wizard-testcases" class="form-label">
+            {{ 'componentLibrary.publishWizard.step3Title' | translate }}
+          </label>
+          <textarea
+            id="wizard-testcases"
+            data-testid="wizard-testcases-input"
+            class="form-textarea form-textarea--code"
+            formControlName="testCases"
+            [placeholder]="'componentLibrary.publishWizard.testCasesPlaceholder' | translate"
+            rows="8"
+          ></textarea>
+        </div>
+      </div>
+    </form>
+
+    <!-- Messages -->
+    <div *ngIf="successMessage()" class="publish-wizard__message publish-wizard__message--success" role="status">
+      {{ 'componentLibrary.publishWizard.successMessage' | translate }}
+    </div>
+    <div *ngIf="errorMessage()" class="publish-wizard__message publish-wizard__message--error" role="alert">
+      {{ 'componentLibrary.publishWizard.errorMessage' | translate }}
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="publish-wizard__footer">
+    <button
+      type="button"
+      class="publish-wizard__btn publish-wizard__btn--secondary"
+      data-testid="wizard-prev-btn"
+      [disabled]="currentStep() === 1"
+      (click)="previousStep()"
+    >
+      {{ 'componentLibrary.publishWizard.previousButton' | translate }}
+    </button>
+
+    <button
+      *ngIf="currentStep() < 3"
+      type="button"
+      class="publish-wizard__btn publish-wizard__btn--primary"
+      data-testid="wizard-next-btn"
+      [disabled]="!((currentStep() === 1 && isStep1Valid()) || (currentStep() === 2 && isStep2Valid()))"
+      (click)="nextStep()"
+    >
+      {{ 'componentLibrary.publishWizard.nextButton' | translate }}
+    </button>
+
+    <button
+      *ngIf="currentStep() === 3"
+      type="button"
+      class="publish-wizard__btn publish-wizard__btn--primary"
+      data-testid="wizard-publish-btn"
+      [disabled]="isPublishing()"
+      (click)="publish()"
+    >
+      <span *ngIf="!isPublishing()">{{ 'componentLibrary.publishWizard.publishButton' | translate }}</span>
+      <span *ngIf="isPublishing()">{{ 'componentLibrary.publishWizard.publishingButton' | translate }}</span>
+    </button>
+  </div>
+</div>
