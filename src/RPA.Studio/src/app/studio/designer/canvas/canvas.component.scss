@@ -63,7 +63,11 @@
   }
 }
 
-.canvas-connections {
+// DİKKAT: .canvas-connections SVG'si ve path'leri document.createElementNS ile
+// programatik üretilir — Angular'ın emulated encapsulation'ı (_ngcontent nitelikleri)
+// bu elementlere uygulanmadığından stiller ::ng-deep ile kapsam dışına taşınmalıdır;
+// aksi halde stroke uygulanmaz ve çizgiler GÖRÜNMEZ olur.
+:host ::ng-deep .canvas-connections {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -72,19 +76,19 @@
   pointer-events: none;
   z-index: 1;
 
-  &__path {
+  .canvas-connections__path {
     stroke: #2563eb;
     stroke-width: 2;
     fill: none;
   }
 }
 
-.canvas-connections__path--pending {
+:host ::ng-deep .canvas-connections__path--pending {
   stroke-dasharray: 6 4;
   opacity: 0.6;
 }
 
-.canvas-connections__path--selected {
+:host ::ng-deep .canvas-connections__path--selected {
   stroke: #2563eb;
   stroke-width: 3;
 }
