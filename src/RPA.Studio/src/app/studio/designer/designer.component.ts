@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ViewChild, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { WorkflowVersion } from '../../shared/models/workflow.model';
 import { DebugService } from '../../shared/services/debug.service';
 import { ModeService } from '../../shared/services/mode.service';
@@ -36,7 +36,13 @@ import { PropertiesPanelComponent } from './properties/properties-panel.componen
   templateUrl: './designer.component.html',
 })
 export class DesignerComponent {
-  @ViewChild(CanvasComponent) canvas?: CanvasComponent;
+  /**
+   * Sinyal tabanlı viewChild: zoneless CD'de dekoratör @ViewChild referansının
+   * template binding'e ilk change detection turunda işlenmemesi, ilk kullanıcı
+   * etkileşiminin (örn. ilk aktivite ekleme) sessizce kaybolmasına yol açıyordu.
+   * Sinyal, resolve olduğunda bağlamaları reaktif olarak günceller.
+   */
+  readonly canvas = viewChild(CanvasComponent);
 
   private readonly debug = inject(DebugService);
   private readonly modeService = inject(ModeService);
@@ -79,14 +85,15 @@ export class DesignerComponent {
 
   /** Invoked by the toolbox to drop an activity onto the canvas. */
   async addActivity(activityId: string): Promise<void> {
-    await this.canvas?.addNode(activityId);
+    await this.canvas()?.addNode(activityId);
   }
 
   onNodeSelect(nodeId: string | null): void {
     this.selectedNodeId.set(nodeId);
-    if (nodeId && this.canvas) {
-      this.selectedActivityType.set(this.canvas.getNodeActivityId(nodeId));
-      this.selectedProperties.set(this.canvas.getNodeProperties(nodeId));
+    const canvas = this.canvas();
+    if (nodeId && canvas) {
+      this.selectedActivityType.set(canvas.getNodeActivityId(nodeId));
+      this.selectedProperties.set(canvas.getNodeProperties(nodeId));
     } else {
       this.selectedActivityType.set(undefined);
       this.selectedProperties.set({});
@@ -100,7 +107,7 @@ export class DesignerComponent {
   onPropertiesChange(properties: Record<string, unknown>): void {
     const nodeId = this.selectedNodeId();
     if (nodeId) {
-      this.canvas?.updateNodeProperties(nodeId, properties);
+      this.canvas()?.updateNodeProperties(nodeId, properties);
       this.selectedProperties.set(properties);
     }
   }

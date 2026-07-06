@@ -1,8 +1,8 @@
 <div class="designer flex h-full w-full">
   @if (isSimpleMode()) {
-    <app-simplified-toolbox [canvas]="canvas"></app-simplified-toolbox>
+    <app-simplified-toolbox [canvas]="canvas()"></app-simplified-toolbox>
   } @else {
-    <app-toolbox [canvas]="canvas"></app-toolbox>
+    <app-toolbox [canvas]="canvas()"></app-toolbox>
   }
   <main class="designer__canvas relative flex-1">
     <div class="designer__header">
