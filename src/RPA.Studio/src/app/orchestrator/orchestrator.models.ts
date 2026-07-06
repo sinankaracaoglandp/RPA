@@ -76,6 +76,23 @@ export interface ActionItem {
   createdAt: string;
 }
 
+export interface AlertRule {
+  id: string;
+  name: string;
+  condition: string;
+  channel: string;
+  recipients: string;
+  isActive: boolean;
+}
+
+export interface CreateAlertRuleRequest {
+  name: string;
+  condition: string;
+  channel: string;
+  recipients: string;
+  isActive: boolean;
+}
+
 export interface JobRunQuery {
   status?: string;
   environmentId?: string;

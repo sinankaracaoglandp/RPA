@@ -63,6 +63,21 @@ describe('OrchestratorService', () => {
     req.flush([{ id: '1', machineName: 'RPA-01', mode: 'Unattended', status: 'Online' }]);
   });
 
+  it('creates an alert rule', () => {
+    service.createAlertRule({ name: 'r', condition: '{}', channel: 'email', recipients: 'a@b.c', isActive: true }).subscribe();
+    const req = httpMock.expectOne('/api/alert-rules');
+    expect(req.request.method).toBe('POST');
+    req.flush({});
+  });
+
+  it('toggles alert rule active state', () => {
+    service.setAlertRuleActive('r1', false).subscribe();
+    const req = httpMock.expectOne('/api/alert-rules/r1/active');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ isActive: false });
+    req.flush({});
+  });
+
   it('lists action items with type filter', () => {
     service.listActionItems('Approval').subscribe();
     const req = httpMock.expectOne((r) => r.url === '/api/action-center');

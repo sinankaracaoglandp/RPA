@@ -1,0 +1,97 @@
+<section class="p-8">
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Alarm Kuralları</h1>
+    <button type="button" class="rounded border px-3 py-1 text-sm hover:bg-gray-50" (click)="load()">
+      Yenile
+    </button>
+  </header>
+
+  @if (error()) {
+    <p class="mb-3 text-red-600" role="alert">{{ error() }}</p>
+  }
+
+  <!-- Yeni kural formu -->
+  <div class="mb-6 rounded-lg border p-4">
+    <h2 class="mb-3 text-sm font-semibold text-gray-700">Yeni Kural</h2>
+    <div class="flex flex-wrap items-end gap-3">
+      <label class="flex flex-col text-xs text-gray-500">
+        Ad
+        <input class="w-40 rounded border px-2 py-1 text-sm text-gray-900" [(ngModel)]="form.name" aria-label="Kural adı" />
+      </label>
+      <label class="flex flex-col text-xs text-gray-500">
+        Metrik
+        <select class="rounded border px-2 py-1 text-sm text-gray-900" [(ngModel)]="form.metric" aria-label="Metrik">
+          @for (m of metrics; track m) { <option [value]="m">{{ m }}</option> }
+        </select>
+      </label>
+      <label class="flex flex-col text-xs text-gray-500">
+        Eşik
+        <input type="number" class="w-20 rounded border px-2 py-1 text-sm text-gray-900" [(ngModel)]="form.threshold" aria-label="Eşik" />
+      </label>
+      <label class="flex flex-col text-xs text-gray-500">
+        Kanal
+        <select class="rounded border px-2 py-1 text-sm text-gray-900" [(ngModel)]="form.channel" aria-label="Kanal">
+          @for (c of channels; track c) { <option [value]="c">{{ c }}</option> }
+        </select>
+      </label>
+      <label class="flex flex-col text-xs text-gray-500">
+        Alıcılar
+        <input class="w-56 rounded border px-2 py-1 text-sm text-gray-900" [(ngModel)]="form.recipients" placeholder="e-posta / webhook (virgülle)" aria-label="Alıcılar" />
+      </label>
+      <button
+        type="button"
+        class="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+        (click)="create()"
+        data-testid="create-rule"
+      >
+        Oluştur
+      </button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <p class="text-gray-500">Yükleniyor…</p>
+  } @else {
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="border-b text-left text-gray-500">
+          <tr>
+            <th class="py-2 pr-4">Ad</th>
+            <th class="py-2 pr-4">Koşul</th>
+            <th class="py-2 pr-4">Kanal</th>
+            <th class="py-2 pr-4">Alıcılar</th>
+            <th class="py-2 pr-4">Aktif</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (rule of rules(); track rule.id) {
+            <tr class="border-b" data-testid="rule-row">
+              <td class="py-2 pr-4 font-medium">{{ rule.name }}</td>
+              <td class="py-2 pr-4 font-mono text-xs">{{ rule.condition }}</td>
+              <td class="py-2 pr-4">{{ rule.channel }}</td>
+              <td class="py-2 pr-4">{{ rule.recipients }}</td>
+              <td class="py-2 pr-4">
+                <button
+                  type="button"
+                  class="rounded px-2 py-0.5 text-xs"
+                  [class.bg-green-100]="rule.isActive"
+                  [class.text-green-700]="rule.isActive"
+                  [class.bg-gray-100]="!rule.isActive"
+                  [class.text-gray-600]="!rule.isActive"
+                  (click)="toggle(rule)"
+                  data-testid="toggle-active"
+                >
+                  {{ rule.isActive ? 'Aktif' : 'Pasif' }}
+                </button>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="py-4 text-gray-400" colspan="5">Kural yok.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

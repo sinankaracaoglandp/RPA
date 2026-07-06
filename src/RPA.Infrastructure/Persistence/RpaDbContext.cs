@@ -43,6 +43,9 @@ public class RpaDbContext : DbContext
     /// <summary>WP-6.2 — Action Center kayıtları (BusinessException/OTP/Onay).</summary>
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
 
+    /// <summary>WP-6.3 — Alarm kuralları (koşul/kanal/alıcılar).</summary>
+    public DbSet<AlertRule> AlertRules => Set<AlertRule>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -80,6 +83,13 @@ public class RpaDbContext : DbContext
             entity.HasKey(a => a.Id);
             entity.Property(a => a.Type).HasMaxLength(64).IsRequired();
             entity.Property(a => a.Status).HasMaxLength(32).IsRequired();
+        });
+
+        modelBuilder.Entity<AlertRule>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Name).HasMaxLength(256).IsRequired();
+            entity.Property(a => a.Channel).HasMaxLength(32).IsRequired();
         });
 
         modelBuilder.Entity<QueueItem>(entity =>

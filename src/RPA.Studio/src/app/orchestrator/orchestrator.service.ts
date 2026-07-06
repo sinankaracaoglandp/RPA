@@ -3,6 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   ActionItem,
+  AlertRule,
+  CreateAlertRuleRequest,
   DashboardSummary,
   JobRun,
   JobRunListResponse,
@@ -49,6 +51,24 @@ export class OrchestratorService {
   /** Tüm robotlar. */
   listRobots(): Observable<Robot[]> {
     return this.http.get<Robot[]>('/api/robots');
+  }
+
+  /** Alarm kuralları (tümü). */
+  listAlertRules(): Observable<AlertRule[]> {
+    return this.http.get<AlertRule[]>('/api/alert-rules');
+  }
+
+  /** Yeni alarm kuralı oluşturur. */
+  createAlertRule(request: CreateAlertRuleRequest): Observable<AlertRule> {
+    return this.http.post<AlertRule>('/api/alert-rules', request);
+  }
+
+  /** Kuralın aktif/pasif durumunu değiştirir. */
+  setAlertRuleActive(id: string, isActive: boolean): Observable<AlertRule> {
+    return this.http.patch<AlertRule>(
+      `/api/alert-rules/${encodeURIComponent(id)}/active`,
+      { isActive },
+    );
   }
 
   /** Action Center: bekleyen kayıtlar (opsiyonel type filtresi). */

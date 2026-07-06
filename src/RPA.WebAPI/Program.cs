@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using RPA.Infrastructure.Alerting;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.Logging;
 using RPA.Infrastructure.Persistence;
@@ -64,6 +65,9 @@ builder.Services.AddScoped<RPA.Domain.Interfaces.IJobRunQueryRepository,
 builder.Services.AddScoped<RPA.Domain.Interfaces.IActionItemRepository,
     RPA.Infrastructure.Persistence.EfActionItemRepository>();
 builder.Services.AddScoped<RPA.Infrastructure.ActionCenter.ActionCenterService>();
+
+// Alarm motoru: kural değerlendirme + bildirim (e-posta/Teams) + arka plan servisi — WP-6.3.
+builder.Services.AddAlertingServices(builder.Configuration);
 
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
