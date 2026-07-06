@@ -42,7 +42,9 @@ export class LoginComponent {
     this.submitting.set(true);
 
     this.authService.login(username, password).subscribe({
+      
       next: () => {
+        
         this.submitting.set(false);
         void this.router.navigateByUrl('/');
       },

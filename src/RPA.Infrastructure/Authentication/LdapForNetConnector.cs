@@ -38,16 +38,19 @@ public class LdapForNetConnector : ILdapConnector
 
             connection.Connect(host, port);
 
-            // AD bind: DOMAIN\user veya user@domain formatı kabul edilir.
-            var bindUser = string.IsNullOrWhiteSpace(_options.Domain)
+            // AD bind: Negotiate (SSPI/Kerberos/NTLM) kullanılır. AD düz 389 üzerinde
+            // Simple bind'i reddediyor (000004DC "successful bind must be completed").
+            // SASL/Negotiate en güvenilir şekilde UPN (user@domain.local) ile çalışır;
+            // domain suffix'i BaseDn'den türetilir (dc=dogupres,dc=local → dogupres.local).
+            var bindUser = username.Contains('@') || username.Contains('\\')
                 ? username
-                : $"{_options.Domain}\\{username}";
+                : $"{username}@{DomainSuffixFromBaseDn(_options.BaseDn)}";
 
             // HIGH FIX: Clear password from memory after LDAP bind
             var passwordBytes = System.Text.Encoding.UTF8.GetBytes(password);
             try
             {
-                connection.Bind(LdapAuthType.Simple, new LdapCredential
+                connection.Bind(LdapAuthType.Negotiate, new LdapCredential
                 {
                     UserName = bindUser,
                     Password = password,
@@ -93,6 +96,16 @@ public class LdapForNetConnector : ILdapConnector
             return (uri.Host, uri.Port > 0 ? uri.Port : 389);
         }
         return (url, 389);
+    }
+
+    private static string DomainSuffixFromBaseDn(string baseDn)
+    {
+        // "dc=dogupres,dc=local" → "dogupres.local"
+        var parts = baseDn
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(p => p.StartsWith("dc=", StringComparison.OrdinalIgnoreCase))
+            .Select(p => p[3..]);
+        return string.Join('.', parts);
     }
 
     private static string ExtractCn(string distinguishedName)
