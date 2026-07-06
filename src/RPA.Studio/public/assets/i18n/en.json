@@ -140,6 +140,50 @@
       "validationError": "Please provide a workflow name."
     }
   },
+  "properties": {
+    "panel": {
+      "ariaLabel": "Activity properties",
+      "empty": "Select a node to edit its properties.",
+      "unsupported": "This activity type has no property editor yet."
+    }
+  },
+  "web": {
+    "insertVariable": "Insert variable",
+    "navigate": {
+      "title": "Navigate"
+    },
+    "click": {
+      "title": "Click"
+    },
+    "setText": {
+      "title": "Set Text"
+    },
+    "getText": {
+      "title": "Get Text"
+    },
+    "waitForSelector": {
+      "title": "Wait For Selector"
+    },
+    "field": {
+      "url": "URL",
+      "urlPlaceholder": "https://example.com",
+      "selector": "Selector",
+      "selectorPlaceholder": "#id, .class or //xpath",
+      "waitSelector": "Wait Selector (optional)",
+      "text": "Text",
+      "textPlaceholder": "Text to enter",
+      "outputVariable": "Output Variable",
+      "outputVariablePlaceholder": "resultText",
+      "timeoutMs": "Timeout (ms)"
+    },
+    "hint": {
+      "selectorFormat": "Use a CSS selector (#id, .class) or an XPath expression (//tag)."
+    },
+    "error": {
+      "required": "This field is required.",
+      "invalidVariableName": "Enter a valid variable name (letters, numbers, underscore; cannot start with a number)."
+    }
+  },
   "debug": {
     "panel": {
       "ariaLabel": "Workflow debugger",

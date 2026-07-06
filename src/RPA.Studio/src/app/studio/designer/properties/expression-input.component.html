@@ -1,0 +1,40 @@
+<div class="expression-input">
+  <label [for]="inputId">
+    {{ label }}
+    @if (required) {
+      <span aria-hidden="true">*</span>
+    }
+  </label>
+  <div class="expression-input__row" data-testid="expression-input">
+    <input
+      [id]="inputId"
+      type="text"
+      [attr.data-testid]="inputId + '-input'"
+      [value]="value"
+      (input)="handleInput($any($event.target).value)"
+      (blur)="handleBlur()"
+      [placeholder]="placeholder"
+      [disabled]="disabled"
+      [attr.aria-label]="label"
+      [attr.aria-required]="required"
+      [attr.aria-invalid]="invalid"
+      [attr.aria-describedby]="invalid ? inputId + '-error' : (hint ? inputId + '-hint' : null)"
+    />
+    <button
+      type="button"
+      class="expression-input__variable-btn"
+      data-testid="expression-insert-variable"
+      [attr.aria-label]="'web.insertVariable' | translate"
+      [disabled]="disabled"
+      (click)="insertVariableToken()"
+    >
+      {{ 'web.insertVariable' | translate }}
+    </button>
+  </div>
+  @if (hint && !invalid) {
+    <p class="expression-input__hint" [id]="inputId + '-hint'">{{ hint }}</p>
+  }
+  @if (invalid && errorMessage) {
+    <p class="expression-input__error" [id]="inputId + '-error'" role="alert">{{ errorMessage }}</p>
+  }
+</div>

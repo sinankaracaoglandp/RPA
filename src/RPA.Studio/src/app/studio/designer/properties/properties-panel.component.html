@@ -1,0 +1,21 @@
+<aside
+  class="properties-panel"
+  data-testid="properties-panel"
+  [attr.aria-label]="'properties.panel.ariaLabel' | translate"
+>
+  @if (!selectedNodeId) {
+    <p class="properties-panel__empty" data-testid="properties-panel-empty">
+      {{ 'properties.panel.empty' | translate }}
+    </p>
+  } @else if (isWebActivity) {
+    <app-web-property-router
+      [activityType]="activityType"
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-web-property-router>
+  } @else {
+    <p class="properties-panel__empty" data-testid="properties-panel-unsupported">
+      {{ 'properties.panel.unsupported' | translate }}
+    </p>
+  }
+</aside>

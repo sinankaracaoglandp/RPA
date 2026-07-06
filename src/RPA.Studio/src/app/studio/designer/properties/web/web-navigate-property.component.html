@@ -1,0 +1,19 @@
+<form class="web-property" [formGroup]="form" data-testid="web-navigate-form">
+  <h3>{{ 'web.navigate.title' | translate }}</h3>
+  <app-expression-input
+    inputId="web-navigate-url"
+    [label]="'web.field.url' | translate"
+    [placeholder]="'web.field.urlPlaceholder' | translate"
+    [required]="true"
+    formControlName="url"
+    [invalid]="urlControl.invalid && urlControl.touched"
+    [errorMessage]="'web.error.required' | translate"
+  ></app-expression-input>
+  <app-expression-input
+    inputId="web-navigate-wait-selector"
+    [label]="'web.field.waitSelector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+    formControlName="waitSelector"
+  ></app-expression-input>
+</form>

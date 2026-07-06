@@ -1,0 +1,32 @@
+<form class="web-property" [formGroup]="form" data-testid="web-wait-for-selector-form">
+  <h3>{{ 'web.waitForSelector.title' | translate }}</h3>
+  <app-expression-input
+    inputId="web-wait-for-selector-selector"
+    [label]="'web.field.selector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [required]="true"
+    formControlName="selector"
+    [invalid]="selectorControl.invalid && selectorControl.touched"
+    [errorMessage]="'web.error.required' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+  ></app-expression-input>
+  <div class="web-property__field">
+    <label for="web-wait-for-selector-timeout">
+      {{ 'web.field.timeoutMs' | translate }}
+      <span aria-hidden="true">*</span>
+    </label>
+    <input
+      id="web-wait-for-selector-timeout"
+      type="number"
+      min="1"
+      data-testid="web-wait-for-selector-timeout-input"
+      formControlName="timeoutMs"
+      [attr.aria-label]="'web.field.timeoutMs' | translate"
+      aria-required="true"
+      [attr.aria-invalid]="timeoutMsControl.invalid && timeoutMsControl.touched"
+    />
+    @if (timeoutMsControl.invalid && timeoutMsControl.touched) {
+      <p class="web-property__error" role="alert">{{ 'web.error.required' | translate }}</p>
+    }
+  </div>
+</form>

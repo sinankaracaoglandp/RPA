@@ -1,0 +1,28 @@
+<div data-testid="web-property-router">
+  @if (isNavigate) {
+    <app-web-navigate-property
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-web-navigate-property>
+  } @else if (isClick) {
+    <app-web-click-property
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-web-click-property>
+  } @else if (isSetText) {
+    <app-web-set-text-property
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-web-set-text-property>
+  } @else if (isGetText) {
+    <app-web-get-text-property
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-web-get-text-property>
+  } @else if (isWaitForSelector) {
+    <app-web-wait-for-selector-property
+      [properties]="properties"
+      (propertiesChange)="onPropertiesChange($event)"
+    ></app-web-wait-for-selector-property>
+  }
+</div>

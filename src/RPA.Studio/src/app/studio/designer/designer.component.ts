@@ -10,6 +10,7 @@ import { ToolboxComponent } from './toolbox/toolbox.component';
 import { DebugPanelComponent } from '../debug/debug-panel.component';
 import { SimpleModeToggleComponent } from '../simple-mode/simple-mode-toggle.component';
 import { SimplifiedToolboxComponent } from '../simple-mode/simplified-toolbox.component';
+import { PropertiesPanelComponent } from './properties/properties-panel.component';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -30,6 +31,7 @@ import { SimplifiedToolboxComponent } from '../simple-mode/simplified-toolbox.co
     DebugPanelComponent,
     SimpleModeToggleComponent,
     SimplifiedToolboxComponent,
+    PropertiesPanelComponent,
   ],
   templateUrl: './designer.component.html',
 })

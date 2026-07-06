@@ -1,0 +1,29 @@
+<form class="web-property" [formGroup]="form" data-testid="web-set-text-form">
+  <h3>{{ 'web.setText.title' | translate }}</h3>
+  <app-expression-input
+    inputId="web-set-text-selector"
+    [label]="'web.field.selector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [required]="true"
+    formControlName="selector"
+    [invalid]="selectorControl.invalid && selectorControl.touched"
+    [errorMessage]="'web.error.required' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+  ></app-expression-input>
+  <app-expression-input
+    inputId="web-set-text-text"
+    [label]="'web.field.text' | translate"
+    [placeholder]="'web.field.textPlaceholder' | translate"
+    [required]="true"
+    formControlName="text"
+    [invalid]="textControl.invalid && textControl.touched"
+    [errorMessage]="'web.error.required' | translate"
+  ></app-expression-input>
+  <app-expression-input
+    inputId="web-set-text-wait-selector"
+    [label]="'web.field.waitSelector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+    formControlName="waitSelector"
+  ></app-expression-input>
+</form>

@@ -1,0 +1,20 @@
+<form class="web-property" [formGroup]="form" data-testid="web-click-form">
+  <h3>{{ 'web.click.title' | translate }}</h3>
+  <app-expression-input
+    inputId="web-click-selector"
+    [label]="'web.field.selector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [required]="true"
+    formControlName="selector"
+    [invalid]="selectorControl.invalid && selectorControl.touched"
+    [errorMessage]="'web.error.required' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+  ></app-expression-input>
+  <app-expression-input
+    inputId="web-click-wait-selector"
+    [label]="'web.field.waitSelector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+    formControlName="waitSelector"
+  ></app-expression-input>
+</form>

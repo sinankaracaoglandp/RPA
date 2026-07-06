@@ -462,6 +462,26 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     return this.selectedNodeId;
   }
 
+  /** Activity id of the given node, if any (used by the properties panel). */
+  getNodeActivityId(nodeId: string): string | undefined {
+    return this.editor?.getNode(nodeId)?.activityId;
+  }
+
+  /** Current properties bag of the given node (used by the properties panel). */
+  getNodeProperties(nodeId: string): Record<string, unknown> {
+    return this.editor?.getNode(nodeId)?.properties ?? {};
+  }
+
+  /** Replaces a node's properties bag (e.g. from a property editor form) and notifies subscribers. */
+  updateNodeProperties(nodeId: string, properties: Record<string, unknown>): void {
+    const node = this.editor?.getNode(nodeId);
+    if (!node) {
+      return;
+    }
+    node.properties = properties;
+    this.emitChange();
+  }
+
   // --- (de)serialisation ---------------------------------------------------
 
   serialize(): WorkflowVersion {

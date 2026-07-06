@@ -33,5 +33,7 @@
       [workflow]="currentGraph() ?? workflow()"
       (currentNodeChange)="onDebugCurrentNode($event)"
     ></app-debug-panel>
+  } @else {
+    <app-properties-panel [canvas]="canvas" [selectedNodeId]="selectedNodeId()"></app-properties-panel>
   }
 </div>

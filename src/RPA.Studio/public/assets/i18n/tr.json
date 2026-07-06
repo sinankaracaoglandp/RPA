@@ -140,6 +140,50 @@
       "validationError": "Lütfen bir iş akışı adı girin."
     }
   },
+  "properties": {
+    "panel": {
+      "ariaLabel": "Aktivite özellikleri",
+      "empty": "Özelliklerini düzenlemek için bir düğüm seçin.",
+      "unsupported": "Bu aktivite türü için henüz özellik düzenleyici yok."
+    }
+  },
+  "web": {
+    "insertVariable": "Değişken ekle",
+    "navigate": {
+      "title": "Git (Navigate)"
+    },
+    "click": {
+      "title": "Tıkla"
+    },
+    "setText": {
+      "title": "Metin Gir"
+    },
+    "getText": {
+      "title": "Metin Al"
+    },
+    "waitForSelector": {
+      "title": "Seçiciyi Bekle"
+    },
+    "field": {
+      "url": "URL",
+      "urlPlaceholder": "https://ornek.com",
+      "selector": "Seçici",
+      "selectorPlaceholder": "#id, .sinif veya //xpath",
+      "waitSelector": "Bekleme Seçicisi (isteğe bağlı)",
+      "text": "Metin",
+      "textPlaceholder": "Girilecek metin",
+      "outputVariable": "Çıktı Değişkeni",
+      "outputVariablePlaceholder": "sonucMetin",
+      "timeoutMs": "Zaman Aşımı (ms)"
+    },
+    "hint": {
+      "selectorFormat": "CSS seçici (#id, .sinif) veya XPath ifadesi (//tag) kullanın."
+    },
+    "error": {
+      "required": "Bu alan zorunludur.",
+      "invalidVariableName": "Geçerli bir değişken adı girin (harf, rakam, alt çizgi; rakamla başlayamaz)."
+    }
+  },
   "debug": {
     "panel": {
       "ariaLabel": "İş akışı hata ayıklayıcı",

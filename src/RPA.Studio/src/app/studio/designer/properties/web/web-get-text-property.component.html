@@ -1,0 +1,39 @@
+<form class="web-property" [formGroup]="form" data-testid="web-get-text-form">
+  <h3>{{ 'web.getText.title' | translate }}</h3>
+  <app-expression-input
+    inputId="web-get-text-selector"
+    [label]="'web.field.selector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [required]="true"
+    formControlName="selector"
+    [invalid]="selectorControl.invalid && selectorControl.touched"
+    [errorMessage]="'web.error.required' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+  ></app-expression-input>
+  <app-expression-input
+    inputId="web-get-text-wait-selector"
+    [label]="'web.field.waitSelector' | translate"
+    [placeholder]="'web.field.selectorPlaceholder' | translate"
+    [hint]="'web.hint.selectorFormat' | translate"
+    formControlName="waitSelector"
+  ></app-expression-input>
+  <div class="web-property__field">
+    <label for="web-get-text-output-variable">
+      {{ 'web.field.outputVariable' | translate }}
+      <span aria-hidden="true">*</span>
+    </label>
+    <input
+      id="web-get-text-output-variable"
+      type="text"
+      data-testid="web-get-text-output-variable-input"
+      formControlName="outputVariable"
+      [placeholder]="'web.field.outputVariablePlaceholder' | translate"
+      [attr.aria-label]="'web.field.outputVariable' | translate"
+      aria-required="true"
+      [attr.aria-invalid]="outputVariableControl.invalid && outputVariableControl.touched"
+    />
+    @if (outputVariableControl.invalid && outputVariableControl.touched) {
+      <p class="web-property__error" role="alert">{{ 'web.error.invalidVariableName' | translate }}</p>
+    }
+  </div>
+</form>
