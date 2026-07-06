@@ -114,10 +114,18 @@
 
 - [x] Task 5.1: Canvas & Rete.js 2 (Opus) — APPROVED_WITH_NOTES (commits 73dcbe1..c76a74a, 32 tests, 92.9% coverage, merged)
 - [x] Task 5.2: Toolbox & Activity Catalog (Sonnet) — APPROVED_WITH_NOTES (commits c76a74a..8972a2f, 43 tests, 86.46% coverage, merged)
-- [ ] Task 5.3: Component Library & Publish Wizard (Sonnet)
-- [ ] Task 5.4: Debug/Step-Through (Opus)
-- [ ] Task 5.5: Simple Mode & Templates (Sonnet)
-- [ ] Task 5.6: Web Activities (Sonnet)
+- [x] Task 5.3: Component Library & Publish Wizard (Sonnet) — APPROVED_WITH_NOTES (commits 8972a2f..892169a, 67 tests, 79.64% coverage; includes Faz 4 backend generalization, 528 tests, merged)
+- [x] Task 5.4: Debug/Step-Through IDE (Opus) — APPROVED_WITH_NOTES (commits 892169a..2694f05, 97 tests, 89.14% coverage; includes RobotHubService SignalR wrapper, merged)
+- [x] Task 5.5: Simple Mode & Templates (Sonnet) — APPROVED (commits 2694f05..999de76, 125 tests, 87% coverage, merged)
+- [x] Task 5.6: Web Activities (Sonnet) — DONE (commit 4e56ad7, 5 property editors + WebPropertyRouter, 139 tests ✅ all-suite, build pass)
+
+## Faz 5: ✅ COMPLETE (6 task, 139 tests passing)
+
+**Web Activities (5.6):** Navigate/Click/SetText/GetText/WaitForSelector property editors, WebPropertyRouter (activity-type routing), expression-input entegrasyonu, i18n (tr/en).
+
+**Kalan (Faz 5 kapanış):**
+- ⏳ Whole-branch review (Opus, tüm Faz 5)
+- ⏳ Faz 5 → main merge
 
 ## Faz 6: TBD (5 task)
 
