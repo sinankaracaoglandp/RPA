@@ -301,7 +301,7 @@ Co-Authored-By: Claude Opus <noreply@anthropic.com>"
 - Timeout after 60 seconds, calls `StopSpy(sessionId)`.
 - `cancel(sessionId)` or `cancelActive()` stops active pick.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 Mock SignalR HubConnectionBuilder if existing tests do so; otherwise wrap SignalR creation in injectable factory.
 
@@ -312,12 +312,12 @@ Tests:
 - Timeout invokes `StopSpy` and rejects with timeout.
 - Cancel invokes `StopSpy` and rejects/cancels.
 
-- [ ] **Step 2: FAIL gozle**
+- [x] **Step 2: FAIL gozle**
 
 Run:
 `cd src/RPA.Studio && npm test -- --watch=false --include='**/spy.service.spec.ts'`
 
-- [ ] **Step 3: Implement SpyService**
+- [x] **Step 3: Implement SpyService**
 
 Use existing auth token retrieval pattern. If no SignalR package is installed in Studio, add `@microsoft/signalr` only if already present in `package.json`; otherwise confirm package exists before coding. Network install is not part of this task unless dependency is already in lockfile.
 
@@ -337,12 +337,12 @@ export interface SpyElement {
 }
 ```
 
-- [ ] **Step 4: Tests PASS**
+- [x] **Step 4: Tests PASS**
 
 Run:
 `cd src/RPA.Studio && npm test -- --watch=false --include='**/spy.service.spec.ts'`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/RPA.Studio/src/app/shared/services/spy.service.ts src/RPA.Studio/src/app/shared/services/spy.service.spec.ts
