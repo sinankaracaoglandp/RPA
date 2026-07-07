@@ -4,6 +4,7 @@ using RPA.Domain.Entities;
 using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Services;
+using System.Text.Json;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 using Environment = RPA.Domain.Entities.Environment;
 using Xunit;
@@ -158,5 +159,28 @@ public class WorkflowDesignServiceTests
         Assert.Contains(envs.Items, e => e.Name == "Dev");
         var draft = await workflows.FindDraftAsync(wf.Id);
         Assert.Equal(envs.Items.First(e => e.Name == "Dev").Id, draft!.EnvironmentId);
+    }
+
+    [Fact]
+    public async Task CreateWorkflow_NameWithBackslashAndNewline_DraftJsonIsValidAndRoundTrips()
+    {
+        var (svc, _, workflows, _) = Make();
+        var p = await svc.CreateProjectAsync("Pilot", null);
+        var testName = "Ad\\ı\n\"test\""; // backslash, newline, quotes
+
+        var wf = await svc.CreateWorkflowAsync(p.Id, testName);
+
+        var draft = await workflows.FindDraftAsync(wf.Id);
+        Assert.NotNull(draft);
+
+        // Parse JSON to verify it's valid
+        var doc = JsonDocument.Parse(draft!.JsonDefinition);
+        var root = doc.RootElement;
+
+        // Extract the name property and verify it round-trips
+        var nameProperty = root.GetProperty("name");
+        var roundTrippedName = nameProperty.GetString();
+
+        Assert.Equal(testName, roundTrippedName);
     }
 }

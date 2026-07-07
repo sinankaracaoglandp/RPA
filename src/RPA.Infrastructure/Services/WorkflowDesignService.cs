@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.Services;
 
+using System.Text.Json;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
@@ -137,7 +138,19 @@ public sealed class WorkflowDesignService
     }
 
     private static string EmptyDefinition(Workflow workflow)
-        => $"{{\"schemaVersion\":\"1.0\",\"id\":\"{workflow.Id}\",\"name\":\"{workflow.Name.Replace("\"", "\\\"")}\",\"version\":\"1.0.0\",\"nodes\":[],\"connections\":[],\"variables\":[]}}";
+    {
+        var definition = new
+        {
+            schemaVersion = "1.0",
+            id = workflow.Id,
+            name = workflow.Name,
+            version = "1.0.0",
+            nodes = Array.Empty<object>(),
+            connections = Array.Empty<object>(),
+            variables = Array.Empty<object>()
+        };
+        return JsonSerializer.Serialize(definition);
+    }
 
     private async Task<Project> RequireProject(Guid id, CancellationToken ct)
         => await _projects.FindAsync(id, ct).ConfigureAwait(false)
