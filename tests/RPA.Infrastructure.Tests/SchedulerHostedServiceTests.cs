@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.Tests;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moq;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
@@ -132,5 +133,36 @@ public class SchedulerHostedServiceTests
         await scheduler.ScanOnceAsync();
 
         triggerService.Verify(s => s.ExecuteTriggerAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task StopAsync_DuringDelay_DoesNotWriteToConsole()
+    {
+        var repo = new Mock<ITriggerRepository>();
+        repo.Setup(r => r.FindActiveCronTriggersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Trigger>());
+
+        var scheduler = new SchedulerHostedService(
+            BuildScopeFactory(repo.Object, Mock.Of<ITriggerService>()),
+            new MockLogger<SchedulerHostedService>(),
+            Options.Create(new SchedulerOptions { PollInterval = TimeSpan.FromHours(1) }));
+
+        var originalOut = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        try
+        {
+            await scheduler.StartAsync(CancellationToken.None);
+            await Task.Delay(50);
+
+            await scheduler.StopAsync(CancellationToken.None);
+
+            Assert.Equal(string.Empty, writer.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
     }
 }
