@@ -169,6 +169,39 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task StudioHub_StopSpy_ByNonOwner_DoesNotRemoveSessionRoute()
+    {
+        var token = GenerateToken();
+        var owner = CreateHubConnection(token);
+        var other = CreateHubConnection(token);
+        var agent = CreateHubConnection(token);
+        var sessionId = Guid.NewGuid();
+        var received = new TaskCompletionSource<SpyElementMessage>();
+
+        owner.On<SpyElementMessage>(StudioHub_DetectedElementEvent, el => received.TrySetResult(el));
+
+        await owner.StartAsync();
+        await other.StartAsync();
+        await agent.StartAsync();
+        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap");
+        await other.InvokeAsync(StudioHub_StopSpyCommand, sessionId);
+        await agent.InvokeAsync("ReceiveDetectedElement", new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "sap",
+            ElementId = "wnd[0]/usr/btn[OK]",
+        });
+
+        var completed = await Task.WhenAny(received.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Equal(received.Task, completed);
+        Assert.Equal(sessionId, (await received.Task).SessionId);
+
+        await owner.DisposeAsync();
+        await other.DisposeAsync();
+        await agent.DisposeAsync();
+    }
+
+    [Fact]
     public async Task StudioHub_StartSpy_RejectsUnsupportedKind()
     {
         var connection = CreateHubConnection(GenerateToken());

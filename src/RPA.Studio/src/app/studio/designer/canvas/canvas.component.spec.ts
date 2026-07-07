@@ -8,6 +8,12 @@ describe('CanvasComponent', () => {
   let fixture: ComponentFixture<CanvasComponent>;
   let component: CanvasComponent;
 
+  beforeAll(() => {
+    if (!document.elementsFromPoint) {
+      document.elementsFromPoint = () => [];
+    }
+  });
+
   async function ready(): Promise<void> {
     fixture.detectChanges();
     await component.initialized;
