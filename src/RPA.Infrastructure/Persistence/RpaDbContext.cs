@@ -31,6 +31,11 @@ public class RpaDbContext : DbContext
 
     public DbSet<QueueItem> QueueItems => Set<QueueItem>();
 
+    /// <summary>Paket B — Studio proje/workflow kalıcılığı.</summary>
+    public DbSet<Project> Projects => Set<Project>();
+
+    public DbSet<RPA.Domain.Entities.Workflow> Workflows => Set<RPA.Domain.Entities.Workflow>();
+
     /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
     public DbSet<Robot> Robots => Set<Robot>();
 
@@ -180,6 +185,31 @@ public class RpaDbContext : DbContext
             // Workflow/Environment navigasyonları tam şema paketinde (WP-1.2) yapılandırılacak.
             entity.Ignore(v => v.Workflow);
             entity.Ignore(v => v.Environment);
+        });
+
+        modelBuilder.Entity<Project>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Name).HasMaxLength(256).IsRequired();
+            entity.Property(p => p.Description).HasMaxLength(1024);
+            // Navigasyonlar tam şema paketinde (WP-1.2) yapılandırılacak.
+            entity.Ignore(p => p.Workflows);
+            entity.Ignore(p => p.Components);
+            entity.Ignore(p => p.Queues);
+        });
+
+        modelBuilder.Entity<RPA.Domain.Entities.Workflow>(entity =>
+        {
+            entity.HasKey(w => w.Id);
+            entity.Property(w => w.Name).HasMaxLength(256).IsRequired();
+            entity.Property(w => w.Description).HasMaxLength(1024);
+            entity.Property(w => w.Tags).HasMaxLength(1024);
+            entity.HasIndex(w => w.ProjectId);
+            entity.Ignore(w => w.Project);
+            entity.Ignore(w => w.ActiveVersion);
+            entity.Ignore(w => w.Versions);
+            entity.Ignore(w => w.ComponentUsages);
+            entity.Ignore(w => w.JobRuns);
         });
     }
 }
