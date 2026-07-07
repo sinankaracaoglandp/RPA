@@ -112,23 +112,23 @@ public static class ActivityRegistry
 
         b.Activity("Sap.Gui.Click").DisplayName("SAP GUI Tıkla").Category(CatSapGui).Capability(cap)
             .Description("Element ID'ye tıklar (wnd[0]/usr/...).")
-            .Input("elementId", "string");
+            .Input("elementId", "string", pickerKind: "sap");
 
         b.Activity("Sap.Gui.SetText").DisplayName("SAP GUI Metin Yaz").Category(CatSapGui).Capability(cap)
             .Description("Bir alana metin yazar.")
-            .Input("elementId", "string").Input("text", "string");
+            .Input("elementId", "string", pickerKind: "sap").Input("text", "string");
 
         b.Activity("Sap.Gui.GetText").DisplayName("SAP GUI Metin Oku").Category(CatSapGui).Capability(cap)
             .Description("Bir alandan metin okur.")
-            .Input("elementId", "string").Output("text", "string");
+            .Input("elementId", "string", pickerKind: "sap").Output("text", "string");
 
         b.Activity("Sap.Gui.SelectTab").DisplayName("SAP GUI Sekme Seç").Category(CatSapGui).Capability(cap)
             .Description("Sekme kontrolünde sekme seçer.")
-            .Input("elementId", "string");
+            .Input("elementId", "string", pickerKind: "sap");
 
         b.Activity("Sap.Gui.GridRead").DisplayName("SAP GUI ALV Oku").Category(CatSapGui).Capability(cap)
             .Description("ALV grid içeriğini DataTable olarak okur.")
-            .Input("gridElementId", "string").Output("data", "DataTable");
+            .Input("gridElementId", "string", pickerKind: "sap").Output("data", "DataTable");
 
         b.Activity("Sap.Gui.Screenshot").DisplayName("SAP GUI Ekran Görüntüsü").Category(CatSapGui).Capability(cap)
             .Description("Aktif SAP penceresinin görüntüsünü alır.")

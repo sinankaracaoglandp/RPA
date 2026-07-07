@@ -125,6 +125,7 @@ public class ActivityParameter
     public bool Required { get; set; } = true;
     public object? DefaultValue { get; set; }
     public string? Description { get; set; }
+    public string? PickerKind { get; set; }
 }
 
 public class ExceptionClassificationRule

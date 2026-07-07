@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.Tests.UISpy;
 
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using RPA.Domain.ValueObjects;
@@ -131,6 +132,50 @@ public class SapGuiElementDetectorTests
         Assert.Equal(9, msg.Y);
         Assert.True(msg.Enabled);
         Assert.True(msg.Changeable);
+    }
+
+    [Fact]
+    public void SpyElementMessage_FromWithSession_MapsSessionAndKind()
+    {
+        var sessionId = Guid.NewGuid();
+        var el = new SapGuiElement("wnd[0]/usr/btn[OK]", "GuiButton", "OK") { X = 7, Y = 9 };
+
+        var msg = SpyElementMessage.From(el, sessionId);
+
+        Assert.Equal(sessionId, msg.SessionId);
+        Assert.Equal("sap", msg.Kind);
+        Assert.Equal("wnd[0]/usr/btn[OK]", msg.ElementId);
+    }
+
+    [Fact]
+    public void SpyElementMessage_DefaultFrom_IsBackwardCompatibleSapMessage()
+    {
+        var el = new SapGuiElement("wnd[0]/usr/btn[OK]", "GuiButton", "OK");
+
+        var msg = SpyElementMessage.From(el);
+
+        Assert.Equal(Guid.Empty, msg.SessionId);
+        Assert.Equal("sap", msg.Kind);
+    }
+
+    [Fact]
+    public void SpyElementMessage_SerializesSessionAndKind()
+    {
+        var sessionId = Guid.NewGuid();
+        var msg = new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "sap",
+            ElementId = "wnd[0]/usr/btn[OK]",
+            Type = "GuiButton",
+        };
+
+        var json = JsonSerializer.Serialize(msg);
+
+        Assert.Contains(nameof(SpyElementMessage.SessionId), json);
+        Assert.Contains(sessionId.ToString(), json);
+        Assert.Contains(nameof(SpyElementMessage.Kind), json);
+        Assert.Contains("sap", json);
     }
 
     [Fact]

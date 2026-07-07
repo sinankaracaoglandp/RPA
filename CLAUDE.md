@@ -172,6 +172,19 @@ tabanlı sıralı fallback sözleşmede explicit hale getirildi.
 
 ---
 
+## Kontrat Degisikligi - 2026-07-07 (Paket C SAP Hedef Goster)
+
+UI Spy tek-secim oturumu ve Studio picker metadata'si icin kontrat genisletildi.
+
+- `SpyElementMessage`: `SessionId` (Guid), `Kind` (`sap|web|desktop`) eklendi. Paket D/E icin web/desktop'a ozgu nullable alanlar simdiden eklendi.
+- `ActivityParameter`: opsiyonel `PickerKind` eklendi. `null`/empty picker yok, `sap` SAP GUI picker demektir.
+- `StudioHub`: `StartSpy(sessionId, kind)` ve `StopSpy(sessionId)` metotlari eklenecek; `ReceiveDetectedElement` sessionId ile caller-only yayina gececek.
+
+Etkilenen paketler: Paket C (SAP picker), Paket D (Web picker), Paket E (Desktop picker), Studio activity metadata tuketicileri, Agent UI Spy transport.
+Gerekce: Studio'da selector/element alanlarinin hedef goster dugmesiyle tek seferlik ve kullaniciya ozel secim yapabilmesi icin mevcut surekli `Clients.All` yayin kontrati yeterli degildir.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

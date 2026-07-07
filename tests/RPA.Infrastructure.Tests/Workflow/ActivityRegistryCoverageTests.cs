@@ -64,4 +64,46 @@ public class ActivityRegistryCoverageTests
         Assert.True(offenders.Count == 0,
             $"DisplayName/Category eksik: {string.Join(", ", offenders)}");
     }
+
+    [Fact]
+    public void SapGuiSelectorInputs_HaveSapPickerKind()
+    {
+        var catalog = ActivityRegistry.BuildCatalog();
+        var expected = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Sap.Gui.Click"] = ["elementId"],
+            ["Sap.Gui.SetText"] = ["elementId"],
+            ["Sap.Gui.GetText"] = ["elementId"],
+            ["Sap.Gui.SelectTab"] = ["elementId"],
+            ["Sap.Gui.GridRead"] = ["gridElementId"],
+        };
+
+        var missing = expected
+            .SelectMany(activity => activity.Value.Select(inputName => (activityId: activity.Key, inputName)))
+            .Where(x =>
+            {
+                var input = catalog[x.activityId].Inputs.First(i => i.Name == x.inputName);
+                return !string.Equals(input.PickerKind, "sap", StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(x => $"{x.activityId}.{x.inputName}")
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"SAP picker metadata eksik: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void CredentialInputs_DoNotHavePickerKind()
+    {
+        var catalog = ActivityRegistry.BuildCatalog();
+        var offenders = catalog.Values
+            .SelectMany(a => a.Inputs.Select(i => (a.ActivityId, Input: i)))
+            .Where(x => string.Equals(x.Input.Type, "Credential", StringComparison.OrdinalIgnoreCase)
+                     && !string.IsNullOrWhiteSpace(x.Input.PickerKind))
+            .Select(x => $"{x.ActivityId}.{x.Input.Name}")
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            $"Credential alanlarina picker baglanamaz: {string.Join(", ", offenders)}");
+    }
 }

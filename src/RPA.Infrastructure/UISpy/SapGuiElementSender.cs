@@ -21,6 +21,8 @@ public interface ISpyElementTransport
 /// </summary>
 public sealed record SpyElementMessage
 {
+    public Guid SessionId { get; init; }
+    public string Kind { get; init; } = "sap";
     public required string ElementId { get; init; }
     public string? Type { get; init; }
     public string? Text { get; init; }
@@ -28,13 +30,26 @@ public sealed record SpyElementMessage
     public bool Changeable { get; init; }
     public int X { get; init; }
     public int Y { get; init; }
+    public string? Selector { get; init; }
+    public string? TagName { get; init; }
+    public string? InnerTextPreview { get; init; }
+    public string? PageUrl { get; init; }
+    public string? AutomationId { get; init; }
+    public string? ControlType { get; init; }
+    public string? Name { get; init; }
+    public string? UiaPath { get; init; }
+    public string? ProcessName { get; init; }
 
     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
-    public static SpyElementMessage From(SapGuiElement element)
+    public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
+
+    public static SpyElementMessage From(SapGuiElement element, Guid sessionId)
     {
         ArgumentNullException.ThrowIfNull(element);
         return new SpyElementMessage
         {
+            SessionId = sessionId,
+            Kind = "sap",
             ElementId = element.Id,
             Type = element.Type,
             Text = element.Text,
