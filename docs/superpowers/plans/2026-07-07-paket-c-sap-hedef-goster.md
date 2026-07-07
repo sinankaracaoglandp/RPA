@@ -374,7 +374,7 @@ Co-Authored-By: Claude Opus <noreply@anthropic.com>"
 - GenericProperty shows button beside fields whose metadata input has `pickerKind`.
 - On picked SAP element, property value becomes `element.elementId`.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 `selector-picker-button.component.spec.ts`:
 - Click calls `SpyService.pick('sap')`.
@@ -387,12 +387,12 @@ Co-Authored-By: Claude Opus <noreply@anthropic.com>"
 - Picker result updates input value and emits `{ elementId: 'wnd[0]/usr/btn[OK]' }`.
 - Credential input with pickerKind null renders no picker.
 
-- [ ] **Step 2: FAIL gozle**
+- [x] **Step 2: FAIL gozle**
 
 Run:
 `cd src/RPA.Studio && npm test -- --watch=false --include='**/{selector-picker-button,generic-property}.component.spec.ts'`
 
-- [ ] **Step 3: Implement component**
+- [x] **Step 3: Implement component**
 
 UI requirements:
 - Use an icon-like button label. If no icon library exists, use accessible text `Hedef goster` and keep compact.
@@ -407,12 +407,12 @@ GenericProperty:
 - Add picker button next to text input only when `input.pickerKind` exists.
 - On pick, call existing property change path so dirty tracking still works through `propertiesChange`.
 
-- [ ] **Step 4: Tests PASS**
+- [x] **Step 4: Tests PASS**
 
 Run:
 `cd src/RPA.Studio && npm test -- --watch=false --include='**/{selector-picker-button,generic-property}.component.spec.ts'`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/RPA.Studio/src/app/studio/designer/properties/ src/RPA.Studio/public/assets/i18n/

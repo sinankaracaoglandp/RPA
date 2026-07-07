@@ -72,6 +72,16 @@
     }
   }
 
+  &__input-row {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.4rem;
+
+    .generic-property__input {
+      min-width: 0;
+    }
+  }
+
   &__hint {
     font-size: 0.7rem;
     color: #94a3b8;

@@ -35,16 +35,24 @@
                 {{ port.description || port.name }}
                 @if (port.required) { <span class="generic-property__req">*</span> }
               </label>
-              <input
-                [id]="'prop-' + port.name"
-                [type]="inputType(port)"
-                [value]="value(port)"
-                (input)="onValueChange(port, $any($event.target).value)"
-                [placeholder]="port.name"
-                class="generic-property__input"
-                [attr.data-testid]="'prop-' + port.name"
-                autocomplete="off"
-              />
+              <div class="generic-property__input-row">
+                <input
+                  [id]="'prop-' + port.name"
+                  [type]="inputType(port)"
+                  [value]="value(port)"
+                  (input)="onValueChange(port, $any($event.target).value)"
+                  [placeholder]="port.name"
+                  class="generic-property__input"
+                  [attr.data-testid]="'prop-' + port.name"
+                  autocomplete="off"
+                />
+                @if (port.pickerKind && inputType(port) !== 'password') {
+                  <app-selector-picker-button
+                    [pickerKind]="port.pickerKind"
+                    (picked)="onPicked(port, $event)"
+                  ></app-selector-picker-button>
+                }
+              </div>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
             }
           </div>

@@ -1,0 +1,21 @@
+<button
+  type="button"
+  class="selector-picker"
+  data-testid="selector-picker"
+  [disabled]="state() === 'picking'"
+  [title]="'picker.pick' | translate"
+  (click)="pick()"
+>
+  <span aria-hidden="true">+</span>
+  <span class="selector-picker__label">{{ 'picker.pick' | translate }}</span>
+</button>
+@if (state() === 'picking') {
+  <span class="selector-picker__status" data-testid="selector-picker-status">
+    {{ 'picker.waitingSap' | translate }}
+  </span>
+}
+@if (state() === 'error') {
+  <span class="selector-picker__status selector-picker__status--error" data-testid="selector-picker-error">
+    {{ 'picker.failed' | translate }}
+  </span>
+}

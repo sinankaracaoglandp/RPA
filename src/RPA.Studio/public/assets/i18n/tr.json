@@ -47,6 +47,12 @@
     "loadError": "Projeler yüklenemedi",
     "createError": "Oluşturma başarısız"
   },
+  "picker": {
+    "pick": "Hedef goster",
+    "waitingSap": "SAP ekraninda hedefe tiklayin",
+    "failed": "Hedef secilemedi",
+    "timeout": "Hedef secimi zaman asimina ugradi"
+  },
   "login": {
     "title": "RPA Studio'ya Giriş",
     "subtitle": "Devam etmek için kimlik bilgilerinizi girin",

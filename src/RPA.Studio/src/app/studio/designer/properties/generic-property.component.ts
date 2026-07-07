@@ -3,6 +3,8 @@ import { ChangeDetectorRef, Component, EventEmitter, Input, Output, inject } fro
 import { FormsModule } from '@angular/forms';
 import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
 import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.model';
+import { SpyElement } from '../../../shared/services/spy.service';
+import { SelectorPickerButtonComponent } from './selector-picker-button.component';
 
 /**
  * Metadata güdümlü jenerik özellik editörü. Seçili aktivitenin katalog
@@ -13,7 +15,7 @@ import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.
 @Component({
   selector: 'app-generic-property',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent],
   templateUrl: './generic-property.component.html',
   styleUrls: ['./generic-property.component.scss'],
 })
@@ -80,6 +82,10 @@ export class GenericPropertyComponent {
     }
     this.properties = next;
     this.propertiesChange.emit(next);
+  }
+
+  onPicked(port: ActivityPort, element: SpyElement): void {
+    this.onValueChange(port, element.elementId);
   }
 
   private loadMetadata(activityType: string | undefined): void {

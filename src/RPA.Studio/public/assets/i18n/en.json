@@ -47,6 +47,12 @@
     "loadError": "Failed to load projects",
     "createError": "Create failed"
   },
+  "picker": {
+    "pick": "Pick target",
+    "waitingSap": "Click a target in SAP",
+    "failed": "Target could not be selected",
+    "timeout": "Target selection timed out"
+  },
   "login": {
     "title": "Sign in to RPA Studio",
     "subtitle": "Enter your credentials to continue",
