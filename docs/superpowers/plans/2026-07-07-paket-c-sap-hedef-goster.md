@@ -144,7 +144,7 @@ Co-Authored-By: Claude Opus <noreply@anthropic.com>"
 - `ReceiveDetectedElement(SpyElementMessage element)` sends `DetectedElement` only to mapped Studio connection when `SessionId` is known.
 - Backcompat: `SessionId == Guid.Empty` may still broadcast for existing smoke flow only if test explicitly requires it; Paket C picker path must never use broadcast.
 
-- [ ] **Step 1: Failing hub tests**
+- [x] **Step 1: Failing hub tests**
 
 Add tests in `UiSpyTests.cs`:
 - Two Studio hub connections start different sessions; element for session A is received only by connection A.
@@ -155,12 +155,12 @@ Add tests in `UiSpyTests.cs`:
 
 Use existing `HubConnection` integration pattern. For caller-only assertion, register `DetectedElement` handlers on two connections and assert only expected `TaskCompletionSource` completes.
 
-- [ ] **Step 2: FAIL gozle**
+- [x] **Step 2: FAIL gozle**
 
 Run:
 `dotnet test tests/RPA.WebAPI.Tests --filter UiSpy`
 
-- [ ] **Step 3: Implement session registry**
+- [x] **Step 3: Implement session registry**
 
 In `StudioHub`:
 - Add static or DI singleton `ConcurrentDictionary<Guid, string>` for session owners. Prefer small service if testability becomes clearer: `ISpySessionRegistry`.
@@ -178,16 +178,16 @@ In `StudioHub`:
 
 Robot grouping can be YAGNI for this task; command may be sent to `Clients.Others` as an interim until RobotHub association exists. Document this in code comment and plan follow-up if needed.
 
-- [ ] **Step 4: REST controller uyarlamasi**
+- [x] **Step 4: REST controller uyarlamasi**
 
 `UiSpyController.Detect` currently uses `Clients.All`. Update it to call hub/session routing service or mark endpoint as legacy smoke. If kept, session-bearing payload must route caller-only through same registry.
 
-- [ ] **Step 5: Tests PASS**
+- [x] **Step 5: Tests PASS**
 
 Run:
 `dotnet test tests/RPA.WebAPI.Tests --filter UiSpy`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/RPA.WebAPI/Hubs/StudioHub.cs src/RPA.WebAPI/Controllers/UiSpyController.cs tests/RPA.WebAPI.Tests/UiSpyTests.cs

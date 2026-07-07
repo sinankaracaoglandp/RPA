@@ -39,6 +39,16 @@ public class UiSpyController : ControllerBase
             return BadRequest(new { error = "ElementId zorunludur." });
         }
 
+        if (element.SessionId != Guid.Empty)
+        {
+            if (StudioHub.TryGetSessionOwner(element.SessionId, out var ownerConnectionId))
+            {
+                await _studioHub.Clients.Client(ownerConnectionId).SendAsync(StudioHub.DetectedElementEvent, element, ct);
+            }
+
+            return Ok(element);
+        }
+
         await _studioHub.Clients.All.SendAsync(StudioHub.DetectedElementEvent, element, ct);
         return Ok(element);
     }

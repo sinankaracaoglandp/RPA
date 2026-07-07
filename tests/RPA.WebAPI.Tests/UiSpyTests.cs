@@ -34,6 +34,22 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         return client;
     }
 
+    private HubConnection CreateHubConnection(string? token = null)
+    {
+        var server = _factory.Server;
+        return new HubConnectionBuilder()
+            .WithUrl($"{server.BaseAddress}hubs/studio", options =>
+            {
+                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
+                options.Transports = HttpTransportType.LongPolling;
+                if (token is not null)
+                {
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                }
+            })
+            .Build();
+    }
+
     [Fact]
     public async Task Detect_WithoutAuth_IsUnauthorized()
     {
@@ -70,15 +86,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task Detect_BroadcastsToConnectedStudioClient()
     {
         var token = GenerateToken();
-        var server = _factory.Server;
-        var connection = new HubConnectionBuilder()
-            .WithUrl($"{server.BaseAddress}hubs/studio", options =>
-            {
-                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
-                options.Transports = HttpTransportType.LongPolling;
-                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
-            })
-            .Build();
+        var connection = CreateHubConnection(token);
 
         var tcs = new TaskCompletionSource<SpyElementMessage>();
         connection.On<SpyElementMessage>(StudioHub_DetectedElementEvent, el => tcs.TrySetResult(el));
@@ -90,21 +98,92 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
         Assert.Equal(tcs.Task, completed);
-        Assert.Equal("wnd[0]/usr/ctxtRMMG1-MATNR", tcs.Task.Result.ElementId);
+        Assert.Equal("wnd[0]/usr/ctxtRMMG1-MATNR", (await tcs.Task).ElementId);
+        await connection.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StudioHub_RoutesDetectedElementOnlyToSessionOwner()
+    {
+        var token = GenerateToken();
+        var owner = CreateHubConnection(token);
+        var other = CreateHubConnection(token);
+        var agent = CreateHubConnection(token);
+        var sessionId = Guid.NewGuid();
+        var ownerReceived = new TaskCompletionSource<SpyElementMessage>();
+        var otherReceived = new TaskCompletionSource<SpyElementMessage>();
+
+        owner.On<SpyElementMessage>(StudioHub_DetectedElementEvent, el => ownerReceived.TrySetResult(el));
+        other.On<SpyElementMessage>(StudioHub_DetectedElementEvent, el => otherReceived.TrySetResult(el));
+
+        await owner.StartAsync();
+        await other.StartAsync();
+        await agent.StartAsync();
+        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap");
+
+        await agent.InvokeAsync("ReceiveDetectedElement", new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "sap",
+            ElementId = "wnd[0]/usr/ctxtRMMG1-MATNR",
+        });
+
+        var completed = await Task.WhenAny(ownerReceived.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Equal(ownerReceived.Task, completed);
+        Assert.Equal(sessionId, (await ownerReceived.Task).SessionId);
+        var otherCompleted = await Task.WhenAny(otherReceived.Task, Task.Delay(TimeSpan.FromMilliseconds(300)));
+        Assert.NotEqual(otherReceived.Task, otherCompleted);
+
+        await owner.DisposeAsync();
+        await other.DisposeAsync();
+        await agent.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StudioHub_StopSpy_RemovesSessionRoute()
+    {
+        var token = GenerateToken();
+        var owner = CreateHubConnection(token);
+        var agent = CreateHubConnection(token);
+        var sessionId = Guid.NewGuid();
+        var received = new TaskCompletionSource<SpyElementMessage>();
+
+        owner.On<SpyElementMessage>(StudioHub_DetectedElementEvent, el => received.TrySetResult(el));
+
+        await owner.StartAsync();
+        await agent.StartAsync();
+        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap");
+        await owner.InvokeAsync(StudioHub_StopSpyCommand, sessionId);
+        await agent.InvokeAsync("ReceiveDetectedElement", new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "sap",
+            ElementId = "wnd[0]/usr/btn[OK]",
+        });
+
+        var completed = await Task.WhenAny(received.Task, Task.Delay(TimeSpan.FromMilliseconds(300)));
+        Assert.NotEqual(received.Task, completed);
+
+        await owner.DisposeAsync();
+        await agent.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StudioHub_StartSpy_RejectsUnsupportedKind()
+    {
+        var connection = CreateHubConnection(GenerateToken());
+        await connection.StartAsync();
+
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), "mainframe"));
+
         await connection.DisposeAsync();
     }
 
     [Fact]
     public async Task StudioHub_WithoutToken_IsRejected()
     {
-        var server = _factory.Server;
-        var connection = new HubConnectionBuilder()
-            .WithUrl($"{server.BaseAddress}hubs/studio", options =>
-            {
-                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
-                options.Transports = HttpTransportType.LongPolling;
-            })
-            .Build();
+        var connection = CreateHubConnection();
 
         await Assert.ThrowsAnyAsync<Exception>(() => connection.StartAsync());
         await connection.DisposeAsync();
@@ -112,4 +191,6 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
 
     // StudioHub.DetectedElementEvent değeri (test bağımlılığını azaltmak için sabit).
     private const string StudioHub_DetectedElementEvent = "DetectedElement";
+    private const string StudioHub_StartSpyCommand = "StartSpy";
+    private const string StudioHub_StopSpyCommand = "StopSpy";
 }
