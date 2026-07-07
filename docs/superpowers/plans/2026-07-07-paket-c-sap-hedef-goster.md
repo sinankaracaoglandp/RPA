@@ -432,7 +432,7 @@ Co-Authored-By: Claude Opus <noreply@anthropic.com>"
 - Modify tests/docs as needed
 - Optional: `docs/operations/installation.md` for SAP picker runtime notes
 
-- [ ] **Step 1: Full automated tests**
+- [x] **Step 1: Full automated tests**
 
 Run:
 `dotnet test tests/RPA.Infrastructure.Tests --filter UISpy`
@@ -440,7 +440,7 @@ Run:
 `dotnet test tests/RPA.WebAPI.Tests --filter UiSpy`
 `cd src/RPA.Studio && npm test -- --watch=false`
 
-- [ ] **Step 2: Security assertions**
+- [x] **Step 2: Security assertions**
 
 Add/verify tests:
 - Hub rejects unauthenticated StartSpy.
@@ -482,13 +482,13 @@ Commit any review fixes separately with clear scope.
 
 ## Paket Kapanisi
 
-- [ ] Kontrat degisikligi CLAUDE.md'de kayitli ve ilk commit'te uygulanmis.
-- [ ] `SpyElementMessage.SessionId/Kind` ve `ActivityParameter.PickerKind` testlerle guvencede.
-- [ ] Hub session routing caller-only; `Clients.All` picker path'te yok.
-- [ ] Agent SAP tek-secim akisi sessionId ile tek element gonderiyor.
-- [ ] Studio `SpyService.pick('sap')` timeout/cancel destekli.
-- [ ] `Sap.Gui.*` element alanlarinda picker button gorunuyor ve property degerini dolduruyor.
-- [ ] Backend, Agent, Studio hedefli testler PASS.
+- [x] Kontrat degisikligi CLAUDE.md'de kayitli ve ilk commit'te uygulanmis.
+- [x] `SpyElementMessage.SessionId/Kind` ve `ActivityParameter.PickerKind` testlerle guvencede.
+- [x] Hub session routing caller-only; `Clients.All` picker path'te yok.
+- [x] Agent SAP tek-secim akisi sessionId ile tek element gonderiyor.
+- [x] Studio `SpyService.pick('sap')` timeout/cancel destekli.
+- [x] `Sap.Gui.*` element alanlarinda picker button gorunuyor ve property degerini dolduruyor.
+- [x] Backend, Agent, Studio hedefli testler PASS.
 - [ ] Manuel SAP smoke sonucu not edildi.
 - [ ] `/code-review high` ve `/security-review` tamamlandi.
 - [ ] Sonraki adim: Paket D plan/implementasyon (`web` picker), C'nin session altyapisi uzerine kurulacak.
