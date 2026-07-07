@@ -30,6 +30,13 @@ export class DashboardComponent {
 
   readonly studioCards: NavCard[] = [
     {
+      route: '/projects',
+      titleKey: 'projects.title',
+      descKey: 'dashboard.sectionStudioDesc',
+      accent: 'bg-fuchsia-50 text-fuchsia-600',
+      icon: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-16.5 0v6a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21.75 18.75v-6m-16.5 0h16.5M6.75 9.75V6a2.25 2.25 0 0 1 2.25-2.25h6a2.25 2.25 0 0 1 2.25 2.25v3.75',
+    },
+    {
       route: '/designer',
       titleKey: 'dashboard.designerTitle',
       descKey: 'dashboard.designerDesc',

@@ -13,6 +13,12 @@ export const routes: Routes = [
       import('./studio/designer/designer.component').then((m) => m.DesignerComponent),
   },
   {
+    path: 'projects',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./studio/projects/projects.component').then((m) => m.ProjectsComponent),
+  },
+  {
     path: 'component-library',
     canActivate: [authGuard],
     loadComponent: () =>

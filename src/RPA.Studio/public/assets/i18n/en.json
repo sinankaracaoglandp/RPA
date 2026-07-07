@@ -30,6 +30,18 @@
     "environmentsTitle": "Environments",
     "environmentsDesc": "Environment and deployment configuration"
   },
+  "projects": {
+    "title": "My Projects",
+    "newProject": "New project",
+    "newProjectPlaceholder": "Project name",
+    "newWorkflow": "New workflow",
+    "newWorkflowPlaceholder": "Workflow name",
+    "workflows": "Workflows",
+    "workflowCount": "workflows",
+    "open": "Open",
+    "loadError": "Failed to load projects",
+    "createError": "Create failed"
+  },
   "login": {
     "title": "Sign in to RPA Studio",
     "subtitle": "Enter your credentials to continue",

@@ -1,0 +1,69 @@
+<div class="projects p-6">
+  <h1 class="text-xl font-semibold">{{ 'projects.title' | translate }}</h1>
+
+  @if (error()) {
+    <p class="projects__error text-red-600" data-testid="projects-error">
+      {{ error()! | translate }}
+    </p>
+  }
+
+  <div class="projects__create mt-4 flex gap-2">
+    <input
+      type="text"
+      data-testid="new-project-name"
+      [ngModel]="newProjectName()"
+      (ngModelChange)="newProjectName.set($event)"
+      [placeholder]="'projects.newProjectPlaceholder' | translate"
+    />
+    <button type="button" data-testid="create-project" (click)="createProject()">
+      {{ 'projects.newProject' | translate }}
+    </button>
+  </div>
+
+  <div class="projects__cards mt-6 grid grid-cols-3 gap-4">
+    @for (project of projects(); track project.id) {
+      <button
+        type="button"
+        class="projects__card rounded border p-4 text-left"
+        data-testid="project-card"
+        (click)="openProject(project.id)"
+      >
+        <h2 class="font-medium">{{ project.name }}</h2>
+        @if (project.description) {
+          <p class="text-sm opacity-70">{{ project.description }}</p>
+        }
+        <p class="text-sm">
+          {{ project.workflowCount }} {{ 'projects.workflowCount' | translate }}
+        </p>
+      </button>
+    }
+  </div>
+
+  @if (selectedProjectId()) {
+    <div class="projects__workflows mt-8">
+      <h2 class="font-medium">{{ 'projects.workflows' | translate }}</h2>
+      <div class="mt-2 flex gap-2">
+        <input
+          type="text"
+          data-testid="new-workflow-name"
+          [ngModel]="newWorkflowName()"
+          (ngModelChange)="newWorkflowName.set($event)"
+          [placeholder]="'projects.newWorkflowPlaceholder' | translate"
+        />
+        <button type="button" data-testid="create-workflow" (click)="createWorkflow()">
+          {{ 'projects.newWorkflow' | translate }}
+        </button>
+      </div>
+      <ul class="mt-4">
+        @for (wf of workflows(); track wf.id) {
+          <li class="flex items-center justify-between border-b py-2" data-testid="workflow-row">
+            <span>{{ wf.name }}</span>
+            <button type="button" data-testid="open-workflow" (click)="openWorkflow(wf.id)">
+              {{ 'projects.open' | translate }}
+            </button>
+          </li>
+        }
+      </ul>
+    </div>
+  }
+</div>

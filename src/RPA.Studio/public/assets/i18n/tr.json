@@ -30,6 +30,18 @@
     "environmentsTitle": "Ortamlar",
     "environmentsDesc": "Ortam ve dağıtım yapılandırması"
   },
+  "projects": {
+    "title": "Projelerim",
+    "newProject": "Yeni proje",
+    "newProjectPlaceholder": "Proje adı",
+    "newWorkflow": "Yeni workflow",
+    "newWorkflowPlaceholder": "Workflow adı",
+    "workflows": "Workflow'lar",
+    "workflowCount": "workflow",
+    "open": "Aç",
+    "loadError": "Projeler yüklenemedi",
+    "createError": "Oluşturma başarısız"
+  },
   "login": {
     "title": "RPA Studio'ya Giriş",
     "subtitle": "Devam etmek için kimlik bilgilerinizi girin",
