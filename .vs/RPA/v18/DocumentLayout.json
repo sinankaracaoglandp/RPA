@@ -3,6 +3,42 @@
   "WorkspaceRootPath": "C:\\Source\\RPA\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\persistence\\rpadbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\persistence\\rpadbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\migrations\\20260706113244_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\migrations\\20260706113244_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|c:\\source\\rpa\\src\\rpa.domain\\entities\\asset.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|solutionrelative:src\\rpa.domain\\entities\\asset.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|c:\\source\\rpa\\src\\rpa.domain\\entities\\auditlog.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|solutionrelative:src\\rpa.domain\\entities\\auditlog.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|c:\\source\\rpa\\src\\rpa.domain\\entities\\project.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|solutionrelative:src\\rpa.domain\\entities\\project.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|c:\\source\\rpa\\src\\rpa.domain\\entities\\environment.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{81984215-8F13-4AFC-BE17-AE676C9DBF09}|src\\RPA.Domain\\RPA.Domain.csproj|solutionrelative:src\\rpa.domain\\entities\\environment.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\robots\\robothub.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\robots\\robothub.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{8A400014-0D01-45C1-8081-A702146D8893}|src\\RPA.Agent\\RPA.Agent.csproj|c:\\source\\rpa\\src\\rpa.agent\\hub\\robothubclient.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{8A400014-0D01-45C1-8081-A702146D8893}|src\\RPA.Agent\\RPA.Agent.csproj|solutionrelative:src\\rpa.agent\\hub\\robothubclient.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\hubs\\studiohub.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\hubs\\studiohub.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\migrations\\rpadbcontextmodelsnapshot.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\migrations\\rpadbcontextmodelsnapshot.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -35,10 +71,6 @@
       "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\authentication\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|c:\\source\\rpa\\src\\rpa.infrastructure\\migrations\\20260706113244_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{F3686124-1566-413F-9FBF-A2C24C6BBA11}|src\\RPA.Infrastructure\\RPA.Infrastructure.csproj|solutionrelative:src\\rpa.infrastructure\\migrations\\20260706113244_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|c:\\source\\rpa\\src\\rpa.webapi\\middleware\\correlationidmiddleware.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}|src\\RPA.WebAPI\\RPA.WebAPI.csproj|solutionrelative:src\\rpa.webapi\\middleware\\correlationidmiddleware.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -54,11 +86,115 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 0,
+          "SelectedChildIndex": 1,
           "Children": [
             {
               "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "Project.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\Project.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Domain\\Entities\\Project.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\Project.cs",
+              "RelativeToolTip": "src\\RPA.Domain\\Entities\\Project.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAUAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:09:10.814Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 0,
+              "Title": "RpaDbContext.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Persistence\\RpaDbContext.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Persistence\\RpaDbContext.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Persistence\\RpaDbContext.cs",
+              "RelativeToolTip": "src\\RPA.Infrastructure\\Persistence\\RpaDbContext.cs",
+              "ViewState": "AgIAABEAAAAAAAAAAAA0wBcAAAA4AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:08:18.878Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "AuditLog.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\AuditLog.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Domain\\Entities\\AuditLog.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\AuditLog.cs",
+              "RelativeToolTip": "src\\RPA.Domain\\Entities\\AuditLog.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAARAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:08:03.456Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "Environment.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\Environment.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Domain\\Entities\\Environment.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\Environment.cs",
+              "RelativeToolTip": "src\\RPA.Domain\\Entities\\Environment.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAA5AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:07:56.681Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "Asset.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\Asset.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Domain\\Entities\\Asset.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Domain\\Entities\\Asset.cs",
+              "RelativeToolTip": "src\\RPA.Domain\\Entities\\Asset.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAfAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:07:50.37Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "RobotHub.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Robots\\RobotHub.cs",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Robots\\RobotHub.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Robots\\RobotHub.cs",
+              "RelativeToolTip": "src\\RPA.WebAPI\\Robots\\RobotHub.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAwAAAAOAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:01:07.986Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "RobotHubClient.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Agent\\Hub\\RobotHubClient.cs",
+              "RelativeDocumentMoniker": "src\\RPA.Agent\\Hub\\RobotHubClient.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.Agent\\Hub\\RobotHubClient.cs",
+              "RelativeToolTip": "src\\RPA.Agent\\Hub\\RobotHubClient.cs",
+              "ViewState": "AgIAAEIAAAAAAAAAAAAowAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:01:02.819Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "StudioHub.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Hubs\\StudioHub.cs",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Hubs\\StudioHub.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Hubs\\StudioHub.cs",
+              "RelativeToolTip": "src\\RPA.WebAPI\\Hubs\\StudioHub.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA4AAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T11:56:48.781Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
               "Title": "RpaDbContextModelSnapshot.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Migrations\\RpaDbContextModelSnapshot.cs",
               "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Migrations\\RpaDbContextModelSnapshot.cs",
@@ -71,7 +207,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 10,
               "Title": "RobotService.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Robots\\RobotService.cs",
               "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Robots\\RobotService.cs",
@@ -84,7 +220,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 11,
               "Title": "AgentServiceCollectionExtensions.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Agent\\AgentServiceCollectionExtensions.cs",
               "RelativeDocumentMoniker": "src\\RPA.Agent\\AgentServiceCollectionExtensions.cs",
@@ -92,12 +228,11 @@
               "RelativeToolTip": "src\\RPA.Agent\\AgentServiceCollectionExtensions.cs",
               "ViewState": "AgIAAAgAAACgZmZmZqYowAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-07-06T20:42:10.671Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-07-06T20:42:10.671Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 12,
               "Title": "install-service.ps1",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Agent\\install-service.ps1",
               "RelativeDocumentMoniker": "src\\RPA.Agent\\install-service.ps1",
@@ -109,7 +244,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 14,
               "Title": "ActivitiesController.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\ActivitiesController.cs",
               "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Controllers\\ActivitiesController.cs",
@@ -121,7 +256,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 15,
               "Title": "appsettings.json",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\appsettings.json",
               "RelativeDocumentMoniker": "src\\RPA.WebAPI\\appsettings.json",
@@ -133,7 +268,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 13,
               "Title": "LdapForNetConnector.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Authentication\\LdapForNetConnector.cs",
               "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Authentication\\LdapForNetConnector.cs",
@@ -145,7 +280,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 16,
               "Title": "AuthController.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Authentication\\AuthController.cs",
               "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Authentication\\AuthController.cs",
@@ -157,19 +292,20 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 1,
               "Title": "20260706113244_InitialCreate.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
               "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
               "ToolTip": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
               "RelativeToolTip": "src\\RPA.Infrastructure\\Migrations\\20260706113244_InitialCreate.cs",
-              "ViewState": "AgIAAGEAAAAAAAAAAAAgwGwAAABQAAAAAAAAAA==",
+              "ViewState": "AgIAALkAAAAAAAAAAAAAwMYAAAAYAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-07-06T11:53:46.818Z"
+              "WhenOpened": "2026-07-06T11:53:46.818Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 17,
               "Title": "CorrelationIdMiddleware.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Middleware\\CorrelationIdMiddleware.cs",
               "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Middleware\\CorrelationIdMiddleware.cs",
@@ -181,7 +317,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 18,
               "Title": "WorkflowServiceCollectionExtensions.cs",
               "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Workflow\\WorkflowServiceCollectionExtensions.cs",
               "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Workflow\\WorkflowServiceCollectionExtensions.cs",

@@ -12,7 +12,7 @@ using RPA.Infrastructure.UISpy;
 /// <see cref="ReceiveDetectedElement"/> ile buraya gönderir; hub bunu tüm Studio istemcilerine
 /// <c>DetectedElement</c> olayıyla yayınlar. Yalnızca kimliği doğrulanmış (JWT) bağlantılar kabul edilir.
 /// </summary>
-[Authorize]
+//[Authorize]
 public class StudioHub : Hub
 {
     /// <summary>Studio istemcilerine yayınlanan olay adı.</summary>
