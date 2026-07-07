@@ -73,6 +73,9 @@ C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Namotion.Reflection.dll
 C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Newtonsoft.Json.dll
 C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\NJsonSchema.dll
 C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\NJsonSchema.Annotations.dll
+C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Npgsql.dll
+C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Npgsql.EntityFrameworkCore.PostgreSQL.dll
+C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Otp.NET.dll
 C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Polly.dll
 C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Polly.Core.dll
 C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Serilog.dll
@@ -101,13 +104,10 @@ C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.GeneratedMSBuild
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.AssemblyInfoInputs.cache
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.AssemblyInfo.cs
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.csproj.CoreCompileInputs.cache
+C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.sourcelink.json
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.csproj.Up2Date
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.dll
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\refint\RPA.Agent.dll
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.pdb
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.genruntimeconfig.cache
 C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\ref\RPA.Agent.dll
-C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Otp.NET.dll
-C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Npgsql.dll
-C:\Source\RPA\src\RPA.Agent\bin\Debug\net10.0-windows\Npgsql.EntityFrameworkCore.PostgreSQL.dll
-C:\Source\RPA\src\RPA.Agent\obj\Debug\net10.0-windows\RPA.Agent.sourcelink.json

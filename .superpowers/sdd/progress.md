@@ -176,3 +176,17 @@ Paket A: ✅ COMPLETE (5 task, commits f13cc51..cf63fed, final Opus review: Read
 Testler: Studio 193/193, Infrastructure 430/430.
 Deferred Minors (Paket B temizliğine): setup() listener cleanup, void-promise subscriptions, designer sinyal wiring doğrudan testi, onValueChange @Input reassign, node/connection seçim gölgelenmesi (Delete önceliği UX).
 Bekleyen: kullanıcı elle tarayıcı doğrulaması (tıkla-seç + soket sürükleme).
+
+## Paket B: Proje/Workflow Kalıcılığı (plan: docs/superpowers/plans/2026-07-07-paket-b-kalicilik.md)
+
+- [x] Task B.1: complete (commit 4907841, review approved; Minor: AddAsync gereksiz async boilerplate — final review triyajına)
+- [x] Task B.2: complete (commits 72d4d8e+d07cf31, review approved after fix: EmptyDefinition JsonSerializer; Minor: SaveDraft validasyon sırası, Dev env find-or-create yarışı — final review triyajına. Not: şema id alanı UUID ister — test JSON'larında UUID kullan)
+- [x] Task B.3: complete (commit 6bb2e2c, review approved; not: WorkflowValidator transient kayıtlı ama şema static Lazy — plan "singleton" amacı karşılanıyor, final review triyajına; Minor: SaveDraft null-body testi yok, ListProjects N+1)
+- [x] Task B.4: complete (commit 899bfd0, review approved, sıfır blokaj; emptyWorkflow tip anotasyonu güvenli sapma)
+- [x] Task B.5: complete (commit 716f2df, review approved; sapmalar doğru: i18n gerçek yol public/assets/i18n, dashboard NavCard dizisi)
+- [x] Task B.6: complete (commit 14b900e, review approved; sapmalar doğru: subscribe-tabanlı save, inject'li dirtyGuard; Minor: dirtyGuard unit testi yok, yeni designer header sınıflarının SCSS'i yok)
+
+Paket B: ✅ COMPLETE (6 task, commits 4907841..14b900e, final Opus review: Ready to merge, 0 Critical/Important)
+Testler: Infrastructure 443/443, WebAPI 81/81, Studio 208/208.
+Backlog minors: designer header SCSS'i; AddAsync boilerplate; SaveDraft validasyon sırası; Dev env yarışı; ListProjects N+1; dirtyGuard unit testi; jsdom elementsFromPoint uyarısı (Paket A alanı).
+Bekleyen: kullanıcı elle tarayıcı doğrulaması (Projelerim → workflow aç → düzenle → Kaydet → yenile → geri gelir).

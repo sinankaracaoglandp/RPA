@@ -6,8 +6,8 @@ C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.GeneratedMSBuildEditor
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.AssemblyInfoInputs.cache
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.AssemblyInfo.cs
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.csproj.CoreCompileInputs.cache
+C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.sourcelink.json
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.dll
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\refint\RPA.Domain.dll
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.pdb
 C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\ref\RPA.Domain.dll
-C:\Source\RPA\src\RPA.Domain\obj\Debug\net10.0\RPA.Domain.sourcelink.json

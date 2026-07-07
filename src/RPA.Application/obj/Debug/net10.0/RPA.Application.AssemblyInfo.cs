@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RPA.Application")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cf63fed0e00e62ba4bd391bd67714f1010edb4fc")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+14b900e57cb51b79f486fe8123cbdc866f3e3cb5")]
 [assembly: System.Reflection.AssemblyProductAttribute("RPA.Application")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RPA.Application")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

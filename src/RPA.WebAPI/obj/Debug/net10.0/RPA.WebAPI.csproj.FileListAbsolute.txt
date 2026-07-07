@@ -8,6 +8,7 @@ C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\RPA.WebAPI.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\RPA.WebAPI.pdb
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\BouncyCastle.Cryptography.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\ClosedXML.dll
+C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Cronos.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\CsvHelper.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\DocumentFormat.OpenXml.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Elasticsearch.Net.dll
@@ -45,6 +46,9 @@ C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Namotion.Reflection.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Newtonsoft.Json.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\NJsonSchema.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\NJsonSchema.Annotations.dll
+C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Npgsql.dll
+C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
+C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Otp.NET.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Polly.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Polly.Core.dll
 C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Serilog.dll
@@ -147,6 +151,7 @@ C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.AssemblyInfoInputs.cac
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.AssemblyInfo.cs
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.csproj.CoreCompileInputs.cache
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.MvcApplicationPartsAssemblyInfo.cache
+C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.sourcelink.json
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\rjimswa.dswa.cache.json
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\rjsmrazor.dswa.cache.json
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\rjsmcshtml.dswa.cache.json
@@ -162,9 +167,4 @@ C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\refint\RPA.WebAPI.dll
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.pdb
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.genruntimeconfig.cache
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\ref\RPA.WebAPI.dll
-C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Cronos.dll
-C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Otp.NET.dll
-C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Npgsql.dll
-C:\Source\RPA\src\RPA.WebAPI\bin\Debug\net10.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\staticwebassets.upToDateCheck.txt
-C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.sourcelink.json
