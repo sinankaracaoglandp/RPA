@@ -217,7 +217,7 @@ Co-Authored-By: Claude Opus <noreply@anthropic.com>"
 - For `kind == "sap"`, coordinator captures one SAP element and sends `SpyElementMessage` with same `SessionId`.
 - Timeout/cancel returns no element and cleans state.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 Use mocked detector/transport. If `SapGuiSpyService` is hard to fake, extract small interface:
 
@@ -235,12 +235,12 @@ Tests:
 - `StartAsync_WhenSessionAlreadyActive_RejectsOrReplacesDeterministically` (choose reject with BusinessException/InvalidOperationException).
 - Unsupported kind fails.
 
-- [ ] **Step 2: FAIL gozle**
+- [x] **Step 2: FAIL gozle**
 
 Run:
 `dotnet test tests/RPA.Agent.Tests --filter SpySessionCoordinator`
 
-- [ ] **Step 3: Implement coordinator**
+- [x] **Step 3: Implement coordinator**
 
 Implementation guidance:
 - Keep current continuous `UiSpyHostedService` behavior unchanged unless it conflicts in runtime.
@@ -258,7 +258,7 @@ public sealed class SpySessionOptions
 - Ensure cleanup in `finally`.
 - No sensitive text logging; log element id/type only.
 
-- [ ] **Step 4: Wire SignalR commands**
+- [x] **Step 4: Wire SignalR commands**
 
 `SignalRSpyElementTransport` currently sends to Hub. Agent also needs to receive Hub `StartSpy` / `StopSpy` commands. Options:
 - If current Agent has a Hub connection abstraction, extend it there.
@@ -266,12 +266,12 @@ public sealed class SpySessionOptions
 
 Prefer using existing `RobotHubClient` patterns for token/base URL configuration.
 
-- [ ] **Step 5: Tests PASS**
+- [x] **Step 5: Tests PASS**
 
 Run:
 `dotnet test tests/RPA.Agent.Tests --filter Spy`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/RPA.Agent/UISpy/ src/RPA.Agent/AgentServiceCollectionExtensions.cs tests/RPA.Agent.Tests/UISpy/

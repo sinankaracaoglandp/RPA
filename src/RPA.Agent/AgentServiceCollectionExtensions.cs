@@ -96,8 +96,14 @@ public static class AgentServiceCollectionExtensions
             services.AddSingleton<ISpyElementTransport, SignalRSpyElementTransport>();
             services.AddSingleton<SapGuiElementSender>();
             services.AddSingleton<SapGuiSpyService>();
+            services.AddOptions<SpySessionOptions>()
+                .Bind(configuration.GetSection(SpySessionOptions.SectionName));
+            services.AddSingleton<ISapGuiSinglePicker, SapGuiSinglePicker>();
+            services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
+            services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
 
             services.AddHostedService<UiSpyHostedService>();
+            services.AddHostedService<SpyHubCommandHostedService>();
         }
 
         return services;
