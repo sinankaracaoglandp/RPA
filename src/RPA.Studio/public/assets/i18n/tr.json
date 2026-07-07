@@ -30,6 +30,11 @@
     "environmentsTitle": "Ortamlar",
     "environmentsDesc": "Ortam ve dağıtım yapılandırması"
   },
+  "designer": {
+    "save": "Kaydet",
+    "saveError": "Kaydetme başarısız",
+    "unsavedConfirm": "Kaydedilmemiş değişiklikler var. Ayrılmak istiyor musunuz?"
+  },
   "projects": {
     "title": "Projelerim",
     "newProject": "Yeni proje",

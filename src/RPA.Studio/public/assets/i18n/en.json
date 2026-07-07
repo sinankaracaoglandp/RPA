@@ -30,6 +30,11 @@
     "environmentsTitle": "Environments",
     "environmentsDesc": "Environment and deployment configuration"
   },
+  "designer": {
+    "save": "Save",
+    "saveError": "Save failed",
+    "unsavedConfirm": "You have unsaved changes. Leave anyway?"
+  },
   "projects": {
     "title": "My Projects",
     "newProject": "New project",

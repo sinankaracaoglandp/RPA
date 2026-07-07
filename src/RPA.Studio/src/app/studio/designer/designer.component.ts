@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { WorkflowVersion } from '../../shared/models/workflow.model';
 import { DebugService } from '../../shared/services/debug.service';
 import { ModeService } from '../../shared/services/mode.service';
@@ -47,6 +48,7 @@ export class DesignerComponent {
   private readonly debug = inject(DebugService);
   private readonly modeService = inject(ModeService);
   private readonly draft = inject(WorkflowDraftService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
   readonly selectedNodeId = signal<string | null>(null);
@@ -54,6 +56,10 @@ export class DesignerComponent {
   readonly selectedProperties = signal<Record<string, unknown>>({});
   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
   readonly debugMode = signal(false);
+
+  readonly workflowId = signal<string | null>(null);
+  readonly dirty = signal(false);
+  readonly saveState = signal<'idle' | 'saving' | 'error'>('idle');
 
   readonly mode = this.modeService.mode;
   readonly isSimpleMode = computed(() => this.mode() === 'Simple');
@@ -65,6 +71,15 @@ export class DesignerComponent {
   readonly debugCurrentNodeId = this.debug.currentNodeId;
 
   constructor() {
+    const routedId = this.route.snapshot.paramMap.get('workflowId');
+    if (routedId) {
+      this.workflowId.set(routedId);
+      this.draft.load(routedId).subscribe({
+        next: (wf) => this.workflow.set(wf),
+        error: () => this.saveState.set('error'),
+      });
+      return;
+    }
     const pending = this.draft.consumePending();
     if (pending) {
       this.workflow.set(pending);
@@ -114,10 +129,46 @@ export class DesignerComponent {
 
   onGraphChanged(graph: WorkflowVersion): void {
     this.currentGraph.set(graph);
+    this.dirty.set(true);
   }
 
   onDebugCurrentNode(_nodeId: string | null): void {
     // Current node is read from the DebugService signal and bound to the canvas;
     // this handler exists so the panel can notify without extra wiring.
+  }
+
+  /** Kaydeder (yalnız yönlendirilmiş bir workflowId varken). Yeni-taslak modunda no-op. */
+  async save(): Promise<void> {
+    const id = this.workflowId();
+    if (!id) {
+      return; // yeni-taslak modu: kalıcı hedef yok (Projelerim'den açılır)
+    }
+    const graph = this.canvas()?.serialize() ?? this.currentGraph();
+    if (!graph) {
+      return;
+    }
+    this.saveState.set('saving');
+    // Not: firstValueFrom + await burada kasıtlı kullanılmadı — .then devamı bir
+    // mikro-görev turuna erteleniyor ve HttpTestingController.flush() hemen
+    // ardından senkron assert eden testler bunu göremiyor. subscribe() next/error
+    // callback'leri flush() sırasında senkron çalışır.
+    return new Promise<void>((resolve) => {
+      this.draft.save(id, graph).subscribe({
+        next: () => {
+          this.dirty.set(false);
+          this.saveState.set('idle');
+          resolve();
+        },
+        error: () => {
+          this.saveState.set('error');
+          resolve();
+        },
+      });
+    });
+  }
+
+  onSaveShortcut(event: Event): void {
+    event.preventDefault();
+    void this.save();
   }
 }

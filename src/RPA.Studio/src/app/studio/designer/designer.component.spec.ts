@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { DesignerComponent } from './designer.component';
 import { ModeService } from '../../shared/services/mode.service';
 import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
@@ -15,7 +16,12 @@ describe('DesignerComponent — Simple Mode integration', () => {
     localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [DesignerComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DesignerComponent);
@@ -81,5 +87,95 @@ describe('DesignerComponent — Simple Mode integration', () => {
 
     const freshFixture = TestBed.createComponent(DesignerComponent);
     expect(freshFixture.componentInstance.workflow()).toEqual(workflow);
+  });
+});
+
+describe('draft persistence (Paket B)', () => {
+  let fixture: ComponentFixture<DesignerComponent>;
+  let component: DesignerComponent;
+  let http: HttpTestingController;
+
+  beforeEach(async () => {
+    localStorage.clear();
+    await TestBed.configureTestingModule({
+      imports: [DesignerComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ workflowId: 'w1' }) } } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(DesignerComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    http.match('/api/activities').forEach((req) => req.flush([]));
+  });
+
+  it('loads the draft for the routed workflowId on init', () => {
+    fixture.detectChanges();
+    const req = http.expectOne('/api/workflows/w1/draft');
+    req.flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+        nodes: [], connections: [],
+      }),
+    });
+    fixture.detectChanges();
+
+    expect(component.workflow()?.name).toBe('Sipariş');
+    expect(component.dirty()).toBe(false);
+  });
+
+  it('marks dirty when the graph changes and clears it after save', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+        nodes: [], connections: [],
+      }),
+    });
+
+    component.onGraphChanged({
+      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+      nodes: [], connections: [],
+    });
+    expect(component.dirty()).toBe(true);
+
+    void component.save();
+    const put = http.expectOne('/api/workflows/w1/draft');
+    expect(put.request.method).toBe('PUT');
+    put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+
+    expect(component.dirty()).toBe(false);
+  });
+
+  it('sets saveState to error when the save fails', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+        nodes: [], connections: [],
+      }),
+    });
+    component.onGraphChanged({
+      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+      nodes: [], connections: [],
+    });
+
+    void component.save();
+    http.expectOne('/api/workflows/w1/draft').flush(
+      { error: 'şema hatası' }, { status: 400, statusText: 'Bad Request' },
+    );
+
+    expect(component.saveState()).toBe('error');
+    expect(component.dirty()).toBe(true);
   });
 });
