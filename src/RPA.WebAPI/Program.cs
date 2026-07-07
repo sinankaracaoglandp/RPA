@@ -81,6 +81,13 @@ builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowVersionRepository,
 builder.Services.AddScoped<RPA.Infrastructure.Services.EnvironmentService>();
 builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDeploymentService>();
 
+// Paket B — proje/workflow CRUD + taslak uçları (ProjectsController / WorkflowsController).
+builder.Services.AddScoped<RPA.Domain.Interfaces.IProjectRepository,
+    RPA.Infrastructure.Persistence.EfProjectRepository>();
+builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowRepository,
+    RPA.Infrastructure.Persistence.EfWorkflowRepository>();
+builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDesignService>();
+
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
 
