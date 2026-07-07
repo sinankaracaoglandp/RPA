@@ -66,7 +66,7 @@ export interface WorkflowVersion {
   variables?: WorkflowVariable[];
 }
 
-export function emptyWorkflow(id = crypto.randomUUID(), name = 'Untitled'): WorkflowVersion {
+export function emptyWorkflow(id: string = crypto.randomUUID(), name: string = 'Untitled'): WorkflowVersion {
   return {
     schemaVersion: '1.0',
     id,
