@@ -8,6 +8,10 @@
   } @else {
     <app-toolbox [canvas]="canvas()"></app-toolbox>
   }
+  <app-variables-panel
+    [variables]="variables()"
+    (variablesChange)="onVariablesChange($event)"
+  ></app-variables-panel>
   <main class="designer__canvas relative min-w-0 flex-1">
     <div class="designer__header flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
       <app-simple-mode-toggle></app-simple-mode-toggle>
@@ -96,6 +100,7 @@
     <app-properties-panel
       [activityType]="selectedActivityType()"
       [properties]="selectedProperties()"
+      [variables]="variables()"
       (propertiesChange)="onPropertiesChange($event)"
     ></app-properties-panel>
   }

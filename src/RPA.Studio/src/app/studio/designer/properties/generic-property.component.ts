@@ -3,6 +3,7 @@ import { ChangeDetectorRef, Component, EventEmitter, Input, Output, inject } fro
 import { FormsModule } from '@angular/forms';
 import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
 import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.model';
+import { WorkflowVariable } from '../../../shared/models/workflow.model';
 import { SpyElement } from '../../../shared/services/spy.service';
 import { SelectorPickerButtonComponent } from './selector-picker-button.component';
 
@@ -41,6 +42,7 @@ export class GenericPropertyComponent {
   }
 
   @Input() properties: Record<string, unknown> = {};
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
 
   get inputs(): ActivityPort[] {
@@ -70,6 +72,10 @@ export class GenericPropertyComponent {
 
   boolValue(port: ActivityPort): boolean {
     return this.properties[port.name] === true;
+  }
+
+  isVariableField(port: ActivityPort): boolean {
+    return ['variableName', 'outputVariable'].includes(port.name);
   }
 
   onValueChange(port: ActivityPort, raw: unknown): void {

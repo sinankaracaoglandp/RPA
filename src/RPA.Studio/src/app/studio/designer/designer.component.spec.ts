@@ -156,6 +156,30 @@ describe('draft persistence (Paket B)', () => {
     expect(component.dirty()).toBe(false);
   });
 
+  it('saves declared workflow variables with the draft json', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'SipariÅŸ', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+
+    component.onVariablesChange([
+      { name: 'okunanMetin', type: 'string', scope: 'global', default: '' },
+    ]);
+    expect(component.dirty()).toBe(true);
+
+    void component.save();
+    const put = http.expectOne('/api/workflows/w1/draft');
+    const json = JSON.parse(put.request.body.jsonDefinition);
+    expect(json.variables).toEqual([
+      { name: 'okunanMetin', type: 'string', scope: 'global', default: '' },
+    ]);
+    put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+  });
+
   it('sets saveState to error when the save fails', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({

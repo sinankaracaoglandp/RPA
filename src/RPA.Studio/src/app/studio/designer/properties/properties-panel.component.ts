@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { TranslatePipe } from '../../../core/translate.pipe';
+import { WorkflowVariable } from '../../../shared/models/workflow.model';
 import { WebPropertyRouterComponent, isWebActivityType } from './web-property-router.component';
 import { GenericPropertyComponent } from './generic-property.component';
 
@@ -18,6 +19,7 @@ import { GenericPropertyComponent } from './generic-property.component';
 export class PropertiesPanelComponent {
   @Input() activityType?: string;
   @Input() properties: Record<string, unknown> = {};
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
 
   get isWebActivity(): boolean {

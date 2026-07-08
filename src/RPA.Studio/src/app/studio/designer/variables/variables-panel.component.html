@@ -1,0 +1,50 @@
+<section class="variables-panel" data-testid="variables-panel" aria-label="Değişkenler">
+  <div class="variables-panel__header">
+    <h3>Değişkenler</h3>
+    <button type="button" data-testid="variables-add" (click)="addVariable()">Ekle</button>
+  </div>
+
+  @if (variables.length === 0) {
+    <p class="variables-panel__empty" data-testid="variables-empty">Tanımlı değişken yok.</p>
+  } @else {
+    <div class="variables-panel__list">
+      @for (variable of variables; track trackByIndex($index)) {
+        <div class="variables-panel__row" data-testid="variable-row">
+          <input
+            class="variables-panel__name"
+            [attr.data-testid]="'variable-name-' + $index"
+            [value]="variable.name"
+            placeholder="degiskenAdi"
+            (input)="updateVariable($index, { name: $any($event.target).value })"
+          />
+          <select
+            class="variables-panel__type"
+            [attr.data-testid]="'variable-type-' + $index"
+            [value]="variable.type"
+            (change)="updateVariable($index, { type: $any($event.target).value })"
+          >
+            @for (type of variableTypes; track type) {
+              <option [value]="type">{{ type }}</option>
+            }
+          </select>
+          <input
+            class="variables-panel__default"
+            [attr.data-testid]="'variable-default-' + $index"
+            [value]="defaultValue(variable)"
+            placeholder="varsayılan"
+            (input)="onDefaultChange($index, $any($event.target).value)"
+          />
+          <button
+            type="button"
+            class="variables-panel__remove"
+            [attr.data-testid]="'variable-remove-' + $index"
+            aria-label="Değişkeni sil"
+            (click)="removeVariable($index)"
+          >
+            Sil
+          </button>
+        </div>
+      }
+    </div>
+  }
+</section>

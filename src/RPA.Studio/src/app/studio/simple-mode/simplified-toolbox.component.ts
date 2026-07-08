@@ -22,7 +22,7 @@ import { CanvasComponent } from '../designer/canvas/canvas.component';
 export const SIMPLE_ACTIVITY_IDS: readonly string[] = [
   'Sap.Gui.Connect',
   'Sap.Nco.CallBapi',
-  'Web.Navigate',
+  'Web.Goto',
   'Web.Click',
   'Mail.Send',
   'Mail.Read',

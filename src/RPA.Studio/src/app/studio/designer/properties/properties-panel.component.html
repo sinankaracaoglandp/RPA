@@ -11,12 +11,14 @@
     <app-web-property-router
       [activityType]="activityType"
       [properties]="properties"
+      [variables]="variables"
       (propertiesChange)="onPropertiesChange($event)"
     ></app-web-property-router>
   } @else {
     <app-generic-property
       [activityType]="activityType"
       [properties]="properties"
+      [variables]="variables"
       (propertiesChange)="onPropertiesChange($event)"
     ></app-generic-property>
   }

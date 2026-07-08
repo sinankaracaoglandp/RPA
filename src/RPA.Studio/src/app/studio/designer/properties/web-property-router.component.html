@@ -17,6 +17,7 @@
   } @else if (isGetText) {
     <app-web-get-text-property
       [properties]="properties"
+      [variables]="variables"
       (propertiesChange)="onPropertiesChange($event)"
     ></app-web-get-text-property>
   } @else if (isWaitForSelector) {

@@ -266,15 +266,30 @@ public sealed class WebGetTextActivity : IActivity
         WebActivityHelpers.Require(selector, "selector");
         var text = await _sessionManager.GetTextAsync(session, selector);
         context.SetVariable("text", text);
+        var outputVariable = context.GetVariable<string>("outputVariable");
+        if (!string.IsNullOrWhiteSpace(outputVariable))
+        {
+            context.SetVariable(outputVariable, text);
+        }
         context.Log($"Web metin okundu: {selector}");
-        return new Dictionary<string, object?> { ["text"] = text };
+        var outputs = new Dictionary<string, object?> { ["text"] = text };
+        if (!string.IsNullOrWhiteSpace(outputVariable))
+        {
+            outputs[outputVariable] = text;
+        }
+
+        return outputs;
     }
 
     public ActivityMetadata GetMetadata() => WebActivityHelpers.Metadata(
         "Web.GetText",
         "Web Metin Oku",
         "Elementin metnini okur.",
-        new() { new ActivityParameter { Name = "selector", Type = "string", Required = true } },
+        new()
+        {
+            new ActivityParameter { Name = "selector", Type = "string", Required = true },
+            new ActivityParameter { Name = "outputVariable", Type = "string", Required = false },
+        },
         new() { new ActivityParameter { Name = "text", Type = "string", Required = true } });
 }
 

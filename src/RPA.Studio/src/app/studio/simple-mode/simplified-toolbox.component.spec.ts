@@ -5,6 +5,7 @@ import { SimplifiedToolboxComponent } from './simplified-toolbox.component';
 import { ActivityMetadata } from '../../shared/models/activity.model';
 
 const ACTIVITIES: ActivityMetadata[] = [
+  { activityId: 'Web.Goto', displayName: 'Go To URL', category: 'Web' },
   { activityId: 'Web.Click', displayName: 'Click Element', category: 'Web' },
   { activityId: 'Sap.Gui.Connect', displayName: 'Connect to SAP', category: 'SAP' },
   { activityId: 'Mail.Send', displayName: 'Send Mail', category: 'Mail' },
@@ -36,9 +37,9 @@ describe('SimplifiedToolboxComponent', () => {
     req.flush(ACTIVITIES);
     fixture.detectChanges();
 
-    expect(component.simplifiedActivities().length).toBe(3);
+    expect(component.simplifiedActivities().length).toBe(4);
     const items = fixture.nativeElement.querySelectorAll('[data-testid="simplified-activity-item"]');
-    expect(items.length).toBe(3);
+    expect(items.length).toBe(4);
     expect(fixture.nativeElement.textContent).not.toContain('Select Tab');
   });
 
@@ -56,5 +57,19 @@ describe('SimplifiedToolboxComponent', () => {
     expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click', {
       label: 'Click Element',
     });
+  });
+
+  it('uses the backend Web.Goto id instead of the legacy Web.Navigate id', () => {
+    fixture.detectChanges();
+    const req = httpMock.expectOne('/api/activities');
+    req.flush([
+      { activityId: 'Web.Goto', displayName: 'Go To URL', category: 'Web' },
+      { activityId: 'Web.Navigate', displayName: 'Legacy Navigate', category: 'Web' },
+    ]);
+    fixture.detectChanges();
+
+    const ids = component.simplifiedActivities().map((activity) => activity.activityId);
+    expect(ids).toContain('Web.Goto');
+    expect(ids).not.toContain('Web.Navigate');
   });
 });

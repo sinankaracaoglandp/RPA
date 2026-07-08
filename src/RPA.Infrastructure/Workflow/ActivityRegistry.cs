@@ -192,7 +192,9 @@ public static class ActivityRegistry
 
         b.Activity("Web.GetText").DisplayName("Web Metin Oku").Category(CatWeb).Capability(cap)
             .Description("Elementin metnini okur.")
-            .Input("selector", "string").Output("text", "string");
+            .Input("selector", "string")
+            .Input("outputVariable", "string", required: false)
+            .Output("text", "string");
 
         b.Activity("Web.WaitFor").DisplayName("Web Bekle").Category(CatWeb).Capability(cap)
             .Description("Bir elementin görünmesini/durumunu bekler.")

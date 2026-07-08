@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { WorkflowVariable } from '../../../shared/models/workflow.model';
 import { WebClickPropertyComponent } from './web/web-click-property.component';
 import { WebGetTextPropertyComponent } from './web/web-get-text-property.component';
 import { WebNavigatePropertyComponent } from './web/web-navigate-property.component';
@@ -7,10 +8,13 @@ import { WebSetTextPropertyComponent } from './web/web-set-text-property.compone
 import { WebWaitForSelectorPropertyComponent } from './web/web-wait-for-selector-property.component';
 
 export const WEB_ACTIVITY_TYPES = [
-  'Web.Navigate',
+  'Web.Goto',
   'Web.Click',
-  'Web.SetText',
+  'Web.Fill',
   'Web.GetText',
+  'Web.WaitFor',
+  'Web.Navigate',
+  'Web.SetText',
   'Web.WaitForSelector',
 ] as const;
 
@@ -43,10 +47,11 @@ export function isWebActivityType(activityType: string | null | undefined): acti
 export class WebPropertyRouterComponent {
   @Input() activityType: string | null | undefined;
   @Input() properties: Record<string, unknown> | null | undefined;
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
 
   get isNavigate(): boolean {
-    return this.activityType === 'Web.Navigate';
+    return this.activityType === 'Web.Goto' || this.activityType === 'Web.Navigate';
   }
 
   get isClick(): boolean {
@@ -54,7 +59,7 @@ export class WebPropertyRouterComponent {
   }
 
   get isSetText(): boolean {
-    return this.activityType === 'Web.SetText';
+    return this.activityType === 'Web.Fill' || this.activityType === 'Web.SetText';
   }
 
   get isGetText(): boolean {
@@ -62,7 +67,7 @@ export class WebPropertyRouterComponent {
   }
 
   get isWaitForSelector(): boolean {
-    return this.activityType === 'Web.WaitForSelector';
+    return this.activityType === 'Web.WaitFor' || this.activityType === 'Web.WaitForSelector';
   }
 
   onPropertiesChange(value: Record<string, unknown>): void {

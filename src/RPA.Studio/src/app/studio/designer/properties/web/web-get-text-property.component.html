@@ -22,16 +22,32 @@
       {{ 'web.field.outputVariable' | translate }}
       <span aria-hidden="true">*</span>
     </label>
-    <input
-      id="web-get-text-output-variable"
-      type="text"
-      data-testid="web-get-text-output-variable-input"
-      formControlName="outputVariable"
-      [placeholder]="'web.field.outputVariablePlaceholder' | translate"
-      [attr.aria-label]="'web.field.outputVariable' | translate"
-      aria-required="true"
-      [attr.aria-invalid]="outputVariableControl.invalid && outputVariableControl.touched"
-    />
+    @if (variableOptions.length > 0) {
+      <select
+        id="web-get-text-output-variable"
+        data-testid="web-get-text-output-variable-select"
+        formControlName="outputVariable"
+        [attr.aria-label]="'web.field.outputVariable' | translate"
+        aria-required="true"
+        [attr.aria-invalid]="outputVariableControl.invalid && outputVariableControl.touched"
+      >
+        <option value="">{{ 'web.field.outputVariablePlaceholder' | translate }}</option>
+        @for (variable of variableOptions; track variable.name) {
+          <option [value]="variable.name">{{ variable.name }}</option>
+        }
+      </select>
+    } @else {
+      <input
+        id="web-get-text-output-variable"
+        type="text"
+        data-testid="web-get-text-output-variable-input"
+        formControlName="outputVariable"
+        [placeholder]="'web.field.outputVariablePlaceholder' | translate"
+        [attr.aria-label]="'web.field.outputVariable' | translate"
+        aria-required="true"
+        [attr.aria-invalid]="outputVariableControl.invalid && outputVariableControl.touched"
+      />
+    }
     @if (outputVariableControl.invalid && outputVariableControl.touched) {
       <p class="web-property__error" role="alert">{{ 'web.error.invalidVariableName' | translate }}</p>
     }

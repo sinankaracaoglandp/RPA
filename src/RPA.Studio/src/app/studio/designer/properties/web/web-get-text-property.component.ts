@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { TranslatePipe } from '../../../../core/translate.pipe';
+import { WorkflowVariable } from '../../../../shared/models/workflow.model';
 import { ExpressionInputComponent } from '../expression-input.component';
 
 export interface WebGetTextProperties {
@@ -27,6 +28,7 @@ const VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 })
 export class WebGetTextPropertyComponent implements OnChanges {
   @Input() properties: Record<string, unknown> | null | undefined;
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<WebGetTextProperties>();
 
   readonly form: FormGroup;
@@ -60,6 +62,10 @@ export class WebGetTextPropertyComponent implements OnChanges {
 
   get outputVariableControl() {
     return this.form.get('outputVariable')!;
+  }
+
+  get variableOptions(): WorkflowVariable[] {
+    return this.variables ?? [];
   }
 
   private emitIfValid(): void {

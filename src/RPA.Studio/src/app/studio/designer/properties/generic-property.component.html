@@ -45,16 +45,31 @@
                 @if (port.required) { <span class="generic-property__req">*</span> }
               </label>
               <div class="generic-property__input-row">
-                <input
-                  [id]="'prop-' + port.name"
-                  [type]="inputType(port)"
-                  [value]="value(port)"
-                  (input)="onValueChange(port, $any($event.target).value)"
-                  [placeholder]="port.name"
-                  class="generic-property__input"
-                  [attr.data-testid]="'prop-' + port.name"
-                  autocomplete="off"
-                />
+                @if (isVariableField(port) && variables.length > 0) {
+                  <select
+                    [id]="'prop-' + port.name"
+                    [value]="value(port)"
+                    (change)="onValueChange(port, $any($event.target).value)"
+                    class="generic-property__input"
+                    [attr.data-testid]="'prop-' + port.name"
+                  >
+                    <option value="">{{ port.name }}</option>
+                    @for (variable of variables; track variable.name) {
+                      <option [value]="variable.name">{{ variable.name }}</option>
+                    }
+                  </select>
+                } @else {
+                  <input
+                    [id]="'prop-' + port.name"
+                    [type]="inputType(port)"
+                    [value]="value(port)"
+                    (input)="onValueChange(port, $any($event.target).value)"
+                    [placeholder]="port.name"
+                    class="generic-property__input"
+                    [attr.data-testid]="'prop-' + port.name"
+                    autocomplete="off"
+                  />
+                }
                 @if (port.pickerKind && inputType(port) !== 'password') {
                   <app-selector-picker-button
                     [pickerKind]="port.pickerKind"

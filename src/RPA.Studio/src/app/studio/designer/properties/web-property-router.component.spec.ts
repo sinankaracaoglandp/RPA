@@ -30,8 +30,8 @@ describe('WebPropertyRouterComponent', () => {
     fixture.detectChanges();
   }
 
-  it('routes Web.Navigate to the navigate editor', () => {
-    select('Web.Navigate');
+  it('routes Web.Goto to the navigate editor', () => {
+    select('Web.Goto');
     expect(fixture.nativeElement.querySelector('[data-testid="web-navigate-form"]')).toBeTruthy();
   });
 
@@ -40,8 +40,8 @@ describe('WebPropertyRouterComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="web-click-form"]')).toBeTruthy();
   });
 
-  it('routes Web.SetText to the set-text editor', () => {
-    select('Web.SetText');
+  it('routes Web.Fill to the set-text editor', () => {
+    select('Web.Fill');
     expect(fixture.nativeElement.querySelector('[data-testid="web-set-text-form"]')).toBeTruthy();
   });
 
@@ -50,7 +50,18 @@ describe('WebPropertyRouterComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="web-get-text-form"]')).toBeTruthy();
   });
 
-  it('routes Web.WaitForSelector to the wait-for-selector editor', () => {
+  it('routes Web.WaitFor to the wait-for-selector editor', () => {
+    select('Web.WaitFor');
+    expect(fixture.nativeElement.querySelector('[data-testid="web-wait-for-selector-form"]')).toBeTruthy();
+  });
+
+  it('keeps routing legacy Web activity ids for existing drafts', () => {
+    select('Web.Navigate');
+    expect(fixture.nativeElement.querySelector('[data-testid="web-navigate-form"]')).toBeTruthy();
+
+    select('Web.SetText');
+    expect(fixture.nativeElement.querySelector('[data-testid="web-set-text-form"]')).toBeTruthy();
+
     select('Web.WaitForSelector');
     expect(fixture.nativeElement.querySelector('[data-testid="web-wait-for-selector-form"]')).toBeTruthy();
   });
@@ -70,7 +81,7 @@ describe('WebPropertyRouterComponent', () => {
   });
 
   it('Navigate form is invalid until the required url field is filled, and updates on input', () => {
-    select('Web.Navigate');
+    select('Web.Goto');
     let emitted: Record<string, unknown> | undefined;
     component.propertiesChange.subscribe((v) => (emitted = v));
 
@@ -186,8 +197,8 @@ describe('WebPropertyRouterComponent', () => {
     expect(emitted).toEqual({ steps: [], selector: '', action: 'click', timeoutMs: 30000 });
   });
 
-  it('SetText form requires both selector and text before emitting', () => {
-    select('Web.SetText');
+  it('Fill form requires both selector and value before emitting', () => {
+    select('Web.Fill');
     let emitted: Record<string, unknown> | undefined;
     component.propertiesChange.subscribe((v) => (emitted = v));
 
@@ -195,11 +206,11 @@ describe('WebPropertyRouterComponent', () => {
     expect(emitted).toBeUndefined();
 
     setValue(fixture, 'web-set-text-text-input', 'hello');
-    expect(emitted).toEqual({ selector: '#field', text: 'hello' });
+    expect(emitted).toEqual({ selector: '#field', value: 'hello' });
   });
 
-  it('WaitForSelector form requires selector and a positive timeoutMs', () => {
-    select('Web.WaitForSelector', { selector: '#loaded', timeoutMs: 5000 });
+  it('WaitFor form requires selector and a positive timeoutMs', () => {
+    select('Web.WaitFor', { selector: '#loaded', timeoutMs: 5000 });
     let emitted: Record<string, unknown> | undefined;
     component.propertiesChange.subscribe((v) => (emitted = v));
 
@@ -232,8 +243,31 @@ describe('WebPropertyRouterComponent', () => {
     expect(emitted).toEqual({ selector: '.result', outputVariable: 'resultText' });
   });
 
+  it('GetText form lets the user select a declared output variable', () => {
+    fixture.componentRef.setInput('activityType', 'Web.GetText');
+    fixture.componentRef.setInput('properties', { selector: '.result' });
+    fixture.componentRef.setInput('variables', [
+      { name: 'okunanMetin', type: 'string', scope: 'global', default: '' },
+      { name: 'toplam', type: 'int', scope: 'global', default: 0 },
+    ]);
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe((v) => (emitted = v));
+    fixture.detectChanges();
+
+    const selectEl = fixture.nativeElement.querySelector(
+      '[data-testid="web-get-text-output-variable-select"]',
+    ) as HTMLSelectElement;
+    expect([...selectEl.options].map((o) => o.value)).toEqual(['', 'okunanMetin', 'toplam']);
+
+    selectEl.value = 'okunanMetin';
+    selectEl.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(emitted).toEqual({ selector: '.result', outputVariable: 'okunanMetin' });
+  });
+
   it('renders the expression editor with a variable-insert control for text-like fields', () => {
-    select('Web.Navigate');
+    select('Web.Goto');
     const wrapper = fixture.nativeElement.querySelectorAll('[data-testid="expression-input"]');
     expect(wrapper.length).toBeGreaterThan(0);
     const insertBtn = fixture.nativeElement.querySelector('[data-testid="expression-insert-variable"]');

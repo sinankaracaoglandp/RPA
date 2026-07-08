@@ -6,12 +6,12 @@ import { ExpressionInputComponent } from '../expression-input.component';
 
 export interface WebSetTextProperties {
   selector: string;
-  text: string;
+  value: string;
   waitSelector?: string;
   [key: string]: unknown;
 }
 
-/** Property editor for the `Web.SetText` activity (Faz 2 Task 2.6). */
+/** Property editor for the `Web.Fill` activity (Faz 2 Task 2.6). */
 @Component({
   selector: 'app-web-set-text-property',
   standalone: true,
@@ -36,11 +36,11 @@ export class WebSetTextPropertyComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['properties']) {
-      const props = (this.properties ?? {}) as Partial<WebSetTextProperties>;
+      const props = (this.properties ?? {}) as Partial<WebSetTextProperties> & { text?: string };
       this.form.patchValue(
         {
           selector: props.selector ?? '',
-          text: props.text ?? '',
+          text: props.value ?? props.text ?? '',
           waitSelector: props.waitSelector ?? '',
         },
         { emitEvent: false },
@@ -61,7 +61,7 @@ export class WebSetTextPropertyComponent implements OnChanges {
       const { selector, text, waitSelector } = this.form.value;
       this.propertiesChange.emit({
         selector,
-        text,
+        value: text,
         ...(waitSelector ? { waitSelector } : {}),
       });
     }

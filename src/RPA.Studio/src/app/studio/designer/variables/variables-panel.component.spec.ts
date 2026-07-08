@@ -1,0 +1,71 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { VariablesPanelComponent } from './variables-panel.component';
+
+describe('VariablesPanelComponent', () => {
+  let fixture: ComponentFixture<VariablesPanelComponent>;
+  let component: VariablesPanelComponent;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [VariablesPanelComponent],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(VariablesPanelComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('adds a global string variable and emits the updated list', () => {
+    let emitted: unknown;
+    component.variablesChange.subscribe((value) => (emitted = value));
+
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="variables-add"]').click();
+    fixture.detectChanges();
+
+    const nameInput = fixture.nativeElement.querySelector('[data-testid="variable-name-0"]') as HTMLInputElement;
+    nameInput.value = 'okunanMetin';
+    nameInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(emitted).toEqual([
+      { name: 'okunanMetin', type: 'string', scope: 'global', default: '' },
+    ]);
+  });
+
+  it('updates type and default value for an existing variable', () => {
+    fixture.componentRef.setInput('variables', [
+      { name: 'toplam', type: 'string', scope: 'global', default: '' },
+    ]);
+    let emitted: unknown;
+    component.variablesChange.subscribe((value) => (emitted = value));
+    fixture.detectChanges();
+
+    const typeSelect = fixture.nativeElement.querySelector('[data-testid="variable-type-0"]') as HTMLSelectElement;
+    typeSelect.value = 'int';
+    typeSelect.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    const defaultInput = fixture.nativeElement.querySelector('[data-testid="variable-default-0"]') as HTMLInputElement;
+    defaultInput.value = '42';
+    defaultInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(emitted).toEqual([
+      { name: 'toplam', type: 'int', scope: 'global', default: 42 },
+    ]);
+  });
+
+  it('removes a variable', () => {
+    fixture.componentRef.setInput('variables', [
+      { name: 'okunanMetin', type: 'string', scope: 'global', default: '' },
+    ]);
+    let emitted: unknown;
+    component.variablesChange.subscribe((value) => (emitted = value));
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="variable-remove-0"]').click();
+    fixture.detectChanges();
+
+    expect(emitted).toEqual([]);
+  });
+});

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription, timer, switchMap } from 'rxjs';
-import { WorkflowVersion } from '../../shared/models/workflow.model';
+import { WorkflowVariable, WorkflowVersion } from '../../shared/models/workflow.model';
 import { DebugService } from '../../shared/services/debug.service';
 import { ModeService } from '../../shared/services/mode.service';
 import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
@@ -14,6 +14,7 @@ import { DebugPanelComponent } from '../debug/debug-panel.component';
 import { SimpleModeToggleComponent } from '../simple-mode/simple-mode-toggle.component';
 import { SimplifiedToolboxComponent } from '../simple-mode/simplified-toolbox.component';
 import { PropertiesPanelComponent } from './properties/properties-panel.component';
+import { VariablesPanelComponent } from './variables/variables-panel.component';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -35,6 +36,7 @@ import { PropertiesPanelComponent } from './properties/properties-panel.componen
     SimpleModeToggleComponent,
     SimplifiedToolboxComponent,
     PropertiesPanelComponent,
+    VariablesPanelComponent,
   ],
   templateUrl: './designer.component.html',
   styleUrls: ['./designer.component.scss'],
@@ -62,6 +64,7 @@ export class DesignerComponent implements OnDestroy {
   readonly selectedActivityType = signal<string | undefined>(undefined);
   readonly selectedProperties = signal<Record<string, unknown>>({});
   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
+  readonly variables = signal<WorkflowVariable[]>([]);
   readonly debugMode = signal(false);
 
   readonly workflowId = signal<string | null>(null);
@@ -87,14 +90,14 @@ export class DesignerComponent implements OnDestroy {
     if (routedId) {
       this.workflowId.set(routedId);
       this.draft.load(routedId).subscribe({
-        next: (wf) => this.workflow.set(wf),
+        next: (wf) => this.applyWorkflow(wf),
         error: () => this.saveState.set('error'),
       });
       return;
     }
     const pending = this.draft.consumePending();
     if (pending) {
-      this.workflow.set(pending);
+      this.applyWorkflow(pending);
     }
   }
 
@@ -143,6 +146,19 @@ export class DesignerComponent implements OnDestroy {
     }
   }
 
+  onVariablesChange(variables: WorkflowVariable[]): void {
+    this.variables.set(variables);
+    const workflow = this.workflow();
+    if (workflow) {
+      this.workflow.set({ ...workflow, variables });
+    }
+    const graph = this.currentGraph();
+    if (graph) {
+      this.currentGraph.set({ ...graph, variables });
+    }
+    this.dirty.set(true);
+  }
+
   onGraphChanged(graph: WorkflowVersion): void {
     this.currentGraph.set(graph);
     this.dirty.set(true);
@@ -159,7 +175,8 @@ export class DesignerComponent implements OnDestroy {
     if (!id) {
       return; // yeni-taslak modu: kalıcı hedef yok (Projelerim'den açılır)
     }
-    const graph = this.canvas()?.serialize() ?? this.currentGraph();
+    const serialized = this.canvas()?.serialize() ?? this.currentGraph();
+    const graph = serialized ? { ...serialized, variables: this.variables() } : undefined;
     if (!graph) {
       return;
     }
@@ -246,6 +263,12 @@ export class DesignerComponent implements OnDestroy {
     if (DesignerComponent.TerminalRunStatuses.has(status.toLowerCase())) {
       this.runStatusPolling?.unsubscribe();
     }
+  }
+
+  private applyWorkflow(workflow: WorkflowVersion): void {
+    const withVariables = { ...workflow, variables: workflow.variables ?? [] };
+    this.workflow.set(withVariables);
+    this.variables.set(withVariables.variables ?? []);
   }
 
   onSaveShortcut(event: Event): void {

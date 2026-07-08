@@ -184,13 +184,16 @@ public sealed class WebActivityTests
         var context = new TestActivityExecutionContext();
         context.SetVariable("session", "session-1");
         context.SetVariable("selector", ".message");
+        context.SetVariable("outputVariable", "okunanMetin");
 
         var output = await activity.ExecuteAsync(context);
 
         Assert.Equal("session-1", manager.GetTextSessionId);
         Assert.Equal(".message", manager.GetTextSelector);
         Assert.Equal("hello page", output["text"]);
+        Assert.Equal("hello page", output["okunanMetin"]);
         Assert.Equal("hello page", context.GetVariable<string>("text"));
+        Assert.Equal("hello page", context.GetVariable<string>("okunanMetin"));
     }
 
     [Fact]
