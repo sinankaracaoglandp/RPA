@@ -8,11 +8,11 @@
     ".NETCoreApp,Version=v10.0": {
       "RPA.Infrastructure/1.0.0": {
         "dependencies": {
-          "ClosedXML": "0.102.0",
+          "ClosedXML": "0.105.0",
           "Cronos": "0.13.0",
           "CsvHelper": "31.0.2",
           "LdapForNet": "2.7.15",
-          "MailKit": "4.7.1",
+          "MailKit": "4.17.0",
           "Microsoft.AspNetCore.Http.Abstractions": "2.3.0",
           "Microsoft.EntityFrameworkCore": "10.0.9",
           "Microsoft.Extensions.Hosting.Abstractions": "10.0.9",
@@ -20,6 +20,7 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.9",
           "Microsoft.Extensions.Options": "10.0.9",
           "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.9",
+          "Microsoft.Playwright": "1.61.0",
           "NJsonSchema": "11.1.0",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "10.0.0",
           "Otp.NET": "1.4.0",
@@ -28,32 +29,41 @@
           "RPA.Domain": "1.0.0",
           "Serilog": "4.3.1",
           "Serilog.Sinks.Elasticsearch": "10.0.0",
+          "System.IO.Packaging": "10.0.9",
           "System.IdentityModel.Tokens.Jwt": "8.19.1"
         },
         "runtime": {
           "RPA.Infrastructure.dll": {}
         }
       },
-      "BouncyCastle.Cryptography/2.4.0": {
+      "BouncyCastle.Cryptography/2.6.2": {
         "runtime": {
           "lib/net6.0/BouncyCastle.Cryptography.dll": {
             "assemblyVersion": "2.0.0.0",
-            "fileVersion": "2.4.0.33771"
+            "fileVersion": "2.6.2.46322"
           }
         }
       },
-      "ClosedXML/0.102.0": {
+      "ClosedXML/0.105.0": {
         "dependencies": {
-          "DocumentFormat.OpenXml": "2.16.0",
+          "ClosedXML.Parser": "2.0.0",
+          "DocumentFormat.OpenXml": "3.1.1",
           "ExcelNumberFormat": "1.1.0",
-          "SixLabors.Fonts": "1.0.0-beta19",
-          "System.IO.Packaging": "6.0.0",
-          "XLParser": "1.5.2"
+          "RBush.Signed": "4.0.0",
+          "SixLabors.Fonts": "1.0.0"
         },
         "runtime": {
           "lib/netstandard2.1/ClosedXML.dll": {
-            "assemblyVersion": "0.102.0.0",
-            "fileVersion": "0.102.0.0"
+            "assemblyVersion": "0.105.0.0",
+            "fileVersion": "0.105.0.0"
+          }
+        }
+      },
+      "ClosedXML.Parser/2.0.0": {
+        "runtime": {
+          "lib/netstandard2.1/ClosedXML.Parser.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
           }
         }
       },
@@ -73,14 +83,25 @@
           }
         }
       },
-      "DocumentFormat.OpenXml/2.16.0": {
+      "DocumentFormat.OpenXml/3.1.1": {
         "dependencies": {
-          "System.IO.Packaging": "6.0.0"
+          "DocumentFormat.OpenXml.Framework": "3.1.1"
         },
         "runtime": {
-          "lib/netstandard2.0/DocumentFormat.OpenXml.dll": {
-            "assemblyVersion": "2.16.0.0",
-            "fileVersion": "2.16.0.0"
+          "lib/net8.0/DocumentFormat.OpenXml.dll": {
+            "assemblyVersion": "3.1.1.0",
+            "fileVersion": "3.1.1.0"
+          }
+        }
+      },
+      "DocumentFormat.OpenXml.Framework/3.1.1": {
+        "dependencies": {
+          "System.IO.Packaging": "10.0.9"
+        },
+        "runtime": {
+          "lib/net8.0/DocumentFormat.OpenXml.Framework.dll": {
+            "assemblyVersion": "3.1.1.0",
+            "fileVersion": "3.1.1.0"
           }
         }
       },
@@ -100,14 +121,6 @@
           }
         }
       },
-      "Irony.NetCore/1.0.11": {
-        "runtime": {
-          "lib/netstandard1.6/Irony.dll": {
-            "assemblyVersion": "1.0.11.0",
-            "fileVersion": "1.0.11.0"
-          }
-        }
-      },
       "LdapForNet/2.7.15": {
         "runtime": {
           "lib/netcoreapp3.1/LdapForNet.dll": {
@@ -116,14 +129,14 @@
           }
         }
       },
-      "MailKit/4.7.1": {
+      "MailKit/4.17.0": {
         "dependencies": {
-          "MimeKit": "4.7.1"
+          "MimeKit": "4.17.0"
         },
         "runtime": {
-          "lib/net8.0/MailKit.dll": {
-            "assemblyVersion": "4.7.0.0",
-            "fileVersion": "4.7.1.0"
+          "lib/net10.0/MailKit.dll": {
+            "assemblyVersion": "4.17.0.0",
+            "fileVersion": "4.17.0.0"
           }
         }
       },
@@ -168,6 +181,14 @@
           "lib/netstandard2.0/Microsoft.AspNetCore.Http.Features.dll": {
             "assemblyVersion": "2.3.0.0",
             "fileVersion": "2.3.0.25014"
+          }
+        }
+      },
+      "Microsoft.Bcl.AsyncInterfaces/6.0.0": {
+        "runtime": {
+          "lib/netstandard2.1/Microsoft.Bcl.AsyncInterfaces.dll": {
+            "assemblyVersion": "6.0.0.0",
+            "fileVersion": "6.0.21.52210"
           }
         }
       },
@@ -463,15 +484,26 @@
           }
         }
       },
-      "MimeKit/4.7.1": {
+      "Microsoft.Playwright/1.61.0": {
         "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "System.Security.Cryptography.Pkcs": "8.0.0"
+          "Microsoft.Bcl.AsyncInterfaces": "6.0.0"
         },
         "runtime": {
-          "lib/net8.0/MimeKit.dll": {
-            "assemblyVersion": "4.7.0.0",
-            "fileVersion": "4.7.1.0"
+          "lib/netstandard2.0/Microsoft.Playwright.dll": {
+            "assemblyVersion": "1.61.0.0",
+            "fileVersion": "1.61.0.0"
+          }
+        }
+      },
+      "MimeKit/4.17.0": {
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.6.2",
+          "System.Security.Cryptography.Pkcs": "10.0.0"
+        },
+        "runtime": {
+          "lib/net10.0/MimeKit.dll": {
+            "assemblyVersion": "4.17.0.0",
+            "fileVersion": "4.17.0.0"
           }
         }
       },
@@ -563,6 +595,14 @@
           }
         }
       },
+      "RBush.Signed/4.0.0": {
+        "runtime": {
+          "lib/net8.0/RBush.dll": {
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "4.0.0.0"
+          }
+        }
+      },
       "Serilog/4.3.1": {
         "runtime": {
           "lib/net10.0/Serilog.dll": {
@@ -631,7 +671,7 @@
           }
         }
       },
-      "SixLabors.Fonts/1.0.0-beta19": {
+      "SixLabors.Fonts/1.0.0": {
         "runtime": {
           "lib/netcoreapp3.1/SixLabors.Fonts.dll": {
             "assemblyVersion": "1.0.0.0",
@@ -651,38 +691,27 @@
           }
         }
       },
-      "System.IO.Packaging/6.0.0": {
+      "System.IO.Packaging/10.0.9": {
         "runtime": {
-          "lib/net6.0/System.IO.Packaging.dll": {
-            "assemblyVersion": "6.0.0.0",
-            "fileVersion": "6.0.21.52210"
+          "lib/net10.0/System.IO.Packaging.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.926.27113"
           }
         }
       },
-      "System.Security.Cryptography.Pkcs/8.0.0": {
+      "System.Security.Cryptography.Pkcs/10.0.0": {
         "runtime": {
-          "lib/net8.0/System.Security.Cryptography.Pkcs.dll": {
-            "assemblyVersion": "8.0.0.0",
-            "fileVersion": "8.0.23.53103"
+          "lib/net10.0/System.Security.Cryptography.Pkcs.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.25.52411"
           }
         },
         "runtimeTargets": {
-          "runtimes/win/lib/net8.0/System.Security.Cryptography.Pkcs.dll": {
+          "runtimes/win/lib/net10.0/System.Security.Cryptography.Pkcs.dll": {
             "rid": "win",
             "assetType": "runtime",
-            "assemblyVersion": "8.0.0.0",
-            "fileVersion": "8.0.23.53103"
-          }
-        }
-      },
-      "XLParser/1.5.2": {
-        "dependencies": {
-          "Irony.NetCore": "1.0.11"
-        },
-        "runtime": {
-          "lib/netstandard1.6/XLParser.dll": {
-            "assemblyVersion": "1.5.2.0",
-            "fileVersion": "1.5.2.0"
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.25.52411"
           }
         }
       },
@@ -717,19 +746,26 @@
       "serviceable": false,
       "sha512": ""
     },
-    "BouncyCastle.Cryptography/2.4.0": {
+    "BouncyCastle.Cryptography/2.6.2": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-SwXsAV3sMvAU/Nn31pbjhWurYSjJ+/giI/0n6tCrYoupEK34iIHCuk3STAd9fx8yudM85KkLSVdn951vTng/vQ==",
-      "path": "bouncycastle.cryptography/2.4.0",
-      "hashPath": "bouncycastle.cryptography.2.4.0.nupkg.sha512"
+      "sha512": "sha512-7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w==",
+      "path": "bouncycastle.cryptography/2.6.2",
+      "hashPath": "bouncycastle.cryptography.2.6.2.nupkg.sha512"
     },
-    "ClosedXML/0.102.0": {
+    "ClosedXML/0.105.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-y4AiOq/XwJxbTV8wb9h32Ze9zme7oN6Qa7mpgzlCTK847d6P8BC3NDuqBj3X9RnC/CXmSwsmRS/vrIz7aHwijQ==",
-      "path": "closedxml/0.102.0",
-      "hashPath": "closedxml.0.102.0.nupkg.sha512"
+      "sha512": "sha512-U0hAdnYyPvF7TqHMFloxrS7pmozab79tFFF4c/bgPtqeelUs7ILpUd3r3c7C0a/DXsUZb3k1n4Pf7Q2LMyMQOg==",
+      "path": "closedxml/0.105.0",
+      "hashPath": "closedxml.0.105.0.nupkg.sha512"
+    },
+    "ClosedXML.Parser/2.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ngTqjYreDYNytG1W5d3ewHsw0ukmmrgV7EKnS4/40rXoYZGt07jrBvo+N+GxT49rcageUMUiprV0jYT4nwVBHQ==",
+      "path": "closedxml.parser/2.0.0",
+      "hashPath": "closedxml.parser.2.0.0.nupkg.sha512"
     },
     "Cronos/0.13.0": {
       "type": "package",
@@ -745,12 +781,19 @@
       "path": "csvhelper/31.0.2",
       "hashPath": "csvhelper.31.0.2.nupkg.sha512"
     },
-    "DocumentFormat.OpenXml/2.16.0": {
+    "DocumentFormat.OpenXml/3.1.1": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-RhpnDgyyx1KjZm98T3w3bSXFHG/7ZNUaVmz4NAUA+jmV3PcVNZeW87Y04CpBNLdDHEMSspirfo0B5kLRaoE97w==",
-      "path": "documentformat.openxml/2.16.0",
-      "hashPath": "documentformat.openxml.2.16.0.nupkg.sha512"
+      "sha512": "sha512-2z9QBzeTLNNKWM9SaOSDMegfQk/7hDuElOsmF77pKZMkFRP/GHA/W/4yOAQD9kn15N/FsFxHn3QVYkatuZghiA==",
+      "path": "documentformat.openxml/3.1.1",
+      "hashPath": "documentformat.openxml.3.1.1.nupkg.sha512"
+    },
+    "DocumentFormat.OpenXml.Framework/3.1.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-6APEp/ElZV58S/4v8mf4Ke3ONEDORs64MqdD64Z7wWpcHANB9oovQsGIwtqjnKihulOj7T0a6IxHIHOfMqKOng==",
+      "path": "documentformat.openxml.framework/3.1.1",
+      "hashPath": "documentformat.openxml.framework.3.1.1.nupkg.sha512"
     },
     "Elasticsearch.Net/7.17.5": {
       "type": "package",
@@ -766,13 +809,6 @@
       "path": "excelnumberformat/1.1.0",
       "hashPath": "excelnumberformat.1.1.0.nupkg.sha512"
     },
-    "Irony.NetCore/1.0.11": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-/2MCkqdhEjPiSTZKYXg6u9AO9o3m68biqcFHAnM28WdnrcZii2vYbmKPzT5ejByyV72FUlygOtHBMt8SLnUyNw==",
-      "path": "irony.netcore/1.0.11",
-      "hashPath": "irony.netcore.1.0.11.nupkg.sha512"
-    },
     "LdapForNet/2.7.15": {
       "type": "package",
       "serviceable": true,
@@ -780,12 +816,12 @@
       "path": "ldapfornet/2.7.15",
       "hashPath": "ldapfornet.2.7.15.nupkg.sha512"
     },
-    "MailKit/4.7.1": {
+    "MailKit/4.17.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-mDTq1tWZfsgpCPVfgHF3FDixczPSh5wU22lzo2buDu8OrSAqV3ybPKojjOoUygkLpPRmZ4VAZ+k+PBi5+igGdQ==",
-      "path": "mailkit/4.7.1",
-      "hashPath": "mailkit.4.7.1.nupkg.sha512"
+      "sha512": "sha512-1nUAVLxM9fhT/78we6/AGsCesnpn5dRNLLeRqOfr52Wnk87pzVwo5YMTMyqnmoXrYc7piGhmayiMA/OgDluIjg==",
+      "path": "mailkit/4.17.0",
+      "hashPath": "mailkit.4.17.0.nupkg.sha512"
     },
     "MediatR/14.2.0": {
       "type": "package",
@@ -814,6 +850,13 @@
       "sha512": "sha512-f10WUgcsKqrkmnz6gt8HeZ7kyKjYN30PO7cSic1lPtH7paPtnQqXPOveul/SIPI43PhRD4trttg4ywnrEmmJpA==",
       "path": "microsoft.aspnetcore.http.features/2.3.0",
       "hashPath": "microsoft.aspnetcore.http.features.2.3.0.nupkg.sha512"
+    },
+    "Microsoft.Bcl.AsyncInterfaces/6.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-UcSjPsst+DfAdJGVDsu346FX0ci0ah+lw3WRtn18NUwEqRt70HaOQ7lI72vy3+1LxtqI3T5GWwV39rQSrCzAeg==",
+      "path": "microsoft.bcl.asyncinterfaces/6.0.0",
+      "hashPath": "microsoft.bcl.asyncinterfaces.6.0.0.nupkg.sha512"
     },
     "Microsoft.Bcl.Cryptography/10.0.2": {
       "type": "package",
@@ -990,12 +1033,19 @@
       "path": "microsoft.identitymodel.tokens/8.19.1",
       "hashPath": "microsoft.identitymodel.tokens.8.19.1.nupkg.sha512"
     },
-    "MimeKit/4.7.1": {
+    "Microsoft.Playwright/1.61.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-Qoj4aVvhX14A1FNvaJ33hzOP4VZI2j+Mr38I9wSGcjMq4BYDtWLJG89aJ9nRW2cNfH6Czjwyp7+Mh++xv3AZvg==",
-      "path": "mimekit/4.7.1",
-      "hashPath": "mimekit.4.7.1.nupkg.sha512"
+      "sha512": "sha512-VM149rQ2Pu+3xAzrO2gvh2WRgrWNbIl0jL9LG2oMC9xKUVYDnUrsh+E/5S+NQToVV4S+yhZ3NHsa6kf1PdHeag==",
+      "path": "microsoft.playwright/1.61.0",
+      "hashPath": "microsoft.playwright.1.61.0.nupkg.sha512"
+    },
+    "MimeKit/4.17.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-h/KXsCreJf8RpR/PSAtlbvYtZFndp9N8Wn1Bs248AL7ITyhn+AiIY5bLTvt60tbN2mu6g8KadtBNWygTji2lqg==",
+      "path": "mimekit/4.17.0",
+      "hashPath": "mimekit.4.17.0.nupkg.sha512"
     },
     "Namotion.Reflection/3.2.0": {
       "type": "package",
@@ -1060,6 +1110,13 @@
       "path": "polly.core/8.5.0",
       "hashPath": "polly.core.8.5.0.nupkg.sha512"
     },
+    "RBush.Signed/4.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-aP5KQxL5RnFNGW1f0euYVBfCatkLw5iEzMRJcXKq8LWWP4Cp3+qoSq1tDDL2vvJ2rM0ychmVMa2VaEKLS6uX4w==",
+      "path": "rbush.signed/4.0.0",
+      "hashPath": "rbush.signed.4.0.0.nupkg.sha512"
+    },
     "Serilog/4.3.1": {
       "type": "package",
       "serviceable": true,
@@ -1102,12 +1159,12 @@
       "path": "serilog.sinks.periodicbatching/4.0.0",
       "hashPath": "serilog.sinks.periodicbatching.4.0.0.nupkg.sha512"
     },
-    "SixLabors.Fonts/1.0.0-beta19": {
+    "SixLabors.Fonts/1.0.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-ECJoayRT54VkJNoKBwZZllGvBIvxmnUFXsUCqHU8uAjAFrcdtxNpQ5Auyzw3d4+B+Q3KivKIrd7uO0qiNx/glg==",
-      "path": "sixlabors.fonts/1.0.0-beta19",
-      "hashPath": "sixlabors.fonts.1.0.0-beta19.nupkg.sha512"
+      "sha512": "sha512-LFQsCZlV0xlUyXAOMUo5kkSl+8zAQXXbbdwWchtk0B4o7zotZhQsQOcJUELGHdfPfm/xDAsz6hONAuV25bJaAg==",
+      "path": "sixlabors.fonts/1.0.0",
+      "hashPath": "sixlabors.fonts.1.0.0.nupkg.sha512"
     },
     "System.IdentityModel.Tokens.Jwt/8.19.1": {
       "type": "package",
@@ -1116,26 +1173,19 @@
       "path": "system.identitymodel.tokens.jwt/8.19.1",
       "hashPath": "system.identitymodel.tokens.jwt.8.19.1.nupkg.sha512"
     },
-    "System.IO.Packaging/6.0.0": {
+    "System.IO.Packaging/10.0.9": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-C7OkTRIjqIjAKu6ef/fuj8ynCZTPcTYZnvHaq48bniACgXXJogmEoIc56YCDNTc14xhsbLmgpS3KP+evbsUa2g==",
-      "path": "system.io.packaging/6.0.0",
-      "hashPath": "system.io.packaging.6.0.0.nupkg.sha512"
+      "sha512": "sha512-1UCr61hf4X1p77Dadu+u5L99+B0WJfYI71L5B9BcAxpgP1uuLPYJfwvogCp+RfEMYz1Or02ezOOLUlmDvW8Usg==",
+      "path": "system.io.packaging/10.0.9",
+      "hashPath": "system.io.packaging.10.0.9.nupkg.sha512"
     },
-    "System.Security.Cryptography.Pkcs/8.0.0": {
+    "System.Security.Cryptography.Pkcs/10.0.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-ULmp3xoOwNYjOYp4JZ2NK/6NdTgiN1GQXzVVN1njQ7LOZ0d0B9vyMnhyqbIi9Qw4JXj1JgCsitkTShboHRx7Eg==",
-      "path": "system.security.cryptography.pkcs/8.0.0",
-      "hashPath": "system.security.cryptography.pkcs.8.0.0.nupkg.sha512"
-    },
-    "XLParser/1.5.2": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-8tnUCmMbn6c/HGuHFyq1sulHym8YReTKDNXFFQk0U8nldNx6RGrwRvLh0+aQjEc7YoC3Q1ztH1npLt7dClKqjw==",
-      "path": "xlparser/1.5.2",
-      "hashPath": "xlparser.1.5.2.nupkg.sha512"
+      "sha512": "sha512-UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg==",
+      "path": "system.security.cryptography.pkcs/10.0.0",
+      "hashPath": "system.security.cryptography.pkcs.10.0.0.nupkg.sha512"
     },
     "RPA.Application/1.0.0": {
       "type": "project",

@@ -11,6 +11,7 @@ import {
   JobRunListResponse,
   JobRunQuery,
   QueueItemListResponse,
+  QueueItem,
   QueueSummary,
   Robot,
   WorkflowVersion,
@@ -113,6 +114,13 @@ export class OrchestratorService {
     return this.http.get<QueueItemListResponse>(
       `/api/queues/${encodeURIComponent(queueId)}/items`,
       { params },
+    );
+  }
+
+  /** Tek bir kuyruk kaleminin son durumu. */
+  getQueueItem(queueId: string, itemId: string): Observable<QueueItem> {
+    return this.http.get<QueueItem>(
+      `/api/queues/${encodeURIComponent(queueId)}/items/${encodeURIComponent(itemId)}`,
     );
   }
 

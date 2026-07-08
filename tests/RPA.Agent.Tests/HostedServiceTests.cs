@@ -201,4 +201,73 @@ public class HostedServiceTests
         Assert.True(await svc.PollOnceAsync());
         source.Verify(s => s.ReportFailureAsync(itemId, It.IsAny<string>(), true, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Poll_QueueName_Ile_Cozulen_StudioRun_Isini_Runnera_Tasir()
+    {
+        var queueId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var workflowVersionId = Guid.NewGuid();
+        var robotId = Guid.NewGuid();
+        var payload = $$"""
+            {
+              "workflowVersionId": "{{workflowVersionId}}",
+              "version": "1.0.0",
+              "jsonDefinition": { "schemaVersion": "1.0", "nodes": [], "connections": [] },
+              "arguments": { "customer": "ACME" }
+            }
+            """;
+        var queue = new Mock<IQueueService>();
+        queue.Setup(q => q.ListQueuesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new QueueSummary(queueId, "StudioRun", 0, null, 1, 0, 0, 1),
+            });
+        queue.Setup(q => q.GetNextItemAsync(queueId, robotId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new QueueItem { Id = itemId, QueueId = queueId, Payload = payload });
+        queue.Setup(q => q.CompleteAsync(itemId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new QueueItem { Id = itemId, QueueId = queueId, Status = QueueItemStatus.Successful });
+
+        var runner = new Mock<IWorkflowRunner>();
+        runner.Setup(r => r.ExecuteAsync(
+                It.IsAny<WorkflowVersion>(),
+                It.IsAny<Dictionary<string, object?>>(),
+                itemId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowExecutionResult { Success = true });
+
+        var state = new AgentState();
+        state.SetRobotId(robotId);
+        var sf = ScopeFactory(s =>
+        {
+            s.AddScoped(_ => queue.Object);
+            s.AddScoped(_ => runner.Object);
+            s.AddSingleton(state);
+            s.AddSingleton<IAgentState>(state);
+            s.AddSingleton<ExceptionClassifier>();
+            s.AddSingleton(Options.Create(new AgentOptions { QueueName = "StudioRun" }));
+            s.AddSingleton(NullLogger<QueueAgentJobSource>.Instance);
+            s.AddScoped<IAgentJobSource, QueueAgentJobSource>();
+            s.AddScoped(sp => new JobExecutor(
+                sp.GetRequiredService<IWorkflowRunner>(),
+                sp.GetRequiredService<ExceptionClassifier>(),
+                sp.GetRequiredService<IAgentState>(),
+                NullLogger<JobExecutor>.Instance));
+        });
+        var svc = new QueuePollingBackgroundService(
+            sf,
+            state,
+            Options.Create(new AgentOptions { QueueName = "StudioRun" }),
+            NullLogger<QueuePollingBackgroundService>.Instance);
+
+        Assert.True(await svc.PollOnceAsync());
+        runner.Verify(r => r.ExecuteAsync(
+            It.Is<WorkflowVersion>(v =>
+                v.Id == workflowVersionId &&
+                v.JsonDefinition.Contains("schemaVersion")),
+            It.Is<Dictionary<string, object?>>(a => (string?)a["customer"] == "ACME"),
+            itemId,
+            It.IsAny<CancellationToken>()), Times.Once);
+        queue.Verify(q => q.CompleteAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

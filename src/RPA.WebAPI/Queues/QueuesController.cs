@@ -1,5 +1,6 @@
 namespace RPA.WebAPI.Queues;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
@@ -11,6 +12,7 @@ using RPA.Domain.Interfaces;
 /// </summary>
 [ApiController]
 [Route("api/queues")]
+[Authorize]
 public class QueuesController : ControllerBase
 {
     private readonly IQueueService _queueService;
@@ -77,6 +79,16 @@ public class QueuesController : ControllerBase
             TotalCount = page.TotalCount,
             Items = page.Items.Select(QueueItemDto.From).ToList(),
         });
+    }
+
+    /// <summary>Tek bir kuyruk kaleminin son durumunu getirir. Yanlış kuyruk altında istenirse 404 döner.</summary>
+    [HttpGet("{id:guid}/items/{itemId:guid}")]
+    [ProducesResponseType(typeof(QueueItemDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetItem(Guid id, Guid itemId, CancellationToken ct)
+    {
+        var item = await _queueService.GetItemAsync(itemId, ct);
+        return item is null || item.QueueId != id ? NotFound() : Ok(QueueItemDto.From(item));
     }
 
     /// <summary>

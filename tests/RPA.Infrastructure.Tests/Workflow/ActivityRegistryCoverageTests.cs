@@ -1,5 +1,7 @@
 namespace RPA.Infrastructure.Tests.Workflow;
 
+using Microsoft.Extensions.DependencyInjection;
+using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Workflow;
 using Xunit;
 
@@ -105,5 +107,26 @@ public class ActivityRegistryCoverageTests
 
         Assert.True(offenders.Count == 0,
             $"Credential alanlarina picker baglanamaz: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void WebActivities_CatalogEntries_HaveExecutableImplementations()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddWorkflowServices();
+
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IActivityFactory>();
+        var catalog = ActivityRegistry.BuildCatalog();
+
+        var missing = catalog.Values
+            .Where(a => a.Category == ActivityRegistry.CatWeb)
+            .Select(a => a.ActivityId)
+            .Where(activityId => factory.CreateActivity(activityId) is null)
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"Implementasyonu kayitli olmayan Web aktiviteleri: {string.Join(", ", missing)}");
     }
 }

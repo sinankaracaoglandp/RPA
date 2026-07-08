@@ -41,6 +41,18 @@ describe('WorkflowDraftService', () => {
     req.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
   });
 
+  it('run posts execution arguments to the workflow run endpoint', () => {
+    let result: unknown;
+    service.run('w1', { customer: 'ACME' }).subscribe((r) => (result = r));
+
+    const req = http.expectOne('/api/workflows/w1/run');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ arguments: { customer: 'ACME' } });
+    req.flush({ queueItemId: 'qi1', queueId: 'q1', status: 'New' });
+
+    expect(result).toEqual({ queueItemId: 'qi1', queueId: 'q1', status: 'New' });
+  });
+
   it('keeps the existing pending hand-off behaviour', () => {
     const wf = emptyWorkflow();
     service.setPending(wf);

@@ -179,7 +179,12 @@ public static class ActivityRegistry
             .Description("Verilen URL'ye gider.").Input("url", "string");
 
         b.Activity("Web.Click").DisplayName("Web Tıkla").Category(CatWeb).Capability(cap)
-            .Description("Selector ile elemente tıklar.").Input("selector", "string");
+            .Description("Selector ile elemente tiklar veya hover yapar; acilir menu icin sonraki selector'u bekleyebilir.")
+            .Input("selector", "string")
+            .Input("action", "string", required: false, defaultValue: "click")
+            .Input("waitSelector", "string", required: false)
+            .Input("timeoutMs", "int", required: false, defaultValue: 30000)
+            .Input("steps", "JSON", required: false);
 
         b.Activity("Web.Fill").DisplayName("Web Alan Doldur").Category(CatWeb).Capability(cap)
             .Description("Bir input alanını doldurur.")
@@ -204,7 +209,9 @@ public static class ActivityRegistry
 
         b.Activity("Web.Screenshot").DisplayName("Web Ekran Görüntüsü").Category(CatWeb).Capability(cap)
             .Description("Sayfa/element görüntüsü alır.")
-            .Input("selector", "string", required: false).Output("path", "string");
+            .Input("selector", "string", required: false)
+            .Input("path", "string")
+            .Output("path", "string");
 
         b.Activity("Web.FrameSwitch").DisplayName("Frame/Sekme Geç").Category(CatWeb).Capability(cap)
             .Description("iframe veya sekme bağlamına geçer.")

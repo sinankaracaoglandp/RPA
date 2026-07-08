@@ -28,6 +28,9 @@ public sealed class AgentOptions
     /// <summary>İşlenecek kuyruğun kimliği.</summary>
     public Guid QueueId { get; set; }
 
+    /// <summary>QueueId verilmediğinde çözümlenecek kuyruk adı.</summary>
+    public string QueueName { get; set; } = "StudioRun";
+
     /// <summary>Kuyruk yoklama aralığı. Varsayılan 5 saniye (Spec Bölüm 9).</summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
 

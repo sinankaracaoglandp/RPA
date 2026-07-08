@@ -55,8 +55,9 @@ describe('GenericPropertyComponent', () => {
     expect(typeOf('fInt')).toBe('number');
     expect(typeOf('fNumber')).toBe('number');
     expect(typeOf('fDecimal')).toBe('number');
-    expect(typeOf('fBool')).toBe('checkbox');
-    expect(typeOf('fBoolean')).toBe('checkbox');
+    expect(fixture.nativeElement.querySelector('[data-testid="prop-fBool"]').tagName).toBe('BUTTON');
+    expect(fixture.nativeElement.querySelector('[data-testid="prop-fBool"]').getAttribute('aria-pressed')).toBe('false');
+    expect(fixture.nativeElement.querySelector('[data-testid="prop-fBoolean"]').tagName).toBe('BUTTON');
     expect(typeOf('fJson')).toBe('text');
     expect(typeOf('fTable')).toBe('text');
     expect(typeOf('fCred')).toBe('password'); // Credential asla düz metin gösterilmez
@@ -74,6 +75,28 @@ describe('GenericPropertyComponent', () => {
     const status = fixture.nativeElement.querySelector('.generic-property__status--error');
     expect(status).toBeTruthy();
     expect(status.textContent).toContain('yüklenemedi');
+  });
+
+  it('toggles boolean properties with a button control', () => {
+    component.activityType = 'Test.Bool';
+    component.properties = { headless: false };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/Test.Bool').flush({
+      activityId: 'Test.Bool',
+      displayName: 'Bool',
+      inputs: [{ name: 'headless', type: 'bool' }],
+    });
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('[data-testid="prop-headless"]') as HTMLButtonElement;
+    button.click();
+    fixture.detectChanges();
+
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(emitted.at(-1)).toEqual({ headless: true });
   });
 
   it('renders a picker button for inputs with pickerKind and writes the selected element id', async () => {

@@ -87,6 +87,7 @@ builder.Services.AddScoped<RPA.Domain.Interfaces.IProjectRepository,
 builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowRepository,
     RPA.Infrastructure.Persistence.EfWorkflowRepository>();
 builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDesignService>();
+builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowRunService>();
 
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();

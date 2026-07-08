@@ -48,6 +48,47 @@ public class QueueAgentJobSourceTests
     }
 
     [Fact]
+    public async Task QueueId_Yoksa_Kuyruk_Adindan_Cozer()
+    {
+        var queue = new Mock<IQueueService>();
+        var state = new AgentState();
+        state.SetRobotId(Guid.NewGuid());
+        var queueId = Guid.NewGuid();
+        var src = new QueueAgentJobSource(queue.Object, state,
+            Options.Create(new AgentOptions { QueueName = "StudioRun" }), NullLogger<QueueAgentJobSource>.Instance);
+        var payload = $$"""{ "workflowVersionId": "{{Guid.NewGuid()}}", "arguments": { "a": 1 } }""";
+
+        queue.Setup(q => q.ListQueuesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new QueueSummary(queueId, "StudioRun", 0, null, 1, 0, 0, 1),
+            });
+        queue.Setup(q => q.GetNextItemAsync(queueId, state.RobotId!.Value, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new QueueItem { Id = Guid.NewGuid(), Payload = payload });
+
+        var job = await src.DequeueAsync();
+
+        Assert.NotNull(job);
+        queue.Verify(q => q.GetNextItemAsync(queueId, state.RobotId!.Value, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueueId_Yoksa_Ve_Kuyruk_Adi_Bulunamazsa_Null_Doner()
+    {
+        var queue = new Mock<IQueueService>();
+        var state = new AgentState();
+        state.SetRobotId(Guid.NewGuid());
+        var src = new QueueAgentJobSource(queue.Object, state,
+            Options.Create(new AgentOptions { QueueName = "StudioRun" }), NullLogger<QueueAgentJobSource>.Instance);
+
+        queue.Setup(q => q.ListQueuesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<QueueSummary>());
+
+        Assert.Null(await src.DequeueAsync());
+        queue.Verify(q => q.GetNextItemAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Bozuk_Payload_BusinessException_Olarak_Fail_Edilir_Ve_Null_Doner()
     {
         var (src, queue, _, _) = Make();
@@ -66,7 +107,7 @@ public class QueueAgentJobSourceTests
     {
         var queue = new Mock<IQueueService>();
         var src = new QueueAgentJobSource(queue.Object, new AgentState(),
-            Options.Create(new AgentOptions()), NullLogger<QueueAgentJobSource>.Instance);
+            Options.Create(new AgentOptions { QueueName = "" }), NullLogger<QueueAgentJobSource>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => src.DequeueAsync());
     }

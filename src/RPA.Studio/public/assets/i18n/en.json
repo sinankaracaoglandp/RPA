@@ -32,6 +32,10 @@
   },
   "designer": {
     "save": "Save",
+    "run": "Run",
+    "runQueued": "Run queued",
+    "runRefresh": "Refresh status",
+    "runError": "Run could not be started",
     "saveError": "Save failed",
     "unsavedConfirm": "You have unsaved changes. Leave anyway?"
   },
@@ -223,6 +227,7 @@
       "urlPlaceholder": "https://example.com",
       "selector": "Selector",
       "selectorPlaceholder": "#id, .class or //xpath",
+      "action": "Action",
       "waitSelector": "Wait Selector (optional)",
       "text": "Text",
       "textPlaceholder": "Text to enter",
@@ -232,6 +237,11 @@
     },
     "hint": {
       "selectorFormat": "Use a CSS selector (#id, .class) or an XPath expression (//tag)."
+    },
+    "action": {
+      "click": "Click",
+      "hover": "Hover",
+      "addStep": "Add"
     },
     "error": {
       "required": "This field is required.",

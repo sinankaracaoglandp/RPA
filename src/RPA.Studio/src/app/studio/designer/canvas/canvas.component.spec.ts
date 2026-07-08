@@ -185,6 +185,27 @@ describe('CanvasComponent', () => {
     });
   });
 
+  it('loads workflow input that arrives after the canvas is initialized', async () => {
+    await ready();
+    const wf: WorkflowVersion = {
+      schemaVersion: '1.0',
+      id: 'wf-async',
+      name: 'Async Load',
+      version: '1.0.0',
+      nodes: [
+        { id: 'n1', type: 'activity', activity: 'Web.Navigate', position: { x: 10, y: 20 } },
+      ],
+      connections: [],
+    };
+
+    fixture.componentRef.setInput('workflow', wf);
+    fixture.detectChanges();
+    await component.workflowLoaded;
+
+    expect(component.editor.getNodes().length).toBe(1);
+    expect(component.serialize().nodes[0].activity).toBe('Web.Navigate');
+  });
+
   it('clears the graph', async () => {
     await ready();
     await component.addNode('A');

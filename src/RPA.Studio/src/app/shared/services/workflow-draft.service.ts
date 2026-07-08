@@ -10,6 +10,12 @@ interface WorkflowDraftDto {
   jsonDefinition: string;
 }
 
+export interface WorkflowRunResult {
+  queueItemId: string;
+  queueId: string;
+  status: string;
+}
+
 /**
  * Hand-off point for "create workflow from template" (Faz 5, Task 5.5) ve
  * taslak kalıcılığı (Paket B): backend'deki draft'ı yükle/kaydet.
@@ -44,5 +50,13 @@ export class WorkflowDraftService {
         jsonDefinition: JSON.stringify(version),
       })
       .pipe(map(() => undefined));
+  }
+
+  /** Taslağı Agent kuyruğuna alır; Agent poll ettiğinde workflow çalışır. */
+  run(workflowId: string, args: Record<string, unknown> = {}): Observable<WorkflowRunResult> {
+    return this.http.post<WorkflowRunResult>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/run`,
+      { arguments: args },
+    );
   }
 }

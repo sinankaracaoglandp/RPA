@@ -80,7 +80,7 @@ describe('WebPropertyRouterComponent', () => {
     expect(emitted).toEqual({ url: 'https://example.com' });
   });
 
-  it('Click form requires the selector field before emitting', () => {
+  it('Click form waits for the add button before emitting a click step', () => {
     select('Web.Click');
     let emitted: Record<string, unknown> | undefined;
     component.propertiesChange.subscribe((v) => (emitted = v));
@@ -89,7 +89,101 @@ describe('WebPropertyRouterComponent', () => {
     expect(emitted).toBeUndefined();
 
     setValue(fixture, 'web-click-selector-input', '#submit');
-    expect(emitted).toEqual({ selector: '#submit' });
+    expect(emitted).toBeUndefined();
+
+    fixture.nativeElement.querySelector('[data-testid="web-click-add-step"]').click();
+    fixture.detectChanges();
+
+    expect(emitted).toEqual({
+      steps: [{ selector: '#submit', action: 'click', timeoutMs: 30000 }],
+      selector: '#submit',
+      action: 'click',
+      timeoutMs: 30000,
+    });
+    expect(fixture.nativeElement.querySelector('[data-testid="web-click-selector-input"]').value).toBe('');
+  });
+
+  it('Click form supports hover and waiting for an opened submenu', () => {
+    select('Web.Click');
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe((v) => (emitted = v));
+
+    setValue(fixture, 'web-click-selector-input', '#top-menu');
+
+    const actionSelect: HTMLSelectElement = fixture.nativeElement.querySelector(
+      '[data-testid="web-click-action-select"]',
+    );
+    actionSelect.value = 'hover';
+    actionSelect.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    setValue(fixture, 'web-click-wait-selector-input', '#top-menu .submenu-item');
+
+    const timeoutInput: HTMLInputElement = fixture.nativeElement.querySelector(
+      '[data-testid="web-click-timeout-input"]',
+    );
+    timeoutInput.value = '7000';
+    timeoutInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="web-click-add-step"]').click();
+    fixture.detectChanges();
+
+    expect(emitted).toEqual({
+      steps: [
+        {
+          selector: '#top-menu',
+          action: 'hover',
+          waitSelector: '#top-menu .submenu-item',
+          timeoutMs: 7000,
+        },
+      ],
+      selector: '#top-menu',
+      action: 'hover',
+      waitSelector: '#top-menu .submenu-item',
+      timeoutMs: 7000,
+    });
+  });
+
+  it('Click form adds selectors to a numbered click step list', () => {
+    select('Web.Click');
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe((v) => (emitted = v));
+
+    setValue(fixture, 'web-click-selector-input', '#top-menu');
+    fixture.nativeElement.querySelector('[data-testid="web-click-add-step"]').click();
+    fixture.detectChanges();
+
+    setValue(fixture, 'web-click-selector-input', '#top-menu .settings');
+    fixture.nativeElement.querySelector('[data-testid="web-click-add-step"]').click();
+    fixture.detectChanges();
+
+    const items = fixture.nativeElement.querySelectorAll('[data-testid="web-click-step-item"]');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('1');
+    expect(items[0].textContent).toContain('#top-menu');
+    expect(items[1].textContent).toContain('2');
+    expect(items[1].textContent).toContain('#top-menu .settings');
+    expect(emitted).toEqual({
+      steps: [
+        { selector: '#top-menu', action: 'click', timeoutMs: 30000 },
+        { selector: '#top-menu .settings', action: 'click', timeoutMs: 30000 },
+      ],
+      selector: '#top-menu',
+      action: 'click',
+      timeoutMs: 30000,
+    });
+  });
+
+  it('Click form removes a click step and emits an empty step list when the last item is removed', () => {
+    select('Web.Click', { steps: [{ selector: '#submit', action: 'click', timeoutMs: 30000 }] });
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe((v) => (emitted = v));
+
+    fixture.nativeElement.querySelector('[data-testid="web-click-remove-step"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="web-click-step-item"]').length).toBe(0);
+    expect(emitted).toEqual({ steps: [], selector: '', action: 'click', timeoutMs: 30000 });
   });
 
   it('SetText form requires both selector and text before emitting', () => {
@@ -147,8 +241,17 @@ describe('WebPropertyRouterComponent', () => {
   });
 
   it('pre-fills existing properties when editing an already-configured node', () => {
-    select('Web.Click', { selector: '#existing', waitSelector: '.loaded' });
-    const input: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="web-click-selector-input"]');
-    expect(input.value).toBe('#existing');
+    select('Web.Click', { selector: '#existing', action: 'hover', waitSelector: '.loaded', timeoutMs: 9000 });
+    const actionSelect: HTMLSelectElement = fixture.nativeElement.querySelector(
+      '[data-testid="web-click-action-select"]',
+    );
+    const timeoutInput: HTMLInputElement = fixture.nativeElement.querySelector(
+      '[data-testid="web-click-timeout-input"]',
+    );
+    const selectorInput: HTMLInputElement = fixture.nativeElement.querySelector('[data-testid="web-click-selector-input"]');
+    expect(fixture.nativeElement.querySelector('[data-testid="web-click-step-item"]')).toBeFalsy();
+    expect(selectorInput.value).toBe('#existing');
+    expect(actionSelect.value).toBe('hover');
+    expect(timeoutInput.value).toBe('9000');
   });
 });

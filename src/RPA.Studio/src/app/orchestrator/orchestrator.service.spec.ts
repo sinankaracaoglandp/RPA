@@ -108,6 +108,21 @@ describe('OrchestratorService', () => {
     req.flush({ totalCount: 0, items: [] });
   });
 
+  it('gets a single queue item by queue and item id', () => {
+    service.getQueueItem('q/1', 'i/1').subscribe((item) => expect(item.status).toBe('Successful'));
+    const req = httpMock.expectOne('/api/queues/q%2F1/items/i%2F1');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      id: 'i/1',
+      queueId: 'q/1',
+      status: 'Successful',
+      attemptCount: 1,
+      assignedRobotId: null,
+      payload: '{}',
+      errorDetail: null,
+    });
+  });
+
   it('lists environments', () => {
     service.listEnvironments().subscribe((e) => expect(e.length).toBe(1));
     const req = httpMock.expectOne('/api/environments');

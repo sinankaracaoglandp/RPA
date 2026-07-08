@@ -1,10 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { Subscription, timer, switchMap } from 'rxjs';
 import { WorkflowVersion } from '../../shared/models/workflow.model';
 import { DebugService } from '../../shared/services/debug.service';
 import { ModeService } from '../../shared/services/mode.service';
 import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
+import { OrchestratorService } from '../../orchestrator/orchestrator.service';
 import { TranslatePipe } from '../../core/translate.pipe';
 import { CanvasComponent } from './canvas/canvas.component';
 import { ToolboxComponent } from './toolbox/toolbox.component';
@@ -35,8 +37,11 @@ import { PropertiesPanelComponent } from './properties/properties-panel.componen
     PropertiesPanelComponent,
   ],
   templateUrl: './designer.component.html',
+  styleUrls: ['./designer.component.scss'],
 })
-export class DesignerComponent {
+export class DesignerComponent implements OnDestroy {
+  private static readonly TerminalRunStatuses = new Set(['successful', 'failed', 'businessexception', 'abandoned']);
+
   /**
    * Sinyal tabanlı viewChild: zoneless CD'de dekoratör @ViewChild referansının
    * template binding'e ilk change detection turunda işlenmemesi, ilk kullanıcı
@@ -48,7 +53,9 @@ export class DesignerComponent {
   private readonly debug = inject(DebugService);
   private readonly modeService = inject(ModeService);
   private readonly draft = inject(WorkflowDraftService);
+  private readonly orchestrator = inject(OrchestratorService);
   private readonly route = inject(ActivatedRoute);
+  private runStatusPolling?: Subscription;
 
   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
   readonly selectedNodeId = signal<string | null>(null);
@@ -60,6 +67,11 @@ export class DesignerComponent {
   readonly workflowId = signal<string | null>(null);
   readonly dirty = signal(false);
   readonly saveState = signal<'idle' | 'saving' | 'error'>('idle');
+  readonly runState = signal<'idle' | 'saving' | 'queued' | 'error'>('idle');
+  readonly lastQueueItemId = signal<string | null>(null);
+  readonly lastQueueId = signal<string | null>(null);
+  readonly lastRunStatus = signal<string | null>(null);
+  readonly lastQueueItemShortId = computed(() => this.lastQueueItemId()?.slice(0, 8) ?? null);
 
   readonly mode = this.modeService.mode;
   readonly isSimpleMode = computed(() => this.mode() === 'Simple');
@@ -84,6 +96,10 @@ export class DesignerComponent {
     if (pending) {
       this.workflow.set(pending);
     }
+  }
+
+  ngOnDestroy(): void {
+    this.runStatusPolling?.unsubscribe();
   }
 
   /** Toggles the debug panel, connecting to RobotHub on first open. Disabled in Simple mode. */
@@ -165,6 +181,71 @@ export class DesignerComponent {
         },
       });
     });
+  }
+
+  /** Kaydedilmiş taslağı Agent kuyruğuna alır. */
+  async run(): Promise<void> {
+    const id = this.workflowId();
+    if (!id) {
+      return;
+    }
+
+    this.runState.set('saving');
+    await this.save();
+    if (this.saveState() === 'error') {
+      this.runState.set('error');
+      return;
+    }
+
+    return new Promise<void>((resolve) => {
+      this.draft.run(id).subscribe({
+        next: (result) => {
+          this.lastQueueItemId.set(result.queueItemId);
+          this.lastQueueId.set(result.queueId);
+          this.lastRunStatus.set(result.status);
+          this.runState.set('queued');
+          this.startRunStatusPolling(result.queueId, result.queueItemId);
+          resolve();
+        },
+        error: () => {
+          this.runState.set('error');
+          resolve();
+        },
+      });
+    });
+  }
+
+  refreshRunStatus(): void {
+    const queueId = this.lastQueueId();
+    const itemId = this.lastQueueItemId();
+    if (!queueId || !itemId) {
+      return;
+    }
+
+    this.orchestrator.getQueueItem(queueId, itemId).subscribe({
+      next: (item) => this.applyRunStatus(item.status),
+      error: () => this.runState.set('error'),
+    });
+  }
+
+  private startRunStatusPolling(queueId: string, itemId: string): void {
+    this.runStatusPolling?.unsubscribe();
+    this.runStatusPolling = timer(3000, 3000)
+      .pipe(switchMap(() => this.orchestrator.getQueueItem(queueId, itemId)))
+      .subscribe({
+        next: (item) => this.applyRunStatus(item.status),
+        error: () => {
+          this.runStatusPolling?.unsubscribe();
+          this.runState.set('error');
+        },
+      });
+  }
+
+  private applyRunStatus(status: string): void {
+    this.lastRunStatus.set(status);
+    if (DesignerComponent.TerminalRunStatuses.has(status.toLowerCase())) {
+      this.runStatusPolling?.unsubscribe();
+    }
   }
 
   onSaveShortcut(event: Event): void {

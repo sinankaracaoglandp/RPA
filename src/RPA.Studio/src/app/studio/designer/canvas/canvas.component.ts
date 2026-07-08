@@ -9,8 +9,10 @@ import {
   EnvironmentInjector,
   EventEmitter,
   Input,
+  OnChanges,
   OnDestroy,
   Output,
+  SimpleChanges,
   ViewChild,
   createComponent,
   inject,
@@ -84,7 +86,7 @@ const ZOOM_MAX = 3;
   templateUrl: './canvas.component.html',
   styleUrls: ['./canvas.component.scss'],
 })
-export class CanvasComponent implements AfterViewInit, OnDestroy {
+export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('reteContainer', { static: true }) reteContainer!: ElementRef<HTMLElement>;
 
   /** Workflow to load once the editor is ready. */
@@ -130,10 +132,13 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   /** Resolves once the editor and plugins are wired up (awaited by tests). */
   initialized: Promise<void> = Promise.resolve();
+  /** Resolves after the latest workflow input has been loaded into the editor. */
+  workflowLoaded: Promise<void> = Promise.resolve();
 
   private readonly nodeRefs = new Map<string, ComponentRef<NodeComponent>>();
   private connectionSvg?: SVGSVGElement;
   private connectionGroup?: SVGGElement;
+  private loadedWorkflowKey: string | null = null;
 
   private readonly appRef = inject(ApplicationRef);
   private readonly envInjector = inject(EnvironmentInjector);
@@ -142,10 +147,14 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     this.initialized = (async () => {
       await this.setup();
-      if (this.workflow) {
-        await this.loadWorkflow(this.workflow);
-      }
+      await this.loadWorkflowInput();
     })();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if ('workflow' in changes && this.ready) {
+      this.workflowLoaded = this.initialized.then(() => this.loadWorkflowInput());
+    }
   }
 
   ngOnDestroy(): void {
@@ -642,6 +651,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   async loadWorkflow(workflow: WorkflowVersion): Promise<void> {
     this.workflow = workflow;
+    this.loadedWorkflowKey = this.workflowKey(workflow);
     await this.clear();
     this.suppressEvents = true;
     const idMap = new Map<string, string>();
@@ -706,6 +716,23 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   private emitChange(): void {
     this.graphChanged.emit(this.serialize());
+  }
+
+  private async loadWorkflowInput(): Promise<void> {
+    if (!this.workflow) {
+      return;
+    }
+    const key = this.workflowKey(this.workflow);
+    if (key === this.loadedWorkflowKey) {
+      return;
+    }
+    await this.loadWorkflow(this.workflow);
+  }
+
+  private workflowKey(workflow: WorkflowVersion): string {
+    const nodeCount = workflow.nodes?.length ?? 0;
+    const connectionCount = workflow.connections?.length ?? 0;
+    return `${workflow.id}:${workflow.version}:${nodeCount}:${connectionCount}:${JSON.stringify(workflow.nodes)}:${JSON.stringify(workflow.connections)}`;
   }
 
   private assertWritable(): void {

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output, forwardRef } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, Output, forwardRef, inject } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { TranslatePipe } from '../../../core/translate.pipe';
 
@@ -25,6 +25,8 @@ import { TranslatePipe } from '../../../core/translate.pipe';
   ],
 })
 export class ExpressionInputComponent implements ControlValueAccessor {
+  private readonly cdr = inject(ChangeDetectorRef);
+
   @Input({ required: true }) inputId!: string;
   @Input({ required: true }) label!: string;
   @Input() placeholder = '';
@@ -43,6 +45,7 @@ export class ExpressionInputComponent implements ControlValueAccessor {
 
   writeValue(value: string): void {
     this.value = value ?? '';
+    this.cdr.markForCheck();
   }
 
   registerOnChange(fn: (value: string) => void): void {

@@ -1,6 +1,14 @@
 <form class="web-property" [formGroup]="form" data-testid="web-click-form">
   <h3>{{ 'web.click.title' | translate }}</h3>
+  <div class="web-property__field">
+    <label for="web-click-action">{{ 'web.field.action' | translate }}</label>
+    <select id="web-click-action" formControlName="action" data-testid="web-click-action-select">
+      <option value="click">{{ 'web.action.click' | translate }}</option>
+      <option value="hover">{{ 'web.action.hover' | translate }}</option>
+    </select>
+  </div>
   <app-expression-input
+    #selectorEditor
     inputId="web-click-selector"
     [label]="'web.field.selector' | translate"
     [placeholder]="'web.field.selectorPlaceholder' | translate"
@@ -11,10 +19,57 @@
     [hint]="'web.hint.selectorFormat' | translate"
   ></app-expression-input>
   <app-expression-input
+    #waitSelectorEditor
     inputId="web-click-wait-selector"
     [label]="'web.field.waitSelector' | translate"
     [placeholder]="'web.field.selectorPlaceholder' | translate"
     [hint]="'web.hint.selectorFormat' | translate"
     formControlName="waitSelector"
   ></app-expression-input>
+  <div class="web-property__field">
+    <label for="web-click-timeout">{{ 'web.field.timeoutMs' | translate }}</label>
+    <input
+      id="web-click-timeout"
+      type="number"
+      min="1"
+      step="500"
+      formControlName="timeoutMs"
+      data-testid="web-click-timeout-input"
+    />
+  </div>
+  <button
+    type="button"
+    class="web-property__add"
+    data-testid="web-click-add-step"
+    [disabled]="form.invalid"
+    (click)="addStep()"
+  >
+    {{ 'web.action.addStep' | translate }}
+  </button>
+
+  @if (steps.length > 0) {
+    <ol class="web-property__steps">
+      @for (step of steps; track $index) {
+        <li class="web-property__step" data-testid="web-click-step-item">
+          <span class="web-property__step-index">{{ $index + 1 }}</span>
+          <span class="web-property__step-main">
+            <strong>{{ step.action === 'hover' ? ('web.action.hover' | translate) : ('web.action.click' | translate) }}</strong>
+            <code>{{ step.selector }}</code>
+            @if (step.waitSelector) {
+              <small>{{ 'web.field.waitSelector' | translate }}: {{ step.waitSelector }}</small>
+            }
+          </span>
+          <button
+            type="button"
+            class="web-property__remove"
+            data-testid="web-click-remove-step"
+            [attr.aria-label]="'Remove step ' + ($index + 1)"
+            (click)="removeStep($index)"
+          >
+            ×
+          </button>
+        </li>
+      }
+    </ol>
+  }
 </form>

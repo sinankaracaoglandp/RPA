@@ -25,6 +25,9 @@ public interface IQueueService
     Task<QueueItemPage> ListItemsAsync(
         Guid queueId, QueueItemStatus? status, int skip, int take, CancellationToken cancellationToken = default);
 
+    /// <summary>Belirli kuyruk kalemini salt okuma için getirir. Bulunamazsa null.</summary>
+    Task<QueueItem?> GetItemAsync(Guid itemId, CancellationToken cancellationToken = default);
+
     /// <summary>Tüm kuyrukları durum bazlı kalem sayaçlarıyla listeler (Orchestrator Kuyruklar ekranı).</summary>
     Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(CancellationToken cancellationToken = default);
 

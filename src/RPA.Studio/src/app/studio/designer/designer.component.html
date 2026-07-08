@@ -8,8 +8,8 @@
   } @else {
     <app-toolbox [canvas]="canvas()"></app-toolbox>
   }
-  <main class="designer__canvas relative flex-1">
-    <div class="designer__header">
+  <main class="designer__canvas relative min-w-0 flex-1">
+    <div class="designer__header flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
       <app-simple-mode-toggle></app-simple-mode-toggle>
       @if (workflowId()) {
         <span class="designer__title" data-testid="designer-title">
@@ -20,23 +20,56 @@
         </span>
         <button
           type="button"
-          class="designer__save"
+          class="designer__save inline-flex min-h-8 items-center justify-center rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-sm font-semibold leading-none text-white shadow-sm transition hover:border-blue-700 hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-55"
           data-testid="designer-save"
           [disabled]="saveState() === 'saving'"
           (click)="save()"
         >
           {{ 'designer.save' | translate }}
         </button>
+        <button
+          type="button"
+          class="designer__run inline-flex min-h-8 items-center justify-center rounded-md border border-green-600 bg-green-600 px-3 py-1.5 text-sm font-semibold leading-none text-white shadow-sm transition hover:border-green-700 hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:cursor-not-allowed disabled:opacity-55"
+          data-testid="designer-run"
+          [disabled]="saveState() === 'saving' || runState() === 'saving'"
+          (click)="run()"
+        >
+          {{ 'designer.run' | translate }}
+        </button>
         @if (saveState() === 'error') {
           <span class="designer__save-error text-red-600" data-testid="designer-save-error">
             {{ 'designer.saveError' | translate }}
+          </span>
+        }
+        @if (runState() === 'queued') {
+          <span class="designer__run-queued" data-testid="designer-run-queued">
+            {{ 'designer.runQueued' | translate }}
+            @if (lastQueueItemShortId()) {
+              <code data-testid="designer-run-queue-item">{{ lastQueueItemShortId() }}</code>
+            }
+            @if (lastRunStatus()) {
+              <code data-testid="designer-run-status">{{ lastRunStatus() }}</code>
+            }
+            <button
+              type="button"
+              class="designer__run-refresh inline-flex min-h-7 items-center justify-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold leading-none text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              data-testid="designer-run-refresh"
+              (click)="refreshRunStatus()"
+            >
+              {{ 'designer.runRefresh' | translate }}
+            </button>
+          </span>
+        }
+        @if (runState() === 'error') {
+          <span class="designer__run-error text-red-600" data-testid="designer-run-error">
+            {{ 'designer.runError' | translate }}
           </span>
         }
       }
       @if (!isSimpleMode()) {
         <button
           type="button"
-          class="designer__debug-toggle"
+          class="designer__debug-toggle inline-flex min-h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold leading-none text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 aria-pressed:border-violet-600 aria-pressed:bg-violet-600 aria-pressed:text-white"
           data-testid="designer-debug-toggle"
           [attr.aria-pressed]="debugMode()"
           [attr.aria-label]="'debug.panel.title' | translate"

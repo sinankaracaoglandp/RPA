@@ -32,6 +32,10 @@
   },
   "designer": {
     "save": "Kaydet",
+    "run": "Çalıştır",
+    "runQueued": "Çalıştırma kuyruğa alındı",
+    "runRefresh": "Durumu yenile",
+    "runError": "Çalıştırma başlatılamadı",
     "saveError": "Kaydetme başarısız",
     "unsavedConfirm": "Kaydedilmemiş değişiklikler var. Ayrılmak istiyor musunuz?"
   },
@@ -223,6 +227,7 @@
       "urlPlaceholder": "https://ornek.com",
       "selector": "Seçici",
       "selectorPlaceholder": "#id, .sinif veya //xpath",
+      "action": "Aksiyon",
       "waitSelector": "Bekleme Seçicisi (isteğe bağlı)",
       "text": "Metin",
       "textPlaceholder": "Girilecek metin",
@@ -232,6 +237,11 @@
     },
     "hint": {
       "selectorFormat": "CSS seçici (#id, .sinif) veya XPath ifadesi (//tag) kullanın."
+    },
+    "action": {
+      "click": "Tıkla",
+      "hover": "Üzerine gel",
+      "addStep": "Ekle"
     },
     "error": {
       "required": "Bu alan zorunludur.",

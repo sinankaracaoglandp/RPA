@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RPA.Agent")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cc46da381eccd5e3925f50cfe3bf006851dc2ed9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d11eed183e301bb11aff96e99f7a2bda57ae9f9a")]
 [assembly: System.Reflection.AssemblyProductAttribute("RPA.Agent")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RPA.Agent")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

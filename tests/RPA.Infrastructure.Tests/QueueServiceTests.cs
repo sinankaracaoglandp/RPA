@@ -106,6 +106,18 @@ public class QueueServiceTests
         Assert.Equal(2, page.TotalCount);
     }
 
+    [Fact]
+    public async Task GetItem_ReturnsItemById()
+    {
+        using var db = Db(NewDbName());
+        var (queueId, itemId) = await SeedQueueWithItem(db);
+
+        var item = await Service(db).GetItemAsync(itemId);
+
+        Assert.NotNull(item);
+        Assert.Equal(queueId, item!.QueueId);
+    }
+
     // ---- GetNextItem / atama ----
 
     [Fact]

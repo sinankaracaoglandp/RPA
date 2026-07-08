@@ -1,21 +1,22 @@
 {
   "version": 2,
-  "dgSpecHash": "Ifm+cHuNk3Q=",
+  "dgSpecHash": "aYBvwFGKqwA=",
   "success": true,
   "projectFilePath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\sinan\\.nuget\\packages\\bouncycastle.cryptography\\2.4.0\\bouncycastle.cryptography.2.4.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\bouncycastle.cryptography\\2.6.2\\bouncycastle.cryptography.2.6.2.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\castle.core\\5.1.1\\castle.core.5.1.1.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\closedxml\\0.102.0\\closedxml.0.102.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\closedxml\\0.105.0\\closedxml.0.105.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\closedxml.parser\\2.0.0\\closedxml.parser.2.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\coverlet.collector\\10.0.1\\coverlet.collector.10.0.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\cronos\\0.13.0\\cronos.0.13.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\csvhelper\\31.0.2\\csvhelper.31.0.2.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\documentformat.openxml\\2.16.0\\documentformat.openxml.2.16.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\documentformat.openxml\\3.1.1\\documentformat.openxml.3.1.1.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\documentformat.openxml.framework\\3.1.1\\documentformat.openxml.framework.3.1.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\elasticsearch.net\\7.17.5\\elasticsearch.net.7.17.5.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\excelnumberformat\\1.1.0\\excelnumberformat.1.1.0.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\irony.netcore\\1.0.11\\irony.netcore.1.0.11.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\ldapfornet\\2.7.15\\ldapfornet.2.7.15.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\mailkit\\4.7.1\\mailkit.4.7.1.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\mailkit\\4.17.0\\mailkit.4.17.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\mediatr\\14.2.0\\mediatr.14.2.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\mediatr.contracts\\2.0.1\\mediatr.contracts.2.0.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.aspnetcore.authentication.jwtbearer\\10.0.9\\microsoft.aspnetcore.authentication.jwtbearer.10.0.9.nupkg.sha512",
@@ -24,6 +25,7 @@
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.aspnetcore.signalr.client\\10.0.9\\microsoft.aspnetcore.signalr.client.10.0.9.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.aspnetcore.signalr.client.core\\10.0.9\\microsoft.aspnetcore.signalr.client.core.10.0.9.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.aspnetcore.testhost\\10.0.9\\microsoft.aspnetcore.testhost.10.0.9.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\6.0.0\\microsoft.bcl.asyncinterfaces.6.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.bcl.cryptography\\10.0.2\\microsoft.bcl.cryptography.10.0.2.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codecoverage\\17.14.1\\microsoft.codecoverage.17.14.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.entityframeworkcore\\10.0.9\\microsoft.entityframeworkcore.10.0.9.nupkg.sha512",
@@ -38,13 +40,12 @@
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.identitymodel.protocols.openidconnect\\8.0.1\\microsoft.identitymodel.protocols.openidconnect.8.0.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.identitymodel.tokens\\8.19.1\\microsoft.identitymodel.tokens.8.19.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.net.test.sdk\\17.14.1\\microsoft.net.test.sdk.17.14.1.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\microsoft.netcore.platforms\\1.1.0\\microsoft.netcore.platforms.1.1.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\microsoft.playwright\\1.61.0\\microsoft.playwright.1.61.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.testplatform.objectmodel\\17.14.1\\microsoft.testplatform.objectmodel.17.14.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.testplatform.testhost\\17.14.1\\microsoft.testplatform.testhost.17.14.1.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\mimekit\\4.7.1\\mimekit.4.7.1.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\mimekit\\4.17.0\\mimekit.4.17.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\moq\\4.20.72\\moq.4.20.72.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\namotion.reflection\\3.2.0\\namotion.reflection.3.2.0.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\netstandard.library\\1.6.1\\netstandard.library.1.6.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\newtonsoft.json\\13.0.4\\newtonsoft.json.13.0.4.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\njsonschema\\11.1.0\\njsonschema.11.1.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\njsonschema.annotations\\11.1.0\\njsonschema.annotations.11.1.0.nupkg.sha512",
@@ -53,6 +54,7 @@
     "C:\\Users\\sinan\\.nuget\\packages\\otp.net\\1.4.0\\otp.net.1.4.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\polly\\8.5.0\\polly.8.5.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\polly.core\\8.5.0\\polly.core.8.5.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\rbush.signed\\4.0.0\\rbush.signed.4.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\serilog\\4.3.1\\serilog.4.3.1.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\serilog.aspnetcore\\10.0.0\\serilog.aspnetcore.10.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\serilog.extensions.hosting\\10.0.0\\serilog.extensions.hosting.10.0.0.nupkg.sha512",
@@ -65,11 +67,11 @@
     "C:\\Users\\sinan\\.nuget\\packages\\serilog.sinks.elasticsearch\\10.0.0\\serilog.sinks.elasticsearch.10.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\serilog.sinks.file\\7.0.0\\serilog.sinks.file.7.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\serilog.sinks.periodicbatching\\4.0.0\\serilog.sinks.periodicbatching.4.0.0.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\sixlabors.fonts\\1.0.0-beta19\\sixlabors.fonts.1.0.0-beta19.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\sixlabors.fonts\\1.0.0\\sixlabors.fonts.1.0.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\system.componentmodel.annotations\\5.0.0\\system.componentmodel.annotations.5.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\system.identitymodel.tokens.jwt\\8.19.1\\system.identitymodel.tokens.jwt.8.19.1.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\system.io.packaging\\6.0.0\\system.io.packaging.6.0.0.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\system.security.cryptography.pkcs\\8.0.0\\system.security.cryptography.pkcs.8.0.0.nupkg.sha512",
-    "C:\\Users\\sinan\\.nuget\\packages\\xlparser\\1.5.2\\xlparser.1.5.2.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\system.io.packaging\\10.0.9\\system.io.packaging.10.0.9.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\system.security.cryptography.pkcs\\10.0.0\\system.security.cryptography.pkcs.10.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit\\2.9.3\\xunit.2.9.3.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit.abstractions\\2.0.3\\xunit.abstractions.2.0.3.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit.analyzers\\1.18.0\\xunit.analyzers.1.18.0.nupkg.sha512",
@@ -79,54 +81,5 @@
     "C:\\Users\\sinan\\.nuget\\packages\\xunit.extensibility.execution\\2.9.3\\xunit.extensibility.execution.2.9.3.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit.runner.visualstudio\\3.1.4\\xunit.runner.visualstudio.3.1.4.nupkg.sha512"
   ],
-  "logs": [
-    {
-      "code": "NU1902",
-      "level": "Warning",
-      "message": "Package 'MailKit' 4.7.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-9j88-vvj5-vhgr",
-      "projectPath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "warningLevel": 1,
-      "filePath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "libraryId": "MailKit",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    },
-    {
-      "code": "NU1902",
-      "level": "Warning",
-      "message": "Package 'MimeKit' 4.7.1 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-g7hc-96xr-gvvx",
-      "projectPath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "warningLevel": 1,
-      "filePath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "libraryId": "MimeKit",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    },
-    {
-      "code": "NU1903",
-      "level": "Warning",
-      "message": "Package 'System.IO.Packaging' 6.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-f32c-w444-8ppv",
-      "projectPath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "warningLevel": 1,
-      "filePath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "libraryId": "System.IO.Packaging",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    },
-    {
-      "code": "NU1903",
-      "level": "Warning",
-      "message": "Package 'System.IO.Packaging' 6.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-qj66-m88j-hmgj",
-      "projectPath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "warningLevel": 1,
-      "filePath": "C:\\Source\\RPA\\tests\\RPA.WebAPI.Tests\\RPA.WebAPI.Tests.csproj",
-      "libraryId": "System.IO.Packaging",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    }
-  ]
+  "logs": []
 }

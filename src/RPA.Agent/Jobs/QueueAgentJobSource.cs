@@ -35,7 +35,13 @@ public sealed class QueueAgentJobSource : IAgentJobSource
         var robotId = _state.RobotId
             ?? throw new InvalidOperationException("Robot henüz kaydedilmedi; iş çekilemez.");
 
-        var item = await _queue.GetNextItemAsync(_options.QueueId, robotId, cancellationToken);
+        var queueId = await ResolveQueueIdAsync(cancellationToken).ConfigureAwait(false);
+        if (queueId is null)
+        {
+            return null;
+        }
+
+        var item = await _queue.GetNextItemAsync(queueId.Value, robotId, cancellationToken);
         if (item is null)
             return null;
 
@@ -57,4 +63,27 @@ public sealed class QueueAgentJobSource : IAgentJobSource
 
     public async Task ReportFailureAsync(Guid itemId, string? errorDetail, bool isBusinessException, CancellationToken cancellationToken = default)
         => await _queue.FailAsync(itemId, errorDetail, isBusinessException, cancellationToken);
+
+    private async Task<Guid?> ResolveQueueIdAsync(CancellationToken cancellationToken)
+    {
+        if (_options.QueueId != Guid.Empty)
+        {
+            return _options.QueueId;
+        }
+
+        if (string.IsNullOrWhiteSpace(_options.QueueName))
+        {
+            throw new InvalidOperationException("Agent kuyruğu yapılandırılmadı; QueueId veya QueueName verilmelidir.");
+        }
+
+        var queues = await _queue.ListQueuesAsync(cancellationToken).ConfigureAwait(false);
+        var queue = queues.FirstOrDefault(q => string.Equals(q.Name, _options.QueueName, StringComparison.OrdinalIgnoreCase));
+        if (queue is null)
+        {
+            _logger.LogDebug("Agent kuyruğu bulunamadı: {QueueName}", _options.QueueName);
+            return null;
+        }
+
+        return queue.Id;
+    }
 }

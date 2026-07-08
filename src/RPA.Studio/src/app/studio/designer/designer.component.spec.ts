@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { DesignerComponent } from './designer.component';
 import { ModeService } from '../../shared/services/mode.service';
@@ -177,5 +177,152 @@ describe('draft persistence (Paket B)', () => {
 
     expect(component.saveState()).toBe('error');
     expect(component.dirty()).toBe(true);
+  });
+
+  it('saves the draft before queuing a run', fakeAsync(() => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+        nodes: [], connections: [],
+      }),
+    });
+    component.onGraphChanged({
+      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+      nodes: [], connections: [],
+    });
+
+    void component.run();
+
+    const put = http.expectOne('/api/workflows/w1/draft');
+    expect(put.request.method).toBe('PUT');
+    put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+    tick();
+
+    const run = http.expectOne('/api/workflows/w1/run');
+    expect(run.request.method).toBe('POST');
+    run.flush({ queueItemId: '12345678-0000-0000-0000-000000000000', queueId: 'q1', status: 'New' });
+    fixture.detectChanges();
+
+    expect(component.runState()).toBe('queued');
+    expect(component.lastQueueItemId()).toBe('12345678-0000-0000-0000-000000000000');
+    expect(component.lastQueueId()).toBe('q1');
+    expect(component.lastRunStatus()).toBe('New');
+    expect(fixture.nativeElement.querySelector('[data-testid="designer-run-queue-item"]').textContent)
+      .toContain('12345678');
+    expect(fixture.nativeElement.querySelector('[data-testid="designer-run-status"]').textContent)
+      .toContain('New');
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('polls the queued run status until it reaches a terminal status', fakeAsync(() => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+        nodes: [], connections: [],
+      }),
+    });
+    component.onGraphChanged({
+      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+      nodes: [], connections: [],
+    });
+
+    void component.run();
+    http.expectOne('/api/workflows/w1/draft').flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+    tick();
+    http.expectOne('/api/workflows/w1/run').flush({
+      queueItemId: 'qi1',
+      queueId: 'q1',
+      status: 'New',
+    });
+
+    tick(3000);
+    http.expectOne('/api/queues/q1/items/qi1').flush({
+      id: 'qi1',
+      queueId: 'q1',
+      status: 'Successful',
+      attemptCount: 1,
+      assignedRobotId: null,
+      payload: '{}',
+      errorDetail: null,
+    });
+
+    expect(component.lastRunStatus()).toBe('Successful');
+    tick(3000);
+    http.expectNone('/api/queues/q1/items/qi1');
+  }));
+
+  it('stops polling when the component is destroyed', fakeAsync(() => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+        nodes: [], connections: [],
+      }),
+    });
+    component.onGraphChanged({
+      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+      nodes: [], connections: [],
+    });
+
+    void component.run();
+    http.expectOne('/api/workflows/w1/draft').flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+    tick();
+    http.expectOne('/api/workflows/w1/run').flush({
+      queueItemId: 'qi1',
+      queueId: 'q1',
+      status: 'New',
+    });
+
+    fixture.destroy();
+    tick(3000);
+    http.expectNone('/api/queues/q1/items/qi1');
+  }));
+
+  it('treats abandoned as a terminal run status', fakeAsync(() => {
+    component.lastQueueId.set('q1');
+    component.lastQueueItemId.set('qi1');
+    component['startRunStatusPolling']('q1', 'qi1');
+
+    tick(3000);
+    http.expectOne('/api/queues/q1/items/qi1').flush({
+      id: 'qi1',
+      queueId: 'q1',
+      status: 'Abandoned',
+      attemptCount: 1,
+      assignedRobotId: null,
+      payload: '{}',
+      errorDetail: null,
+    });
+
+    expect(component.lastRunStatus()).toBe('Abandoned');
+    tick(3000);
+    http.expectNone('/api/queues/q1/items/qi1');
+  }));
+
+  it('refreshes the queued run status', () => {
+    component.lastQueueId.set('q1');
+    component.lastQueueItemId.set('qi1');
+
+    component.refreshRunStatus();
+
+    const req = http.expectOne('/api/queues/q1/items/qi1');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      id: 'qi1',
+      queueId: 'q1',
+      status: 'Successful',
+      attemptCount: 1,
+      assignedRobotId: null,
+      payload: '{}',
+      errorDetail: null,
+    });
+
+    expect(component.lastRunStatus()).toBe('Successful');
   });
 });
