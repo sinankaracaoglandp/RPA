@@ -9,7 +9,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
+import { CdkDropList } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../core/translate.pipe';
 import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
 import { ActivityMetadata } from '../../../shared/models/activity.model';
@@ -109,9 +109,15 @@ export class ToolboxComponent {
     this.activityAdded.emit({ activityId, position });
   }
 
-  onCanvasDrop(event: CdkDragDrop<ActivityMetadata[], unknown, string>): void {
-    const activityId = event.item.data as string;
-    void this.addActivity(activityId);
+  onActivityDragEnded(event: { activityId: string; clientX: number; clientY: number }): void {
+    if (!this.canvas?.containsClientPoint(event.clientX, event.clientY)) {
+      return;
+    }
+
+    void this.addActivity(
+      event.activityId,
+      this.canvas.clientToCanvasPosition(event.clientX, event.clientY),
+    );
   }
 
   trackByActivityId(_index: number, activity: ActivityMetadata): string {

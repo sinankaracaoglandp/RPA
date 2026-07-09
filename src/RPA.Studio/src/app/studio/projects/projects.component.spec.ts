@@ -76,4 +76,15 @@ describe('ProjectsComponent', () => {
 
     expect(navigate).toHaveBeenCalledWith(['/designer', 'w1']);
   });
+
+  it('navigates back to the home page from the projects header', () => {
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    fixture.detectChanges();
+    http.expectOne('/api/projects').flush([]);
+
+    fixture.nativeElement.querySelector('[data-testid="projects-back-home"]').click();
+
+    expect(navigate).toHaveBeenCalledWith(['/']);
+  });
 });

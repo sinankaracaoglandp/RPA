@@ -172,8 +172,10 @@ public static class ActivityRegistry
         const string cap = "web";
         b.Activity("Web.Open").DisplayName("Tarayıcı Aç").Category(CatWeb).Capability(cap)
             .Description("Yeni tarayıcı oturumu açar.")
-            .Input("browser", "string", required: false, defaultValue: "chromium")
-            .Input("headless", "bool", required: false, defaultValue: false).Output("session", "JSON");
+            .Input("browser", "string", required: false, defaultValue: "chromium",
+                description: "Tarayıcı türü", options: new[] { "chromium", "chrome", "edge" })
+            .Input("headless", "bool", required: false, defaultValue: false,
+                description: "Tarayıcıyı görünmez modda çalıştır").Output("session", "JSON");
 
         b.Activity("Web.Goto").DisplayName("Adrese Git").Category(CatWeb).Capability(cap)
             .Description("Verilen URL'ye gider.").Input("url", "string");

@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { Router } from '@angular/router';
 import { Subscription, timer, switchMap } from 'rxjs';
 import { WorkflowVariable, WorkflowVersion } from '../../shared/models/workflow.model';
 import { DebugService } from '../../shared/services/debug.service';
@@ -57,6 +58,7 @@ export class DesignerComponent implements OnDestroy {
   private readonly draft = inject(WorkflowDraftService);
   private readonly orchestrator = inject(OrchestratorService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private runStatusPolling?: Subscription;
 
   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
@@ -274,5 +276,9 @@ export class DesignerComponent implements OnDestroy {
   onSaveShortcut(event: Event): void {
     event.preventDefault();
     void this.save();
+  }
+
+  backToProjects(): void {
+    void this.router.navigate(['/projects']);
   }
 }

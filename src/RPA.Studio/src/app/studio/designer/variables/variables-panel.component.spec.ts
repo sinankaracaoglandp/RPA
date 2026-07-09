@@ -68,4 +68,25 @@ describe('VariablesPanelComponent', () => {
 
     expect(emitted).toEqual([]);
   });
+
+  it('supports DateTime variables with a datetime-local default editor', () => {
+    fixture.componentRef.setInput('variables', [
+      { name: 'planlananTarih', type: 'DateTime', scope: 'global', default: '2026-07-09T10:30:00.000Z' },
+    ]);
+    let emitted: unknown;
+    component.variablesChange.subscribe((value) => (emitted = value));
+    fixture.detectChanges();
+
+    const defaultInput = fixture.nativeElement.querySelector('[data-testid="variable-default-0"]') as HTMLInputElement;
+    expect(defaultInput.type).toBe('datetime-local');
+    expect(defaultInput.value).toBe('2026-07-09T10:30');
+
+    defaultInput.value = '2026-07-10T14:45';
+    defaultInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(emitted).toEqual([
+      { name: 'planlananTarih', type: 'DateTime', scope: 'global', default: '2026-07-10T14:45:00.000Z' },
+    ]);
+  });
 });

@@ -3,6 +3,10 @@
   [class.canvas-node--selected]="node.selected"
   [class.canvas-node--breakpoint]="node.breakpoint"
   [class.canvas-node--current]="node.current"
+  [class.canvas-node--branch]="isBranchNode"
+  [class.canvas-node--if]="node.nodeType === 'if'"
+  [class.canvas-node--try-catch]="node.nodeType === 'tryCatch'"
+  [class.canvas-node--loop]="node.nodeType === 'forEach' || node.nodeType === 'while'"
   role="button"
   tabindex="0"
   [attr.aria-label]="('canvas.node.ariaLabel' | translate) + ': ' + node.label"
@@ -12,7 +16,6 @@
   [attr.data-breakpoint]="!!node.breakpoint"
   [attr.data-current]="!!node.current"
   data-testid="canvas-node"
-  (click)="select()"
   (keydown.enter)="select()"
   (keydown.space)="select()"
   (pointerup)="onPointerUp()"
@@ -23,6 +26,7 @@
   <span
     class="canvas-node__socket canvas-node__socket--in"
     data-testid="canvas-node-socket-in"
+    data-port="in"
     aria-hidden="true"
   ></span>
 
@@ -44,10 +48,22 @@
     <p class="canvas-node__subtitle">{{ node.activityId }}</p>
   }
 
-  <span
-    class="canvas-node__socket canvas-node__socket--out"
-    data-testid="canvas-node-socket-out"
-    aria-hidden="true"
-    (pointerdown)="onOutSocketDown($event)"
-  ></span>
+  <div class="canvas-node__outputs" [class.canvas-node__outputs--stacked]="outputSockets.length > 2">
+    @for (socket of outputSockets; track socket.port) {
+      <div class="canvas-node__output" [class.canvas-node__output--stacked]="outputSockets.length > 2">
+        <span class="canvas-node__output-label">{{ socket.label }}</span>
+        <span
+          class="canvas-node__socket canvas-node__socket--out"
+          [class.canvas-node__socket--positive]="socket.tone === 'positive'"
+          [class.canvas-node__socket--negative]="socket.tone === 'negative'"
+          [class.canvas-node__socket--neutral]="socket.tone === 'neutral'"
+          data-testid="canvas-node-socket-out"
+          data-socket-direction="out"
+          [attr.data-port]="socket.port"
+          aria-hidden="true"
+          (pointerdown)="onOutSocketDown($event, socket.port)"
+        ></span>
+      </div>
+    }
+  </div>
 </div>

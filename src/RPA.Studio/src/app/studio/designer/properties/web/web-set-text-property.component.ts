@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { TranslatePipe } from '../../../../core/translate.pipe';
+import { WorkflowVariable } from '../../../../shared/models/workflow.model';
 import { ExpressionInputComponent } from '../expression-input.component';
 
 export interface WebSetTextProperties {
@@ -21,6 +22,7 @@ export interface WebSetTextProperties {
 })
 export class WebSetTextPropertyComponent implements OnChanges {
   @Input() properties: Record<string, unknown> | null | undefined;
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<WebSetTextProperties>();
 
   readonly form: FormGroup;

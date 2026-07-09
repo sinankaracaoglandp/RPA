@@ -38,4 +38,5 @@ public class JwtOptions
     public string Issuer { get; set; } = "RPA.Platform";
     public string Audience { get; set; } = "RPA.Clients";
     public int ExpirationMinutes { get; set; } = 60;
+    public int RefreshExpirationDays { get; set; } = 7;
 }

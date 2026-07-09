@@ -63,7 +63,8 @@ public sealed class ActivityCatalogBuilder
 
         public ActivityBuilder Input(
             string name, string type, bool required = true,
-            object? defaultValue = null, string? description = null, string? pickerKind = null)
+            object? defaultValue = null, string? description = null, string? pickerKind = null,
+            IEnumerable<string>? options = null)
         {
             _metadata.Inputs.Add(new ActivityParameter
             {
@@ -73,6 +74,7 @@ public sealed class ActivityCatalogBuilder
                 DefaultValue = defaultValue,
                 Description = description,
                 PickerKind = pickerKind,
+                Options = options?.ToList(),
             });
             return this;
         }

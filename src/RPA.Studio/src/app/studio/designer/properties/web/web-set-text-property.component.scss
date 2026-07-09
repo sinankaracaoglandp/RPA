@@ -1,10 +1,14 @@
 .web-property {
   display: flex;
   flex-direction: column;
-  padding: 0.5rem 0;
+  padding: 0;
 
   h3 {
-    margin: 0 0 0.5rem;
-    font-size: 0.9rem;
+    margin: 0 0 0.85rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #d7dee8;
+    color: #162033;
+    font-size: 0.95rem;
+    font-weight: 750;
   }
 }

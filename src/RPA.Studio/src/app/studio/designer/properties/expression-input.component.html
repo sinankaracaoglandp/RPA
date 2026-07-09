@@ -30,11 +30,96 @@
     >
       {{ 'web.insertVariable' | translate }}
     </button>
+    @if (variablePickerOpen) {
+      <select
+        class="expression-input__variable-select"
+        data-testid="expression-variable-select"
+        aria-label="Degisken sec"
+        (change)="selectVariable($any($event.target).value)"
+      >
+        <option value="">Degisken sec</option>
+        @for (variable of variables; track variable.name) {
+          <option [value]="variable.name">{{ variable.name }}</option>
+        }
+      </select>
+    }
+    <button
+      type="button"
+      class="expression-input__expand-btn"
+      data-testid="expression-open-editor"
+      aria-label="Geniş editörde düzenle"
+      [disabled]="disabled"
+      (click)="openEditor()"
+    >
+      ⛶
+    </button>
   </div>
   @if (hint && !invalid) {
     <p class="expression-input__hint" [id]="inputId + '-hint'">{{ hint }}</p>
   }
   @if (invalid && errorMessage) {
     <p class="expression-input__error" [id]="inputId + '-error'" role="alert">{{ errorMessage }}</p>
+  }
+  @if (variableError) {
+    <p class="expression-input__error" role="alert">{{ variableError }}</p>
+  }
+
+  @if (editorOpen) {
+    <div class="expression-input__overlay" data-testid="expression-editor-overlay" (click)="closeEditor()">
+      <section
+        class="expression-input__dialog"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="label"
+        (click)="$event.stopPropagation()"
+      >
+        <header class="expression-input__dialog-header">
+          <h4>{{ label }}</h4>
+          <button type="button" data-testid="expression-editor-close" (click)="closeEditor()">×</button>
+        </header>
+        <textarea
+          class="expression-input__editor"
+          data-testid="expression-editor-textarea"
+          [class.expression-input__editor--single-line]="isSingleLineEditor"
+          [value]="editorValue"
+          [placeholder]="placeholder"
+          (input)="handleEditorInput($any($event.target).value)"
+          (keydown)="handleEditorKeydown($event)"
+        ></textarea>
+        <div class="expression-input__dialog-tools">
+          <button
+            type="button"
+            data-testid="expression-editor-insert-variable"
+            (click)="openEditorVariablePicker()"
+          >
+            Degisken ekle
+          </button>
+          @if (editorVariablePickerOpen) {
+            <select
+              data-testid="expression-editor-variable-select"
+              aria-label="Degisken sec"
+              (change)="selectEditorVariable($any($event.target).value)"
+            >
+              <option value="">Degisken sec</option>
+              @for (variable of variables; track variable.name) {
+                <option [value]="variable.name">{{ variable.name }}</option>
+              }
+            </select>
+          }
+        </div>
+        @if (variableError) {
+          <p class="expression-input__error" role="alert">{{ variableError }}</p>
+        }
+        @if (isSingleLineEditor) {
+          <p class="expression-input__dialog-hint">Bu alan tek satırlıdır; Enter değeri kaydeder.</p>
+        } @else {
+          <p class="expression-input__dialog-hint">Çok satırlı metin girebilirsiniz.</p>
+        }
+        <footer class="expression-input__dialog-actions">
+          <button type="button" data-testid="expression-editor-cancel" (click)="closeEditor()">Vazgeç</button>
+          <button type="button" data-testid="expression-editor-apply" (click)="applyEditor()">Uygula</button>
+        </footer>
+      </section>
+    </div>
   }
 </div>

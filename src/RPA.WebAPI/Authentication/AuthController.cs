@@ -44,7 +44,36 @@ public class AuthController : ControllerBase
 
         return Ok(new LoginResponse
         {
-            Token = result.JwtToken!,
+            Token = result.AccessToken!,
+            RefreshToken = result.RefreshToken!,
+            AccessTokenExpiresAtUtc = result.AccessTokenExpiresAtUtc,
+            Roles = result.Roles,
+        });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            return BadRequest(new { error = "Refresh token zorunludur." });
+        }
+
+        var result = await _authService.RefreshAsync(request.RefreshToken);
+        if (!result.Success)
+        {
+            return Unauthorized(new { error = result.ErrorMessage ?? "Refresh token geçersiz." });
+        }
+
+        return Ok(new LoginResponse
+        {
+            Token = result.AccessToken!,
+            RefreshToken = result.RefreshToken!,
+            AccessTokenExpiresAtUtc = result.AccessTokenExpiresAtUtc,
             Roles = result.Roles,
         });
     }
@@ -76,5 +105,12 @@ public class LoginRequest
 public class LoginResponse
 {
     public string Token { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
+    public DateTime AccessTokenExpiresAtUtc { get; set; }
     public List<string> Roles { get; set; } = new();
+}
+
+public class RefreshRequest
+{
+    public string RefreshToken { get; set; } = string.Empty;
 }

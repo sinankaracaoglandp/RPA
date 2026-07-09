@@ -13,6 +13,11 @@ public interface IAuthenticationService
     /// <param name="password">Kullanıcı şifresi (loglanmaz, saklanmaz)</param>
     /// <returns>Başarı durumu, JWT token ve roller</returns>
     Task<AuthenticationResult> AuthenticateAsync(string adUsername, string password);
+
+    /// <summary>
+    /// Geçerli refresh token ile yeni oturum belirteçleri üretir.
+    /// </summary>
+    Task<AuthenticationResult> RefreshAsync(string refreshToken);
 }
 
 /// <summary>
@@ -21,13 +26,22 @@ public interface IAuthenticationService
 public class AuthenticationResult
 {
     public bool Success { get; set; }
-    public string? JwtToken { get; set; }
+    public string? AccessToken { get; set; }
+    public string? RefreshToken { get; set; }
+    public DateTime AccessTokenExpiresAtUtc { get; set; }
     public string? ErrorMessage { get; set; }
     public List<string> Roles { get; set; } = new();
 
     public static AuthenticationResult Fail(string message) =>
         new() { Success = false, ErrorMessage = message };
 
-    public static AuthenticationResult Ok(string token, List<string> roles) =>
-        new() { Success = true, JwtToken = token, Roles = roles };
+    public static AuthenticationResult Ok(AuthTokenPair pair, List<string> roles) =>
+        new()
+        {
+            Success = true,
+            AccessToken = pair.AccessToken,
+            RefreshToken = pair.RefreshToken,
+            AccessTokenExpiresAtUtc = pair.AccessTokenExpiresAtUtc,
+            Roles = roles,
+        };
 }

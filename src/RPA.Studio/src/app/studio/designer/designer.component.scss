@@ -1,42 +1,61 @@
 .designer {
   min-height: 100%;
+  background: #e9edf3;
+  color: #162033;
+  font-family:
+    Inter,
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 .designer__canvas {
   min-width: 0;
+  background: #eef2f7;
 }
 
 .designer__header {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
+  min-height: 3.25rem;
+  gap: 0.55rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid #d7dee8;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 249, 252, 0.96)),
+    #ffffff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .designer__title {
   align-items: center;
   display: inline-flex;
   min-width: 0;
-  max-width: 22rem;
-  gap: 0.35rem;
-  margin-left: 0.25rem;
+  max-width: 28rem;
+  gap: 0.45rem;
+  margin-left: 0.2rem;
   margin-right: auto;
   overflow: hidden;
-  color: #0f172a;
-  font-size: 0.9rem;
-  font-weight: 600;
+  color: #0f1b2d;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .designer__dirty {
-  color: #f59e0b;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  color: #c47a10;
   font-size: 0.75rem;
+  filter: drop-shadow(0 0 4px rgba(196, 122, 16, 0.28));
 }
 
+.designer__back,
 .designer__save,
 .designer__run,
 .designer__run-refresh,
@@ -44,70 +63,89 @@
   align-items: center;
   display: inline-flex;
   justify-content: center;
-  min-height: 2rem;
-  padding: 0.38rem 0.8rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.375rem;
+  min-height: 2.1rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid #c7d1df;
+  border-radius: 0.45rem;
   background: #ffffff;
-  color: #334155;
+  color: #243247;
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   line-height: 1;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
     color 120ms ease,
-    box-shadow 120ms ease;
+    box-shadow 120ms ease,
+    transform 120ms ease;
 }
 
+.designer__back:hover,
 .designer__save:hover,
 .designer__run:hover,
 .designer__run-refresh:hover,
 .designer__debug-toggle:hover {
-  border-color: #94a3b8;
-  background: #f8fafc;
+  border-color: #9dadc2;
+  background: #f7f9fc;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 
+.designer__back:focus-visible,
 .designer__save:focus-visible,
 .designer__run:focus-visible,
 .designer__run-refresh:focus-visible,
 .designer__debug-toggle:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #1f6feb;
   outline-offset: 2px;
 }
 
+.designer__back:disabled,
 .designer__save:disabled,
 .designer__run:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  transform: none;
+}
+
+.designer__back {
+  border-color: #c7d1df;
+  background: #ffffff;
+  color: #243247;
+}
+
+.designer__back:hover {
+  border-color: #9dadc2;
+  background: #f7f9fc;
 }
 
 .designer__save {
-  border-color: #2563eb;
-  background: #2563eb;
+  border-color: #1f6feb;
+  background: #1f6feb;
   color: #ffffff;
 }
 
 .designer__save:hover {
-  border-color: #1d4ed8;
-  background: #1d4ed8;
+  border-color: #1557c0;
+  background: #1557c0;
 }
 
 .designer__run {
-  border-color: #16a34a;
-  background: #16a34a;
+  border-color: #12805c;
+  background: #12805c;
   color: #ffffff;
 }
 
 .designer__run:hover {
-  border-color: #15803d;
-  background: #15803d;
+  border-color: #0d684a;
+  background: #0d684a;
 }
 
 .designer__debug-toggle[aria-pressed='true'] {
-  border-color: #7c3aed;
-  background: #7c3aed;
+  border-color: #364fc7;
+  background: #364fc7;
   color: #ffffff;
 }
 
@@ -115,21 +153,28 @@
   align-items: center;
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  color: #475569;
+  gap: 0.4rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid #d7dee8;
+  border-radius: 0.45rem;
+  background: #f8fafc;
+  color: #526173;
   font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .designer__run-queued code {
-  padding: 0.12rem 0.3rem;
-  border-radius: 0.25rem;
-  background: #f1f5f9;
-  color: #0f172a;
+  padding: 0.16rem 0.34rem;
+  border: 1px solid #d7dee8;
+  border-radius: 0.3rem;
+  background: #ffffff;
+  color: #162033;
   font-size: 0.74rem;
 }
 
 .designer__save-error,
 .designer__run-error {
+  color: #b42318;
   font-size: 0.78rem;
-  font-weight: 500;
+  font-weight: 700;
 }

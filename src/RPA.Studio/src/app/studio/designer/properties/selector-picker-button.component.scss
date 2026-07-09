@@ -1,16 +1,25 @@
 .selector-picker {
   align-items: center;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #f8fafc;
-  color: #0f172a;
+  border: 1px solid #c7d1df;
+  border-radius: 0.45rem;
+  background: #ffffff;
+  color: #1f6feb;
   cursor: pointer;
   display: inline-flex;
-  font-size: 0.8125rem;
+  font-size: 0.8rem;
+  font-weight: 700;
   gap: 0.25rem;
-  min-height: 2rem;
+  min-height: 2.2rem;
   padding: 0 0.625rem;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.03);
   white-space: nowrap;
+}
+
+.selector-picker:hover,
+.selector-picker:focus-visible {
+  border-color: #8db5f5;
+  background: #edf3ff;
+  outline: none;
 }
 
 .selector-picker:disabled {
@@ -19,10 +28,10 @@
 }
 
 .selector-picker__status {
-  color: #475569;
+  color: #526173;
   font-size: 0.75rem;
 }
 
 .selector-picker__status--error {
-  color: #dc2626;
+  color: #b42318;
 }

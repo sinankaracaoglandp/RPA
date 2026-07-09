@@ -2,7 +2,15 @@
   class="properties-panel"
   data-testid="properties-panel"
   [attr.aria-label]="'properties.panel.ariaLabel' | translate"
+  [style.width.px]="panelWidth"
 >
+  <div
+    class="properties-panel__resize"
+    role="separator"
+    aria-orientation="vertical"
+    tabindex="0"
+    (pointerdown)="startResize($event)"
+  ></div>
   @if (!activityType) {
     <p class="properties-panel__empty" data-testid="properties-panel-empty">
       {{ 'properties.panel.empty' | translate }}

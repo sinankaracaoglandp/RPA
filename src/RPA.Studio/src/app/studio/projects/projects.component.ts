@@ -15,6 +15,7 @@ import {
   standalone: true,
   imports: [CommonModule, FormsModule, TranslatePipe],
   templateUrl: './projects.component.html',
+  styleUrls: ['./projects.component.scss'],
 })
 export class ProjectsComponent implements OnInit {
   private readonly projectService = inject(ProjectService);
@@ -26,6 +27,10 @@ export class ProjectsComponent implements OnInit {
   readonly newProjectName = signal('');
   readonly newWorkflowName = signal('');
   readonly error = signal<string | null>(null);
+
+  get selectedProject(): ProjectSummary | undefined {
+    return this.projects().find((project) => project.id === this.selectedProjectId());
+  }
 
   ngOnInit(): void {
     this.refresh();
@@ -77,5 +82,9 @@ export class ProjectsComponent implements OnInit {
 
   openWorkflow(workflowId: string): void {
     void this.router.navigate(['/designer', workflowId]);
+  }
+
+  backToHome(): void {
+    void this.router.navigate(['/']);
   }
 }

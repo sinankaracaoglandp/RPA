@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { DesignerComponent } from './designer.component';
 import { ModeService } from '../../shared/services/mode.service';
 import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
@@ -52,6 +52,16 @@ describe('DesignerComponent — Simple Mode integration', () => {
     expect(fixture.nativeElement.querySelector('app-toolbox')).toBeFalsy();
     expect(fixture.nativeElement.querySelector('[data-testid="designer-debug-toggle"]')).toBeFalsy();
     expect(fixture.nativeElement.querySelector('app-debug-panel')).toBeFalsy();
+  });
+
+  it('navigates back to projects from the header button', () => {
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="designer-back-to-projects"]').click();
+
+    expect(navigate).toHaveBeenCalledWith(['/projects']);
   });
 
   it('does not set breakpoints when a node is selected in Simple mode', () => {

@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { TranslatePipe } from '../../../../core/translate.pipe';
+import { WorkflowVariable } from '../../../../shared/models/workflow.model';
 import { ExpressionInputComponent } from '../expression-input.component';
 
 export interface WebClickStep {
@@ -30,6 +31,7 @@ export interface WebClickProperties {
 })
 export class WebClickPropertyComponent implements OnChanges {
   @Input() properties: Record<string, unknown> | null | undefined;
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<WebClickProperties>();
   @ViewChild('selectorEditor') private selectorEditor?: ExpressionInputComponent;
   @ViewChild('waitSelectorEditor') private waitSelectorEditor?: ExpressionInputComponent;

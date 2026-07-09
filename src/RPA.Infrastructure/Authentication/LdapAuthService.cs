@@ -49,12 +49,37 @@ public class LdapAuthService : IAuthenticationService
         }
 
         var roles = MapGroupsToRoles(outcome.Groups);
-        var token = _tokenService.GenerateToken(adUsername, roles);
+        var pair = _tokenService.GenerateTokenPair(adUsername, roles);
 
         _logger.LogInformation(
             "Başarılı giriş, kullanıcı {User}, roller {Roles}", adUsername, string.Join(",", roles));
 
-        return AuthenticationResult.Ok(token, roles);
+        return AuthenticationResult.Ok(pair, roles);
+    }
+
+    public Task<AuthenticationResult> RefreshAsync(string refreshToken)
+    {
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return Task.FromResult(AuthenticationResult.Fail("Refresh token zorunludur."));
+        }
+
+        var validation = _tokenService.ValidateRefreshToken(refreshToken);
+        if (!validation.Success || string.IsNullOrWhiteSpace(validation.Username))
+        {
+            return Task.FromResult(AuthenticationResult.Fail(validation.ErrorMessage ?? "Refresh token geçersiz."));
+        }
+
+        var roles = validation.Roles
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var pair = _tokenService.GenerateTokenPair(validation.Username, roles);
+
+        _logger.LogInformation("Oturum yenilendi, kullanıcı {User}, roller {Roles}",
+            validation.Username, string.Join(",", roles));
+
+        return Task.FromResult(AuthenticationResult.Ok(pair, roles));
     }
 
     /// <summary>

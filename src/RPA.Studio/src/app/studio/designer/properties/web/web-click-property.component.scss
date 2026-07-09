@@ -1,12 +1,16 @@
 .web-property {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
+  gap: 0.85rem;
+  padding: 0;
 
   h3 {
-    margin: 0 0 0.5rem;
-    font-size: 0.9rem;
+    margin: 0 0 0.2rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #d7dee8;
+    color: #162033;
+    font-size: 0.95rem;
+    font-weight: 750;
   }
 
   &__field {
@@ -15,45 +19,50 @@
     gap: 0.35rem;
 
     label {
-      color: #475569;
-      font-size: 0.75rem;
-      font-weight: 600;
+      color: #344054;
+      font-size: 0.78rem;
+      font-weight: 700;
     }
 
     select,
     input {
-      min-height: 2.25rem;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      background: #fff;
-      color: #0f172a;
-      font-size: 0.875rem;
-      padding: 0.45rem 0.6rem;
+      min-height: 2.35rem;
+      border: 1px solid #aebbc9;
+      border-radius: 0.5rem;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      color: #162033;
+      font-size: 0.85rem;
+      padding: 0.5rem 0.65rem;
+      box-shadow:
+        0 1px 1px rgba(15, 23, 42, 0.04),
+        0 1px 0 rgba(255, 255, 255, 0.9) inset;
     }
 
     select:focus,
     input:focus {
-      border-color: #2563eb;
-      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+      border-color: #1f6feb;
+      box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
       outline: none;
     }
   }
 
   &__add {
     min-height: 2.25rem;
-    border: 1px solid #2563eb;
-    border-radius: 6px;
-    background: #2563eb;
+    border: 1px solid #1f6feb;
+    border-radius: 0.45rem;
+    background: #1f6feb;
     color: #fff;
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 750;
+    box-shadow: 0 8px 18px rgba(31, 111, 235, 0.18);
   }
 
   &__add:disabled {
-    border-color: #cbd5e1;
-    background: #e2e8f0;
-    color: #64748b;
+    border-color: #c7d1df;
+    background: #e8edf5;
+    color: #667085;
     cursor: not-allowed;
+    box-shadow: none;
   }
 
   &__steps {
@@ -70,10 +79,11 @@
     grid-template-columns: 1.5rem minmax(0, 1fr) 1.75rem;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    background: #f8fafc;
-    padding: 0.5rem;
+    border: 1px solid #d7dee8;
+    border-radius: 0.55rem;
+    background: #ffffff;
+    padding: 0.55rem;
+    box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
   }
 
   &__step-index {
@@ -83,8 +93,8 @@
     width: 1.5rem;
     height: 1.5rem;
     border-radius: 999px;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: #edf3ff;
+    color: #1557c0;
     font-size: 0.75rem;
     font-weight: 700;
   }
@@ -102,7 +112,7 @@
     }
 
     small {
-      color: #64748b;
+      color: #667085;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -112,10 +122,10 @@
   &__remove {
     width: 1.75rem;
     height: 1.75rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
+    border: 1px solid #c7d1df;
+    border-radius: 0.45rem;
     background: #fff;
-    color: #475569;
+    color: #526173;
     cursor: pointer;
     font-size: 1rem;
     line-height: 1;

@@ -8,6 +8,7 @@ export interface ActivityPort {
   required?: boolean;
   description?: string;
   pickerKind?: 'sap' | 'web' | 'desktop' | null;
+  options?: string[];
 }
 
 export interface ActivityMetadata {

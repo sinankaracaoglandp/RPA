@@ -8,6 +8,7 @@
     formControlName="url"
     [invalid]="urlControl.invalid && urlControl.touched"
     [errorMessage]="'web.error.required' | translate"
+    [variables]="variables"
   ></app-expression-input>
   <app-expression-input
     inputId="web-navigate-wait-selector"
@@ -15,5 +16,6 @@
     [placeholder]="'web.field.selectorPlaceholder' | translate"
     [hint]="'web.hint.selectorFormat' | translate"
     formControlName="waitSelector"
+    [variables]="variables"
   ></app-expression-input>
 </form>

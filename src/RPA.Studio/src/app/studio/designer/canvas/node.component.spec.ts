@@ -33,10 +33,10 @@ describe('NodeComponent', () => {
   });
 
   it('emits nodeSelect on click', () => {
-    let selected: string | undefined;
-    component.nodeSelect.subscribe((id) => (selected = id));
+    let selected: { nodeId: string; additive: boolean } | undefined;
+    component.nodeSelect.subscribe((event) => (selected = event));
     fixture.nativeElement.querySelector('[data-testid="canvas-node"]').click();
-    expect(selected).toBe('node-1');
+    expect(selected).toEqual({ nodeId: 'node-1', additive: false });
   });
 
   it('emits nodeDelete when the delete button is clicked', () => {
@@ -54,15 +54,15 @@ describe('NodeComponent', () => {
   });
 
   it('emits connectStart on pointerdown at the out socket', () => {
-    const emitted: string[] = [];
-    component.connectStart.subscribe((id) => emitted.push(id));
+    const emitted: Array<{ nodeId: string; port: string }> = [];
+    component.connectStart.subscribe((event) => emitted.push(event));
     fixture.detectChanges();
 
     const outSocket: HTMLElement =
       fixture.nativeElement.querySelector('[data-testid="canvas-node-socket-out"]');
     outSocket.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
 
-    expect(emitted).toEqual([component.node.id]);
+    expect(emitted).toEqual([{ nodeId: component.node.id, port: 'out' }]);
   });
 
   it('emits connectStart even when an ancestor swallows bubbling pointerdown (Rete drag simulation)', () => {
@@ -81,15 +81,15 @@ describe('NodeComponent', () => {
       e.stopPropagation();
     });
 
-    const emitted: string[] = [];
-    component.connectStart.subscribe((id) => emitted.push(id));
+    const emitted: Array<{ nodeId: string; port: string }> = [];
+    component.connectStart.subscribe((event) => emitted.push(event));
     fixture.detectChanges();
 
     const outSocket: HTMLElement =
       fixture.nativeElement.querySelector('[data-testid="canvas-node-socket-out"]');
     outSocket.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
 
-    expect(emitted).toEqual([component.node.id]);
+    expect(emitted).toEqual([{ nodeId: component.node.id, port: 'out' }]);
     expect(ancestorSaw).toBe(false);
 
     ancestor.removeChild(fixture.nativeElement);

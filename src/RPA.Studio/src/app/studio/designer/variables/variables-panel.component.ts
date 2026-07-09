@@ -3,7 +3,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { WorkflowVariable } from '../../../shared/models/workflow.model';
 
-const VARIABLE_TYPES = ['string', 'int', 'decimal', 'bool', 'JSON'] as const;
+const VARIABLE_TYPES = ['string', 'int', 'decimal', 'bool', 'DateTime', 'JSON'] as const;
 
 @Component({
   selector: 'app-variables-panel',
@@ -40,7 +40,23 @@ export class VariablesPanelComponent {
     if (variable.default === null || variable.default === undefined) {
       return '';
     }
+    if ((variable.type ?? '').toLowerCase() === 'datetime') {
+      return this.formatDateTimeInput(variable.default);
+    }
     return typeof variable.default === 'object' ? JSON.stringify(variable.default) : String(variable.default);
+  }
+
+  defaultInputType(variable: WorkflowVariable): 'text' | 'number' | 'datetime-local' {
+    switch ((variable.type ?? '').toLowerCase()) {
+      case 'int':
+      case 'number':
+      case 'decimal':
+        return 'number';
+      case 'datetime':
+        return 'datetime-local';
+      default:
+        return 'text';
+    }
   }
 
   onDefaultChange(index: number, raw: string): void {
@@ -87,6 +103,11 @@ export class VariablesPanelComponent {
       case 'bool':
       case 'boolean':
         return raw === 'true' || raw === '1';
+      case 'datetime':
+        if (!raw.trim()) {
+          return null;
+        }
+        return this.normalizeDateTime(raw);
       case 'json':
         if (!raw.trim()) {
           return null;
@@ -99,5 +120,24 @@ export class VariablesPanelComponent {
       default:
         return raw;
     }
+  }
+
+  private normalizeDateTime(raw: string): string {
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString();
+  }
+
+  private formatDateTimeInput(value: unknown): string {
+    const parsed = value instanceof Date ? value : new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      return String(value);
+    }
+
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return [
+      parsed.getFullYear(),
+      pad(parsed.getMonth() + 1),
+      pad(parsed.getDate()),
+    ].join('-') + `T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
   }
 }

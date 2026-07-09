@@ -142,4 +142,48 @@ describe('GenericPropertyComponent', () => {
 
     expect(fixture.nativeElement.querySelector('[data-testid="selector-picker"]')).toBeFalsy();
   });
+
+  it('renders select options for metadata-driven choice inputs', () => {
+    component.activityType = 'Web.Open';
+    component.properties = { browser: 'chromium' };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/Web.Open').flush({
+      activityId: 'Web.Open',
+      displayName: 'Tarayici Ac',
+      inputs: [{ name: 'browser', type: 'string', options: ['chromium', 'chrome', 'edge'] }],
+    });
+    fixture.detectChanges();
+
+    const select = fixture.nativeElement.querySelector('[data-testid="prop-browser"]') as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(['chromium', 'chrome', 'edge']);
+
+    select.value = 'edge';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(emitted.at(-1)).toEqual({ browser: 'edge' });
+  });
+
+  it('shows condition expression examples for Logic.If', () => {
+    component.activityType = 'Logic.If';
+    component.properties = {};
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/Logic.If').flush({
+      activityId: 'Logic.If',
+      displayName: 'Eger / Kosul',
+      inputs: [{ name: 'condition', type: 'string', description: 'Kosul', required: true }],
+    });
+    fixture.detectChanges();
+
+    const examples = fixture.nativeElement.querySelector('[data-testid="prop-condition-examples"]') as HTMLElement;
+    expect(examples).toBeTruthy();
+    expect(examples.textContent).toContain('{{karar}} == 1');
+    expect(examples.textContent).toContain('{{karar}} != 0');
+    expect(examples.textContent).toContain('{{aktif}} == true');
+    expect(examples.textContent).toContain('{{tarih}} == "2026-07-09T08:30:00"');
+  });
 });

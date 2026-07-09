@@ -58,6 +58,18 @@
                       <option [value]="variable.name">{{ variable.name }}</option>
                     }
                   </select>
+                } @else if ((port.options?.length ?? 0) > 0) {
+                  <select
+                    [id]="'prop-' + port.name"
+                    [value]="value(port)"
+                    (change)="onValueChange(port, $any($event.target).value)"
+                    class="generic-property__input"
+                    [attr.data-testid]="'prop-' + port.name"
+                  >
+                    @for (option of port.options ?? []; track option) {
+                      <option [value]="option">{{ option }}</option>
+                    }
+                  </select>
                 } @else {
                   <input
                     [id]="'prop-' + port.name"
@@ -66,9 +78,43 @@
                     (input)="onValueChange(port, $any($event.target).value)"
                     [placeholder]="port.name"
                     class="generic-property__input"
+                    [class.generic-property__input--invalid]="hasExpressionSpacingError(port)"
                     [attr.data-testid]="'prop-' + port.name"
                     autocomplete="off"
                   />
+                }
+                @if (canOpenEditor(port)) {
+                  <button
+                    type="button"
+                    class="generic-property__variable-button"
+                    [attr.aria-label]="'Degisken ekle: ' + (port.description || port.name)"
+                    [attr.data-testid]="'prop-' + port.name + '-variable'"
+                    (click)="openVariablePicker(port)"
+                  >
+                    Degisken
+                  </button>
+                  @if (variablePickerPort?.name === port.name) {
+                    <select
+                      class="generic-property__variable-select"
+                      [attr.data-testid]="'prop-' + port.name + '-variable-select'"
+                      aria-label="Degisken sec"
+                      (change)="selectVariable(port, $any($event.target).value)"
+                    >
+                      <option value="">Degisken sec</option>
+                      @for (variable of variables; track variable.name) {
+                        <option [value]="variable.name">{{ variable.name }}</option>
+                      }
+                    </select>
+                  }
+                  <button
+                    type="button"
+                    class="generic-property__editor-button"
+                    [attr.aria-label]="'Genis editorde duzenle: ' + (port.description || port.name)"
+                    [attr.data-testid]="'prop-' + port.name + '-editor'"
+                    (click)="openEditor(port)"
+                  >
+                    []
+                  </button>
                 }
                 @if (port.pickerKind && inputType(port) !== 'password') {
                   <app-selector-picker-button
@@ -78,10 +124,111 @@
                 }
               </div>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+              @if (hasExpressionSpacingError(port)) {
+                <p class="generic-property__error" role="alert">{{ expressionValidationMessage(port) }}</p>
+                <div class="generic-property__validation" data-testid="prop-condition-validation">
+                  @for (segment of expressionValidationSegments(port); track $index) {
+                    <span
+                      class="generic-property__validation-part"
+                      [class.generic-property__validation-part--invalid]="segment.invalid"
+                    >
+                      {{ segment.text }}
+                    </span>
+                  }
+                </div>
+              }
+              @if (showExpressionExamples(port)) {
+                <div class="generic-property__examples" data-testid="prop-condition-examples">
+                  <span class="generic-property__examples-title">Ornekler</span>
+                  @for (example of expressionExamples(port); track example) {
+                    <code class="generic-property__example">{{ example }}</code>
+                  }
+                </div>
+              }
             }
           </div>
         }
       </form>
+      @if (variableError) {
+        <p class="generic-property__error" role="alert">{{ variableError }}</p>
+      }
     }
+  }
+
+  @if (editorPort) {
+    <div class="generic-property__overlay" data-testid="generic-editor-overlay" (click)="closeEditor()">
+      <section
+        class="generic-property__dialog"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="editorPort.description || editorPort.name"
+        (click)="$event.stopPropagation()"
+      >
+        <header class="generic-property__dialog-header">
+          <h4>{{ editorPort.description || editorPort.name }}</h4>
+          <button type="button" data-testid="generic-editor-close" (click)="closeEditor()">x</button>
+        </header>
+        <textarea
+          class="generic-property__editor"
+          data-testid="generic-editor-textarea"
+          [class.generic-property__editor--single-line]="isSingleLineEditor(editorPort)"
+          [class.generic-property__editor--invalid]="hasExpressionSpacingError(editorPort, editorValue)"
+          [value]="editorValue"
+          [placeholder]="editorPort.name"
+          (input)="handleEditorInput($any($event.target).value)"
+          (keydown)="handleEditorKeydown($event)"
+        ></textarea>
+        <div class="generic-property__dialog-tools">
+          <button type="button" data-testid="generic-editor-insert-variable" (click)="openEditorVariablePicker()">
+            Degisken ekle
+          </button>
+          @if (editorVariablePickerOpen) {
+            <select
+              data-testid="generic-editor-variable-select"
+              aria-label="Degisken sec"
+              (change)="selectEditorVariable($any($event.target).value)"
+            >
+              <option value="">Degisken sec</option>
+              @for (variable of variables; track variable.name) {
+                <option [value]="variable.name">{{ variable.name }}</option>
+              }
+            </select>
+          }
+        </div>
+        @if (variableError) {
+          <p class="generic-property__error" role="alert">{{ variableError }}</p>
+        }
+        @if (hasExpressionSpacingError(editorPort, editorValue)) {
+          <p class="generic-property__error" role="alert">{{ expressionValidationMessage(editorPort, editorValue) }}</p>
+          <div class="generic-property__validation generic-property__validation--dialog" data-testid="editor-condition-validation">
+            @for (segment of expressionValidationSegments(editorPort, editorValue); track $index) {
+              <span
+                class="generic-property__validation-part"
+                [class.generic-property__validation-part--invalid]="segment.invalid"
+              >
+                {{ segment.text }}
+              </span>
+            }
+          </div>
+        }
+        @if (isSingleLineEditor(editorPort)) {
+          <p class="generic-property__dialog-hint">Bu alan tek satirlidir; Enter degeri kaydeder.</p>
+        } @else {
+          <p class="generic-property__dialog-hint">Cok satirli metin girebilirsiniz.</p>
+        }
+        @if (showExpressionExamples(editorPort)) {
+          <div class="generic-property__examples generic-property__examples--dialog" data-testid="editor-condition-examples">
+            <span class="generic-property__examples-title">Ornekler</span>
+            @for (example of expressionExamples(editorPort); track example) {
+              <code class="generic-property__example">{{ example }}</code>
+            }
+          </div>
+        }
+        <footer class="generic-property__dialog-actions">
+          <button type="button" data-testid="generic-editor-cancel" (click)="closeEditor()">Vazgec</button>
+          <button type="button" data-testid="generic-editor-apply" (click)="applyEditor()">Uygula</button>
+        </footer>
+      </section>
+    </div>
   }
 </div>

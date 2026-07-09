@@ -21,6 +21,9 @@ public sealed class ExpressionEvaluator
     private static readonly Regex SingleTokenPattern =
         new(@"^\s*\$\{([^}]+)\}\s*$", RegexOptions.Compiled);
 
+    private static readonly Regex MustacheTokenPattern =
+        new(@"\{\{\s*([^}]+?)\s*\}\}", RegexOptions.Compiled);
+
     private static readonly string[] Operators = { "==", "!=", ">=", "<=", ">", "<" };
 
     private readonly VariableScope _scope;
@@ -40,6 +43,8 @@ public sealed class ExpressionEvaluator
         {
             return null;
         }
+
+        expression = NormalizeExpression(expression);
 
         var single = SingleTokenPattern.Match(expression);
         if (single.Success)
@@ -64,6 +69,8 @@ public sealed class ExpressionEvaluator
             return expression ?? "";
         }
 
+        expression = NormalizeExpression(expression);
+
         return TokenPattern.Replace(expression, m =>
         {
             var value = ResolvePath(m.Groups[1].Value.Trim());
@@ -78,6 +85,8 @@ public sealed class ExpressionEvaluator
         {
             return false;
         }
+
+        condition = NormalizeExpression(condition);
 
         // Operator precedence: split on lowest-precedence operator (== and !=).
         // For each precedence level, find the rightmost occurrence to ensure correct associativity.
@@ -135,6 +144,8 @@ public sealed class ExpressionEvaluator
             return null;
         }
 
+        raw = NormalizeExpression(raw);
+
         var single = SingleTokenPattern.Match(raw);
         if (single.Success)
         {
@@ -157,6 +168,16 @@ public sealed class ExpressionEvaluator
         }
 
         return ParseLiteral(raw);
+    }
+
+    private static string NormalizeExpression(string expression)
+    {
+        if (string.IsNullOrEmpty(expression) || !expression.Contains("{{", StringComparison.Ordinal))
+        {
+            return expression;
+        }
+
+        return MustacheTokenPattern.Replace(expression, m => "${" + m.Groups[1].Value.Trim() + "}");
     }
 
     private static object? ParseLiteral(string raw)

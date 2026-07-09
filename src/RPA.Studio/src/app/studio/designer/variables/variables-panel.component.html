@@ -30,6 +30,7 @@
           <input
             class="variables-panel__default"
             [attr.data-testid]="'variable-default-' + $index"
+            [type]="defaultInputType(variable)"
             [value]="defaultValue(variable)"
             placeholder="varsayılan"
             (input)="onDefaultChange($index, $any($event.target).value)"

@@ -9,6 +9,7 @@
     [invalid]="selectorControl.invalid && selectorControl.touched"
     [errorMessage]="'web.error.required' | translate"
     [hint]="'web.hint.selectorFormat' | translate"
+    [variables]="variables"
   ></app-expression-input>
   <app-expression-input
     inputId="web-set-text-text"
@@ -18,6 +19,7 @@
     formControlName="text"
     [invalid]="textControl.invalid && textControl.touched"
     [errorMessage]="'web.error.required' | translate"
+    [variables]="variables"
   ></app-expression-input>
   <app-expression-input
     inputId="web-set-text-wait-selector"
@@ -25,5 +27,6 @@
     [placeholder]="'web.field.selectorPlaceholder' | translate"
     [hint]="'web.hint.selectorFormat' | translate"
     formControlName="waitSelector"
+    [variables]="variables"
   ></app-expression-input>
 </form>

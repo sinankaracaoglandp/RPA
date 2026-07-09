@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { TranslatePipe } from '../../../../core/translate.pipe';
+import { WorkflowVariable } from '../../../../shared/models/workflow.model';
 import { ExpressionInputComponent } from '../expression-input.component';
 
 export interface WebWaitForSelectorProperties {
@@ -22,6 +23,7 @@ const DEFAULT_TIMEOUT_MS = 30000;
 })
 export class WebWaitForSelectorPropertyComponent implements OnChanges {
   @Input() properties: Record<string, unknown> | null | undefined;
+  @Input() variables: WorkflowVariable[] = [];
   @Output() readonly propertiesChange = new EventEmitter<WebWaitForSelectorProperties>();
 
   readonly form: FormGroup;

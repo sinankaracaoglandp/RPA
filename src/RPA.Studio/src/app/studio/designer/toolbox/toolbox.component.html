@@ -51,7 +51,6 @@
     cdkDropList
     [cdkDropListData]="filteredActivities()"
     [attr.aria-label]="'toolbox.listAriaLabel' | translate"
-    (cdkDropListDropped)="onCanvasDrop($event)"
   >
     <p *ngIf="loading()" class="toolbox__status" data-testid="toolbox-loading">
       {{ 'toolbox.loading' | translate }}
@@ -70,6 +69,7 @@
       *ngFor="let activity of filteredActivities(); trackBy: trackByActivityId"
       [activity]="activity"
       (activate)="addActivity($event)"
+      (dragEnded)="onActivityDragEnded($event)"
     ></app-activity-item>
   </div>
 </div>

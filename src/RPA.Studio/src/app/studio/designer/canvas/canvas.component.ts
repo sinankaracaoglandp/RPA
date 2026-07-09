@@ -22,6 +22,7 @@ import { AreaExtensions, AreaPlugin } from 'rete-area-plugin';
 import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-plugin';
 import { HistoryExtensions, HistoryPlugin, Presets as HistoryPresets } from 'rete-history-plugin';
 import {
+  ConnectionPort,
   NodePosition,
   WorkflowConnection,
   WorkflowNode,
@@ -30,8 +31,34 @@ import {
   emptyWorkflow,
 } from '../../../shared/models/workflow.model';
 import { TranslatePipe } from '../../../core/translate.pipe';
-import { CanvasNodeView, NodeComponent } from './node.component';
+import { CanvasNodeSelectEvent, CanvasNodeView, NodeComponent } from './node.component';
 import { ConnectionComponent } from './connection.component';
+
+const CONTROL_ACTIVITY_TO_NODE: Partial<Record<string, WorkflowNodeType>> = {
+  'Logic.Assign': 'assign',
+  'Logic.If': 'if',
+  'Logic.ForEach': 'forEach',
+  'Logic.While': 'while',
+  'Logic.TryCatch': 'tryCatch',
+  'Logic.Delay': 'delay',
+  'Logic.Log': 'log',
+  'Logic.Checkpoint': 'checkpoint',
+  'Logic.UserPrompt': 'userPrompt',
+  'Logic.Terminate': 'terminate',
+};
+
+const NODE_TYPE_TO_CONTROL_ACTIVITY: Partial<Record<WorkflowNodeType, string>> = {
+  assign: 'Logic.Assign',
+  if: 'Logic.If',
+  forEach: 'Logic.ForEach',
+  while: 'Logic.While',
+  tryCatch: 'Logic.TryCatch',
+  delay: 'Logic.Delay',
+  log: 'Logic.Log',
+  checkpoint: 'Logic.Checkpoint',
+  userPrompt: 'Logic.UserPrompt',
+  terminate: 'Logic.Terminate',
+};
 
 /** Rete node carrying the workflow-schema metadata for a single step. */
 export class FlowNode extends ClassicPreset.Node {
@@ -53,7 +80,9 @@ export class FlowNode extends ClassicPreset.Node {
     this.properties = properties;
     const socket = new ClassicPreset.Socket('flow');
     this.addInput('in', new ClassicPreset.Input(socket, 'in', true));
-    this.addOutput('out', new ClassicPreset.Output(socket, 'out', true));
+    for (const output of getOutputPorts(nodeType)) {
+      this.addOutput(output.port, new ClassicPreset.Output(socket, output.label, true));
+    }
   }
 }
 
@@ -63,6 +92,32 @@ type Schemes = GetSchemes<
 >;
 type AreaExtra = never;
 type FlowConnection = ClassicPreset.Connection<ClassicPreset.Node, ClassicPreset.Node>;
+interface CanvasClipboard {
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+}
+
+function getOutputPorts(nodeType: WorkflowNodeType): Array<{
+  port: ConnectionPort;
+  label: string;
+  tone?: 'default' | 'positive' | 'negative' | 'neutral';
+}> {
+  switch (nodeType) {
+    case 'if':
+      return [
+        { port: 'true', label: 'True', tone: 'positive' },
+        { port: 'false', label: 'False', tone: 'negative' },
+      ];
+    case 'tryCatch':
+      return [
+        { port: 'success', label: 'Try', tone: 'positive' },
+        { port: 'failure', label: 'Catch', tone: 'negative' },
+        { port: 'out', label: 'Finally', tone: 'neutral' },
+      ];
+    default:
+      return [{ port: 'out', label: 'Next', tone: 'default' }];
+  }
+}
 /** Shape of the render/mutation signals we intercept on the area pipeline. */
 interface PipeContext {
   type: string;
@@ -124,9 +179,11 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private connectionPlugin!: ConnectionPlugin<Schemes, AreaExtra>;
   private selectedNodeId: string | null = null;
+  private readonly selectedNodeIds = new Set<string>();
+  private selectedNodeOrder: string[] = [];
   private ready = false;
   private suppressEvents = false;
-  private pendingConnectionFrom: string | null = null;
+  private pendingConnectionFrom: { nodeId: string; port: ConnectionPort } | null = null;
   private pendingPath?: SVGPathElement;
   private selectedConnectionId: string | null = null;
 
@@ -139,6 +196,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   private connectionSvg?: SVGSVGElement;
   private connectionGroup?: SVGGElement;
   private loadedWorkflowKey: string | null = null;
+  private clipboard?: CanvasClipboard;
 
   private readonly appRef = inject(ApplicationRef);
   private readonly envInjector = inject(EnvironmentInjector);
@@ -198,14 +256,54 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.updatePendingPath(e.clientX, e.clientY),
     );
     container.addEventListener('pointerup', () => this.cancelConnection());
+    container.addEventListener('wheel', () => {
+      requestAnimationFrame(() => this.redrawConnections());
+    }, { passive: true });
     container.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         this.cancelConnection();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        this.copySelection();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        void this.pasteClipboard();
+      }
+    });
+    container.addEventListener('pointerdown', (e: PointerEvent) => {
+      const target = e.target as HTMLElement | SVGElement | null;
+      if (!target) {
+        return;
+      }
+
+      const clickedConnection = target.getAttribute?.('data-connection-id');
+      if (clickedConnection) {
+        return;
+      }
+
+      const clickedNode = target.closest?.('[data-node-id]');
+      if (!clickedNode) {
+        if (this.selectedConnectionId) {
+          this.selectConnection(null);
+        }
+        if (this.selectedNodeId) {
+          this.setSelected(null);
+        }
       }
     });
     // Bağlantı path'ine tıklayınca seç (event delegation — path'ler her çizimde yenilenir).
     this.connectionSvg?.addEventListener('click', (e: MouseEvent) => {
       const target = e.target as SVGElement;
+      if (target?.getAttribute?.('data-connection-delete') === 'true') {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.deleteSelectedConnection();
+        return;
+      }
       const connId = target?.getAttribute?.('data-connection-id');
       this.selectConnection(connId ?? null);
     });
@@ -230,7 +328,12 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.area.addPipe((context) => {
       const ctx = context as unknown as PipeContext;
       if (ctx.type === 'render') {
-        this.mountNode(ctx.data as { element: HTMLElement; type: string; payload: unknown });
+        const data = ctx.data as { element: HTMLElement; type: string; payload: unknown };
+        if (data?.type === 'connection') {
+          data.element.style.display = 'none';
+          return context;
+        }
+        this.mountNode(data);
       } else if (ctx.type === 'unmount') {
         this.unmountNode(ctx.data as { element: HTMLElement });
       }
@@ -248,11 +351,6 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         case 'zoomed':
           this.redrawConnections();
           break;
-        case 'nodepicked': {
-          const id = (ctx.data as { id: string } | undefined)?.id ?? null;
-          this.setSelected(id);
-          break;
-        }
       }
       return context;
     });
@@ -306,9 +404,10 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         hostElement: data.element,
       });
       ref.setInput('node', this.toView(node));
-      ref.instance.nodeSelect.subscribe((id: string) => this.select(id));
+      ref.instance.nodeSelect.subscribe((event: CanvasNodeSelectEvent) =>
+        this.select(event.nodeId, event.additive));
       ref.instance.nodeDelete.subscribe((id: string) => void this.deleteNode(id));
-      ref.instance.connectStart.subscribe((id: string) => this.beginConnection(id));
+      ref.instance.connectStart.subscribe(({ nodeId, port }) => this.beginConnection(nodeId, port as ConnectionPort));
       ref.instance.connectDrop.subscribe((id: string) => void this.completeConnection(id));
       this.appRef.attachView(ref.hostView);
       ref.changeDetectorRef.detectChanges();
@@ -334,7 +433,8 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       label: node.label,
       nodeType: node.nodeType,
       activityId: node.activityId,
-      selected: node.id === this.selectedNodeId,
+      outputs: getOutputPorts(node.nodeType),
+      selected: this.selectedNodeIds.has(node.id),
       breakpoint: this._breakpointNodeIds.has(node.id),
       current: node.id === this._currentNodeId,
     };
@@ -371,35 +471,84 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (!group) {
       return;
     }
-    const transform = this.area.area.transform;
-    group.setAttribute(
-      'transform',
-      `translate(${transform.x} ${transform.y}) scale(${transform.k})`,
-    );
+    group.removeAttribute('transform');
     group.replaceChildren();
     for (const conn of this.editor.getConnections()) {
-      const from = this.socketPosition(conn.source, 'out');
+      const from = this.socketPosition(
+        conn.source,
+        ((conn as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out'),
+      );
       const to = this.socketPosition(conn.target, 'in');
       if (!from || !to) {
         continue;
       }
+      const isSelected = conn.id === this.selectedConnectionId;
+      const d = ConnectionComponent.buildPath(from, to);
+      const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hitPath.setAttribute('d', d);
+      hitPath.setAttribute('class', 'canvas-connections__hit');
+      hitPath.setAttribute('pointer-events', 'stroke');
+      hitPath.setAttribute('data-connection-id', conn.id);
+      hitPath.setAttribute('fill', 'none');
+      hitPath.style.stroke = 'transparent';
+      hitPath.style.strokeWidth = '16px';
+      group.appendChild(hitPath);
+
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', ConnectionComponent.buildPath(from, to));
-      path.setAttribute(
-        'class',
-        conn.id === this.selectedConnectionId
-          ? 'canvas-connections__path canvas-connections__path--selected'
-          : 'canvas-connections__path',
-      );
-      path.setAttribute('pointer-events', 'stroke');
+      path.setAttribute('d', d);
+      path.setAttribute('class', isSelected ? 'canvas-connections__path canvas-connections__path--selected' : 'canvas-connections__path');
+      path.setAttribute('pointer-events', 'none');
       path.setAttribute('data-connection-id', conn.id);
       path.setAttribute('data-testid', 'canvas-connection-path');
       path.setAttribute('fill', 'none');
+      path.style.stroke = isSelected ? '#f59e0b' : '#1f6feb';
+      path.style.strokeWidth = isSelected ? '4.5px' : '2.25px';
+      path.style.filter = isSelected
+        ? 'drop-shadow(0 0 7px rgba(245, 158, 11, 0.9)) drop-shadow(0 0 14px rgba(245, 158, 11, 0.45))'
+        : 'drop-shadow(0 1px 1px rgba(31, 111, 235, 0.25))';
       group.appendChild(path);
+
+      if (isSelected) {
+        const midpoint = this.connectionMidpoint(from, to);
+        const deleteGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        deleteGroup.setAttribute('class', 'canvas-connections__delete');
+        deleteGroup.setAttribute('data-connection-id', conn.id);
+        deleteGroup.setAttribute('data-connection-delete', 'true');
+        deleteGroup.setAttribute('pointer-events', 'all');
+        deleteGroup.setAttribute('transform', `translate(${midpoint.x} ${midpoint.y})`);
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', '12');
+        circle.setAttribute('cx', '0');
+        circle.setAttribute('cy', '0');
+        circle.setAttribute('fill', '#ffffff');
+        circle.setAttribute('stroke', '#f59e0b');
+        circle.setAttribute('stroke-width', '2.5');
+        circle.setAttribute('filter', 'drop-shadow(0 2px 6px rgba(15, 23, 42, 0.22))');
+        circle.setAttribute('data-connection-id', conn.id);
+        circle.setAttribute('data-connection-delete', 'true');
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', '0');
+        text.setAttribute('y', '1');
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('font-size', '14');
+        text.setAttribute('font-weight', '700');
+        text.setAttribute('fill', '#b42318');
+        text.setAttribute('data-connection-id', conn.id);
+        text.setAttribute('data-connection-delete', 'true');
+        text.textContent = '×';
+
+        deleteGroup.appendChild(circle);
+        deleteGroup.appendChild(text);
+        group.appendChild(deleteGroup);
+      }
     }
   }
 
-  private socketPosition(nodeId: string, port: 'in' | 'out'): NodePosition | null {
+  private socketPosition(nodeId: string, port: string): NodePosition | null {
+    const containerRect = this.reteContainer.nativeElement.getBoundingClientRect();
     const view = this.area.nodeViews.get(nodeId);
     const node = this.editor.getNode(nodeId);
     if (!view || !node) {
@@ -410,11 +559,31 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     const card = this.nodeRefs
       .get(nodeId)
       ?.location.nativeElement.querySelector('[data-testid="canvas-node"]') as HTMLElement | null;
+    const socket = this.nodeRefs
+      .get(nodeId)
+      ?.location.nativeElement.querySelector(`[data-port="${port}"]`) as HTMLElement | null;
+    if (socket) {
+      const socketRect = socket.getBoundingClientRect();
+      return {
+        x: socketRect.left - containerRect.left + socketRect.width / 2,
+        y: socketRect.top - containerRect.top + socketRect.height / 2,
+      };
+    }
+
+    const cardRect = card?.getBoundingClientRect();
+    if (cardRect) {
+      return {
+        x: cardRect.left - containerRect.left + cardRect.width / 2,
+        y: cardRect.top - containerRect.top + (port === 'in' ? 0 : cardRect.height),
+      };
+    }
+
+    const transform = this.area.area.transform;
     const width = card?.offsetWidth || node.width;
     const height = card?.offsetHeight || node.height;
     return {
-      x: view.position.x + width / 2,
-      y: view.position.y + (port === 'out' ? height : 0),
+      x: transform.x + (view.position.x + width / 2) * transform.k,
+      y: transform.y + (view.position.y + (port === 'in' ? 0 : height)) * transform.k,
     };
   }
 
@@ -431,12 +600,12 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     } = {},
   ): Promise<string> {
     this.assertWritable();
-    const type = options.type ?? 'activity';
+    const type = options.type ?? (CONTROL_ACTIVITY_TO_NODE[activityId] ?? 'activity');
     const label = options.label ?? activityId;
     const node = new FlowNode(
       label,
       type,
-      type === 'activity' ? activityId : undefined,
+      activityId,
       { ...(options.properties ?? {}) },
     );
     await this.editor.addNode(node);
@@ -449,40 +618,46 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /** Connects two nodes (source out → target in). Returns the connection id. */
-  async connectNodes(fromId: string, toId: string): Promise<string | null> {
+  async connectNodes(fromId: string, toId: string, fromPort: ConnectionPort = 'out'): Promise<string | null> {
     this.assertWritable();
     const source = this.editor.getNode(fromId);
     const target = this.editor.getNode(toId);
     if (!source || !target || fromId === toId) {
       return null;
     }
-    const duplicate = this.editor
-      .getConnections()
-      .some((c) => c.source === fromId && c.target === toId);
+    if (!(fromPort in source.outputs)) {
+      return null;
+    }
+    const duplicate = this.editor.getConnections().some(
+      (c) =>
+        c.source === fromId &&
+        c.target === toId &&
+        ((c as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out') === fromPort,
+    );
     if (duplicate) {
       return null;
     }
     const connection: FlowConnection = new ClassicPreset.Connection<
       ClassicPreset.Node,
       ClassicPreset.Node
-    >(source, 'out', target, 'in');
+    >(source, fromPort, target, 'in');
     await this.editor.addConnection(connection);
     return connection.id;
   }
 
   /** Out soketinden bağlantı sürüklemesi başlatır (geçici kesikli çizgi). */
-  beginConnection(nodeId: string): void {
+  beginConnection(nodeId: string, fromPort: ConnectionPort = 'out'): void {
     if (this.readOnly) {
       return;
     }
     if (!this.editor.getNode(nodeId)) {
       return;
     }
-    this.pendingConnectionFrom = nodeId;
+    this.pendingConnectionFrom = { nodeId, port: fromPort };
     this.ensurePendingPath();
     // Basıldığı anda görsel geri bildirim: imleç henüz oynamadan soketten
     // kısa bir başlangıç çizgisi göster (pointermove gelince gerçek uca uzar).
-    const from = this.socketPosition(nodeId, 'out');
+    const from = this.socketPosition(nodeId, fromPort);
     if (from && this.pendingPath) {
       this.pendingPath.setAttribute(
         'd',
@@ -502,7 +677,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (!from) {
       return null;
     }
-    return this.connectNodes(from, targetNodeId);
+    return this.connectNodes(from.nodeId, targetNodeId, from.port);
   }
 
   /** Bekleyen bağlantı sürüklemesini iptal eder ve geçici çizgiyi kaldırır. */
@@ -513,6 +688,15 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   selectConnection(connectionId: string | null): void {
+    if (connectionId && this.selectedConnectionId === connectionId) {
+      this.selectedConnectionId = null;
+      this.redrawConnections();
+      return;
+    }
+    if (connectionId) {
+      this.setSelected(null);
+      this.reteContainer.nativeElement.focus();
+    }
     this.selectedConnectionId = connectionId;
     this.redrawConnections();
   }
@@ -538,10 +722,27 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       }
     }
     const removed = await this.editor.removeNode(nodeId);
-    if (this.selectedNodeId === nodeId) {
-      this.setSelected(null);
+    if (this.selectedNodeIds.has(nodeId)) {
+      this.selectedNodeIds.delete(nodeId);
+      this.selectedNodeOrder = this.selectedNodeOrder.filter((id) => id !== nodeId);
+      if (this.selectedNodeId === nodeId) {
+        this.selectedNodeId = this.selectedNodeIds.size === 1 ? this.selectedNodeOrder[0] ?? null : null;
+      }
+      this.refreshViews();
+      this.nodeSelect.emit(this.selectedNodeIds.size === 1 ? this.selectedNodeId : null);
     }
     return removed;
+  }
+
+  async deleteSelectedNodes(): Promise<boolean> {
+    const ids = [...this.selectedNodeIds];
+    if (ids.length === 0) {
+      return false;
+    }
+    for (const id of ids) {
+      await this.deleteNode(id);
+    }
+    return true;
   }
 
   async deleteConnection(connectionId: string): Promise<boolean> {
@@ -563,12 +764,32 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     return this.area.area.transform.k;
   }
 
+  containsClientPoint(clientX: number, clientY: number): boolean {
+    const rect = this.reteContainer.nativeElement.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  clientToCanvasPosition(clientX: number, clientY: number): NodePosition {
+    const rect = this.reteContainer.nativeElement.getBoundingClientRect();
+    const transform = this.area.area.transform;
+    return {
+      x: (clientX - rect.left - transform.x) / transform.k,
+      y: (clientY - rect.top - transform.y) / transform.k,
+    };
+  }
+
   zoomIn(): Promise<unknown> {
-    return this.setZoom(this.getZoom() * ZOOM_STEP);
+    return this.setZoom(this.getZoom() * ZOOM_STEP).then((result) => {
+      this.redrawConnections();
+      return result;
+    });
   }
 
   zoomOut(): Promise<unknown> {
-    return this.setZoom(this.getZoom() / ZOOM_STEP);
+    return this.setZoom(this.getZoom() / ZOOM_STEP).then((result) => {
+      this.redrawConnections();
+      return result;
+    });
   }
 
   setZoom(k: number): Promise<unknown> {
@@ -577,35 +798,147 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   pan(x: number, y: number): Promise<unknown> {
-    return Promise.resolve(this.area.area.translate(x, y));
+    return Promise.resolve(this.area.area.translate(x, y)).then((result) => {
+      this.redrawConnections();
+      return result;
+    });
   }
 
   async zoomToFit(): Promise<void> {
     await AreaExtensions.zoomAt(this.area, this.editor.getNodes());
+    this.redrawConnections();
   }
 
   // --- selection -----------------------------------------------------------
 
-  select(nodeId: string | null): void {
-    this.setSelected(nodeId);
+  select(nodeId: string | null, additive = false): void {
+    this.setSelected(nodeId, additive);
   }
 
-  private setSelected(nodeId: string | null): void {
-    if (this.selectedNodeId === nodeId) {
+  private setSelected(nodeId: string | null, additive = false): void {
+    if (nodeId && this.selectedConnectionId) {
+      this.selectedConnectionId = null;
+      this.redrawConnections();
+    }
+    if (!nodeId) {
+      if (this.selectedNodeIds.size === 0 && this.selectedNodeId === null) {
+        return;
+      }
+      this.selectedNodeIds.clear();
+      this.selectedNodeOrder = [];
+      this.selectedNodeId = null;
+      this.refreshViews();
+      this.nodeSelect.emit(null);
       return;
     }
+
+    if (additive) {
+      if (this.selectedNodeIds.has(nodeId)) {
+        this.selectedNodeIds.delete(nodeId);
+        this.selectedNodeOrder = this.selectedNodeOrder.filter((id) => id !== nodeId);
+        if (this.selectedNodeId === nodeId) {
+          this.selectedNodeId = this.selectedNodeIds.size === 1 ? this.selectedNodeOrder[0] ?? null : null;
+        }
+      } else {
+        this.selectedNodeIds.add(nodeId);
+        this.selectedNodeOrder.push(nodeId);
+        this.selectedNodeId = nodeId;
+      }
+      this.refreshViews();
+      this.reteContainer.nativeElement.focus();
+      this.nodeSelect.emit(this.selectedNodeIds.size === 1 ? this.selectedNodeId : null);
+      return;
+    }
+
+    if (this.selectedNodeIds.size === 1 && this.selectedNodeId === nodeId) {
+      this.selectedNodeIds.clear();
+      this.selectedNodeOrder = [];
+      this.selectedNodeId = null;
+      this.refreshViews();
+      this.nodeSelect.emit(null);
+      return;
+    }
+
+    this.selectedNodeIds.clear();
+    this.selectedNodeOrder = [];
+    this.selectedNodeIds.add(nodeId);
+    this.selectedNodeOrder.push(nodeId);
     this.selectedNodeId = nodeId;
     this.refreshViews();
+    this.reteContainer.nativeElement.focus();
     this.nodeSelect.emit(nodeId);
   }
 
   get selected(): string | null {
-    return this.selectedNodeId;
+    return this.selectedNodeIds.size === 1 ? this.selectedNodeId : null;
+  }
+
+  get selectedNodes(): string[] {
+    return [...this.selectedNodeOrder];
+  }
+
+  private copySelection(): void {
+    if (this.selectedNodeIds.size === 0) {
+      return;
+    }
+
+    const graph = this.serialize();
+    const selected = new Set(this.selectedNodeOrder);
+    this.clipboard = {
+      nodes: this.selectedNodeOrder
+        .map((id) => graph.nodes.find((node) => node.id === id))
+        .filter((node): node is WorkflowNode => !!node)
+        .map((node) => JSON.parse(JSON.stringify(node)) as WorkflowNode),
+      connections: graph.connections
+        .filter((connection) => selected.has(connection.from) && selected.has(connection.to))
+        .map((connection) => ({ ...connection })),
+    };
+  }
+
+  private async pasteClipboard(): Promise<void> {
+    if (!this.clipboard || this.clipboard.nodes.length === 0) {
+      return;
+    }
+
+    const idMap = new Map<string, string>();
+    const pastedIds: string[] = [];
+
+    for (const wfNode of this.clipboard.nodes) {
+      const activityId =
+        wfNode.type === 'activity' ? wfNode.activity : NODE_TYPE_TO_CONTROL_ACTIVITY[wfNode.type];
+      const nextId = await this.addNode(activityId ?? wfNode.type, {
+        type: wfNode.type,
+        label: (wfNode['label'] as string) ?? activityId ?? wfNode.type,
+        position: wfNode.position
+          ? { x: wfNode.position.x + 40, y: wfNode.position.y + 40 }
+          : undefined,
+        properties: this.extractNodeProperties(wfNode),
+      });
+      idMap.set(wfNode.id, nextId);
+      pastedIds.push(nextId);
+    }
+
+    for (const connection of this.clipboard.connections) {
+      const from = idMap.get(connection.from);
+      const to = idMap.get(connection.to);
+      if (from && to) {
+        await this.connectNodes(from, to, connection.fromPort ?? 'out');
+      }
+    }
+
+    this.selectedNodeIds.clear();
+    this.selectedNodeOrder = [];
+    pastedIds.forEach((id) => this.selectedNodeIds.add(id));
+    this.selectedNodeOrder.push(...pastedIds);
+    this.selectedNodeId = pastedIds.length === 1 ? pastedIds[0] : null;
+    this.refreshViews();
+    this.nodeSelect.emit(pastedIds.length === 1 ? pastedIds[0] : null);
   }
 
   /** Activity id of the given node, if any (used by the properties panel). */
   getNodeActivityId(nodeId: string): string | undefined {
-    return this.editor?.getNode(nodeId)?.activityId;
+    const node = this.editor?.getNode(nodeId);
+    return node?.activityId ?? (node ? NODE_TYPE_TO_CONTROL_ACTIVITY[node.nodeType] : undefined);
   }
 
   /** Current properties bag of the given node (used by the properties panel). */
@@ -630,22 +963,47 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     const nodes: WorkflowNode[] = this.editor.getNodes().map((node) => {
       const view = this.area.nodeViews.get(node.id);
       const wf: WorkflowNode = { id: node.id, type: node.nodeType };
-      if (node.activityId) {
+      if (node.nodeType === 'activity' && node.activityId) {
         wf.activity = node.activityId;
       }
-      if (node.properties && Object.keys(node.properties).length > 0) {
+      if (
+        (node.nodeType === 'activity' || node.nodeType === 'checkpoint') &&
+        node.properties &&
+        Object.keys(node.properties).length > 0
+      ) {
         wf.properties = node.properties;
       }
+      this.applyNodePropertiesToWorkflowNode(wf, node);
       if (view) {
         wf.position = { x: view.position.x, y: view.position.y };
       }
       return wf;
     });
-    const connections: WorkflowConnection[] = this.editor.getConnections().map((conn) => ({
-      from: conn.source,
-      to: conn.target,
-      fromPort: 'out',
-    }));
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    const connections: WorkflowConnection[] = [];
+    for (const conn of this.editor.getConnections()) {
+      const fromPort = ((conn as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out');
+      const source = nodesById.get(conn.source);
+      if (source?.type === 'tryCatch') {
+        if (fromPort === 'success') {
+          source['tryNodeId'] = conn.target;
+          continue;
+        }
+        if (fromPort === 'failure') {
+          source['catchNodeId'] = conn.target;
+          continue;
+        }
+        if (fromPort === 'out') {
+          source['finallyNodeId'] = conn.target;
+          continue;
+        }
+      }
+      connections.push({
+        from: conn.source,
+        to: conn.target,
+        fromPort,
+      });
+    }
     return { ...base, nodes, connections };
   }
 
@@ -657,11 +1015,13 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     const idMap = new Map<string, string>();
     try {
       for (const wfNode of workflow.nodes) {
+        const activityId =
+          wfNode.type === 'activity' ? wfNode.activity : NODE_TYPE_TO_CONTROL_ACTIVITY[wfNode.type];
         const node = new FlowNode(
-          (wfNode['label'] as string) ?? wfNode.activity ?? wfNode.type,
+          (wfNode['label'] as string) ?? activityId ?? wfNode.type,
           wfNode.type,
-          wfNode.activity,
-          (wfNode.properties as Record<string, unknown>) ?? {},
+          activityId,
+          this.extractNodeProperties(wfNode),
         );
         await this.editor.addNode(node);
         idMap.set(wfNode.id, node.id);
@@ -681,8 +1041,35 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
           const connection: FlowConnection = new ClassicPreset.Connection<
             ClassicPreset.Node,
             ClassicPreset.Node
-          >(source, 'out', target, 'in');
+          >(source, conn.fromPort ?? 'out', target, 'in');
           await this.editor.addConnection(connection);
+        }
+      }
+      for (const wfNode of workflow.nodes) {
+        if (wfNode.type !== 'tryCatch') {
+          continue;
+        }
+        const from = idMap.get(wfNode.id);
+        if (!from) {
+          continue;
+        }
+        if (typeof wfNode['tryNodeId'] === 'string') {
+          const to = idMap.get(wfNode['tryNodeId']);
+          if (to) {
+            await this.connectNodes(from, to, 'success');
+          }
+        }
+        if (typeof wfNode['catchNodeId'] === 'string') {
+          const to = idMap.get(wfNode['catchNodeId']);
+          if (to) {
+            await this.connectNodes(from, to, 'failure');
+          }
+        }
+        if (typeof wfNode['finallyNodeId'] === 'string') {
+          const to = idMap.get(wfNode['finallyNodeId']);
+          if (to) {
+            await this.connectNodes(from, to, 'out');
+          }
         }
       }
     } finally {
@@ -735,6 +1122,92 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     return `${workflow.id}:${workflow.version}:${nodeCount}:${connectionCount}:${JSON.stringify(workflow.nodes)}:${JSON.stringify(workflow.connections)}`;
   }
 
+  private applyNodePropertiesToWorkflowNode(target: WorkflowNode, node: FlowNode): void {
+    const props = node.properties ?? {};
+    const writable = target as Record<string, unknown>;
+    switch (node.nodeType) {
+      case 'assign':
+        writable['variableName'] = props['variableName'] as string | undefined;
+        writable['value'] = props['value'];
+        break;
+      case 'if':
+      case 'while':
+        writable['condition'] = props['condition'] as string | undefined;
+        break;
+      case 'forEach':
+        writable['items'] = props['items'] as string | undefined;
+        writable['itemVariable'] = props['itemVariable'] as string | undefined;
+        break;
+      case 'tryCatch':
+        writable['exceptionVariable'] = props['exceptionVariable'] as string | undefined;
+        break;
+      case 'delay':
+        writable['durationMs'] = props['durationMs'] as number | undefined;
+        break;
+      case 'log':
+        writable['message'] = props['message'] as string | undefined;
+        writable['level'] = props['level'] as string | undefined;
+        break;
+      case 'userPrompt':
+        writable['promptTitle'] = props['promptTitle'] as string | undefined;
+        writable['promptInputVariable'] = props['promptInputVariable'] as string | undefined;
+        writable['promptTimeoutSeconds'] = props['promptTimeoutSeconds'] as number | undefined;
+        break;
+      case 'terminate':
+        writable['message'] = props['message'] as string | undefined;
+        writable['exceptionType'] = props['exceptionType'] as string | undefined;
+        break;
+    }
+  }
+
+  private extractNodeProperties(node: WorkflowNode): Record<string, unknown> {
+    switch (node.type) {
+      case 'assign':
+        return {
+          ...(typeof node['variableName'] === 'string' ? { variableName: node['variableName'] } : {}),
+          ...(node['value'] !== undefined ? { value: node['value'] } : {}),
+        };
+      case 'if':
+      case 'while':
+        return typeof node['condition'] === 'string' ? { condition: node['condition'] } : {};
+      case 'forEach':
+        return {
+          ...(typeof node['items'] === 'string' ? { items: node['items'] } : {}),
+          ...(typeof node['itemVariable'] === 'string' ? { itemVariable: node['itemVariable'] } : {}),
+        };
+      case 'tryCatch':
+        return typeof node['exceptionVariable'] === 'string'
+          ? { exceptionVariable: node['exceptionVariable'] }
+          : {};
+      case 'delay':
+        return node['durationMs'] !== undefined ? { durationMs: node['durationMs'] } : {};
+      case 'log':
+        return {
+          ...(typeof node['message'] === 'string' ? { message: node['message'] } : {}),
+          ...(typeof node['level'] === 'string' ? { level: node['level'] } : {}),
+        };
+      case 'checkpoint':
+        return (node.properties as Record<string, unknown>) ?? {};
+      case 'userPrompt':
+        return {
+          ...(typeof node['promptTitle'] === 'string' ? { promptTitle: node['promptTitle'] } : {}),
+          ...(typeof node['promptInputVariable'] === 'string'
+            ? { promptInputVariable: node['promptInputVariable'] }
+            : {}),
+          ...(node['promptTimeoutSeconds'] !== undefined
+            ? { promptTimeoutSeconds: node['promptTimeoutSeconds'] }
+            : {}),
+        };
+      case 'terminate':
+        return {
+          ...(typeof node['message'] === 'string' ? { message: node['message'] } : {}),
+          ...(typeof node['exceptionType'] === 'string' ? { exceptionType: node['exceptionType'] } : {}),
+        };
+      default:
+        return (node.properties as Record<string, unknown>) ?? {};
+    }
+  }
+
   private assertWritable(): void {
     if (this.readOnly) {
       throw new Error('Canvas is read-only');
@@ -766,24 +1239,44 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (!this.pendingConnectionFrom || !this.pendingPath) {
       return;
     }
-    const from = this.socketPosition(this.pendingConnectionFrom, 'out');
+    const from = this.socketPosition(this.pendingConnectionFrom.nodeId, this.pendingConnectionFrom.port);
     if (!from) {
       return;
     }
     const rect = this.reteContainer.nativeElement.getBoundingClientRect();
-    const t = this.area.area.transform;
     const to: NodePosition = {
-      x: (clientX - rect.left - t.x) / t.k,
-      y: (clientY - rect.top - t.y) / t.k,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     };
     this.pendingPath.setAttribute('d', ConnectionComponent.buildPath(from, to));
+  }
+
+  private connectionMidpoint(start: NodePosition, end: NodePosition): NodePosition {
+    const dy = Math.max(Math.abs(end.y - start.y) / 2, 20);
+    const c1 = { x: start.x, y: start.y + dy };
+    const c2 = { x: end.x, y: end.y - dy };
+    const t = 0.5;
+    const mt = 1 - t;
+
+    return {
+      x:
+        (mt ** 3) * start.x +
+        3 * (mt ** 2) * t * c1.x +
+        3 * mt * (t ** 2) * c2.x +
+        (t ** 3) * end.x,
+      y:
+        (mt ** 3) * start.y +
+        3 * (mt ** 2) * t * c1.y +
+        3 * mt * (t ** 2) * c2.y +
+        (t ** 3) * end.y,
+    };
   }
 
   onDeleteKey(): void {
     if (this.selectedConnectionId) {
       void this.deleteSelectedConnection();
-    } else if (this.selectedNodeId) {
-      void this.deleteNode(this.selectedNodeId);
+    } else if (this.selectedNodeIds.size > 0) {
+      void this.deleteSelectedNodes();
     }
   }
 }

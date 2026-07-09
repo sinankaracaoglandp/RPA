@@ -1,49 +1,65 @@
 .canvas-node {
   position: relative;
-  min-width: 160px;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  min-width: 184px;
+  max-width: 240px;
+  padding: 0.68rem 0.78rem 0.78rem;
+  border: 1px solid #c7d1df;
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 10px 24px rgba(22, 32, 51, 0.12);
   cursor: pointer;
   user-select: none;
   transition:
     border-color 0.12s ease,
-    box-shadow 0.12s ease;
+    box-shadow 0.12s ease,
+    transform 0.12s ease;
 
   &:hover {
-    border-color: #94a3b8;
+    border-color: #8ea4c0;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.95) inset,
+      0 14px 30px rgba(22, 32, 51, 0.16);
+    transform: translateY(-1px);
   }
 
   &--breakpoint {
-    border-color: #dc2626;
+    border-color: #d92d20;
   }
 
   &--current {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4);
+    border-color: #c47a10;
+    box-shadow:
+      0 0 0 3px rgba(196, 122, 16, 0.22),
+      0 14px 30px rgba(22, 32, 51, 0.15);
   }
 
   &__breakpoint {
     position: absolute;
-    top: 0.4rem;
+    top: 0.48rem;
     left: -0.35rem;
     width: 0.7rem;
     height: 0.7rem;
     border-radius: 50%;
-    background: #dc2626;
-    box-shadow: 0 0 0 2px #ffffff;
+    background: #d92d20;
+    box-shadow: 0 0 0 3px #ffffff;
   }
 
   &:focus-visible {
-    outline: 2px solid #2563eb;
+    outline: 2px solid #1f6feb;
     outline-offset: 2px;
   }
 
-  &--selected {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+  &--selected,
+  &--selected:hover {
+    border-color: #0f5bd8;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.95),
+      0 0 0 6px rgba(15, 91, 216, 0.28),
+      0 0 18px rgba(15, 91, 216, 0.24),
+      0 16px 34px rgba(22, 32, 51, 0.18);
   }
 
   &__header {
@@ -53,15 +69,24 @@
   }
 
   &__icon {
-    font-size: 0.9rem;
-    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.4rem;
+    background: #edf3ff;
+    color: #1f6feb;
+    font-size: 0.82rem;
+    font-weight: 800;
   }
 
   &__title {
     flex: 1 1 auto;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #0f172a;
+    font-size: 0.86rem;
+    font-weight: 750;
+    color: #162033;
+    letter-spacing: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -71,7 +96,7 @@
     flex: 0 0 auto;
     border: none;
     background: transparent;
-    color: #94a3b8;
+    color: #8a98aa;
     cursor: pointer;
     font-size: 0.75rem;
     line-height: 1;
@@ -79,29 +104,69 @@
     border-radius: 0.25rem;
 
     &:hover {
-      color: #dc2626;
-      background: #fee2e2;
+      color: #b42318;
+      background: #fee4e2;
     }
   }
 
   &__subtitle {
-    margin: 0.25rem 0 0;
-    font-size: 0.7rem;
-    color: #64748b;
+    margin: 0.35rem 0 0;
+    padding-left: 1.85rem;
+    font-size: 0.69rem;
+    color: #667085;
+    font-family:
+      "Cascadia Code",
+      "SFMono-Regular",
+      Consolas,
+      monospace;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
+  &__outputs {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+    padding-left: 1.4rem;
+  }
+
+  &__outputs--stacked {
+    justify-content: space-between;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  &__output {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.28rem;
+  }
+
+  &__output--stacked {
+    flex: 1 1 0;
+  }
+
+  &__output-label {
+    color: #667085;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
   &__socket {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 12px;
-    height: 12px;
+    position: relative;
+    width: 13px;
+    height: 13px;
     border-radius: 9999px;
-    background: #2563eb;
+    background: #1f6feb;
     border: 2px solid #ffffff;
+    box-shadow:
+      0 0 0 1px rgba(31, 111, 235, 0.4),
+      0 4px 10px rgba(31, 111, 235, 0.25);
     cursor: crosshair;
 
     // Görünmez genişletilmiş tutma alanı: 12px'lik nokta elle hedeflenemeyecek
@@ -114,15 +179,63 @@
     }
 
     &:hover {
-      transform: translateX(-50%) scale(1.4);
+      transform: scale(1.4);
+      background: #0f5bd8;
     }
 
     &--in {
-      top: -6px;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: -6.5px;
     }
 
     &--out {
-      bottom: -6px;
+      position: relative;
     }
+
+    &--positive {
+      background: #12805c;
+      box-shadow:
+        0 0 0 1px rgba(18, 128, 92, 0.4),
+        0 4px 10px rgba(18, 128, 92, 0.24);
+    }
+
+    &--negative {
+      background: #d92d20;
+      box-shadow:
+        0 0 0 1px rgba(217, 45, 32, 0.35),
+        0 4px 10px rgba(217, 45, 32, 0.2);
+    }
+
+    &--neutral {
+      background: #526173;
+      box-shadow:
+        0 0 0 1px rgba(82, 97, 115, 0.35),
+        0 4px 10px rgba(82, 97, 115, 0.2);
+    }
+  }
+
+  &--branch {
+    min-width: 214px;
+    padding-bottom: 0.92rem;
+  }
+
+  &--if {
+    background: linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%);
+  }
+
+  &--if .canvas-node__icon {
+    background: #edf3ff;
+    color: #1f6feb;
+  }
+
+  &--try-catch {
+    min-width: 228px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+  }
+
+  &--loop {
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
   }
 }

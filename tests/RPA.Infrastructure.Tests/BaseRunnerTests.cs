@@ -468,6 +468,43 @@ public class BaseRunnerTests
         Assert.Equal("islenmis-veri", result.Outputs["final"]);
     }
 
+    [Fact]
+    public async Task ActivityProperty_UsesDeclaredVariableDefault_WithMustacheSyntax()
+    {
+        var json = """
+        {
+          "schemaVersion": "1.0",
+          "id": "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1",
+          "name": "Degiskenli Aktivite",
+          "version": "1.0.0",
+          "variables": [ { "name": "siteUrl", "type": "string", "default": "example.com" } ],
+          "arguments": { "out": [ { "name": "captured", "type": "string" } ] },
+          "nodes": [
+            { "id": "n1", "type": "activity", "activity": "Test.CaptureUrl",
+              "properties": { "url": "{{siteUrl}}" } }
+          ],
+          "connections": []
+        }
+        """;
+
+        var factory = new MapFactory().Add(
+            "Test.CaptureUrl",
+            () => new FakeActivity("Test.CaptureUrl", ctx =>
+            {
+                var url = ctx.GetVariable<string>("url");
+                return Task.FromResult(new Dictionary<string, object?> { ["captured"] = url });
+            }));
+
+        var runner = CreateRunner(
+            catalog: new Dictionary<string, ActivityMetadata> { ["Test.CaptureUrl"] = Meta("Test.CaptureUrl") },
+            factory: factory);
+
+        var result = await runner.ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.True(result.Success, result.Exception?.Message);
+        Assert.Equal("example.com", result.Outputs["captured"]);
+    }
+
     // ---------------------------------------------------------------- birim testler
 
     [Fact]
@@ -508,6 +545,9 @@ public class BaseRunnerTests
         Assert.True(eval.EvaluateCondition("${a} == 10"));
         Assert.Equal("Merhaba Ada", eval.EvaluateString("Merhaba ${name}"));
         Assert.Equal(10L, eval.EvaluateValue("${a}"));
+        Assert.True(eval.EvaluateCondition("{{a}} > {{b}}"));
+        Assert.Equal("Merhaba Ada", eval.EvaluateString("Merhaba {{name}}"));
+        Assert.Equal(10L, eval.EvaluateValue("{{a}}"));
     }
 
     [Fact]

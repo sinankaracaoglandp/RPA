@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
-import { CdkDrag, CdkDragStart } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragEnd, CdkDragStart } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../core/translate.pipe';
 import { ActivityMetadata } from '../../../shared/models/activity.model';
 
@@ -34,6 +34,7 @@ export class ActivityItemComponent {
 
   @Output() readonly activate = new EventEmitter<string>();
   @Output() readonly dragStarted = new EventEmitter<string>();
+  @Output() readonly dragEnded = new EventEmitter<{ activityId: string; clientX: number; clientY: number }>();
 
   get icon(): string {
     return this.activity.icon ?? CATEGORY_ICONS[this.activity.category ?? ''] ?? DEFAULT_ICON;
@@ -45,6 +46,14 @@ export class ActivityItemComponent {
 
   onDragStarted(_event: CdkDragStart): void {
     this.dragStarted.emit(this.activity.activityId);
+  }
+
+  onDragEnded(event: CdkDragEnd): void {
+    this.dragEnded.emit({
+      activityId: this.activity.activityId,
+      clientX: event.dropPoint.x,
+      clientY: event.dropPoint.y,
+    });
   }
 
   onKeydown(event: KeyboardEvent): void {

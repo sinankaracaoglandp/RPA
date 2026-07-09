@@ -126,6 +126,7 @@ public class ActivityParameter
     public object? DefaultValue { get; set; }
     public string? Description { get; set; }
     public string? PickerKind { get; set; }
+    public List<string>? Options { get; set; }
 }
 
 public class ExceptionClassificationRule

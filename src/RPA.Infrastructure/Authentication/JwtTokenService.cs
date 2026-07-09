@@ -13,6 +13,8 @@ using RPA.Domain.Interfaces;
 /// </summary>
 public class JwtTokenService : ITokenService
 {
+    private const string TokenUseClaim = "token_use";
+    private const string RefreshTokenUse = "refresh";
     private readonly JwtOptions _options;
 
     public JwtTokenService(IOptions<AuthenticationOptions> options)
@@ -20,25 +22,79 @@ public class JwtTokenService : ITokenService
         _options = options.Value.Jwt;
     }
 
-    public string GenerateToken(string username, IEnumerable<string> roles)
+    public AuthTokenPair GenerateTokenPair(string username, IEnumerable<string> roles)
     {
-        if (string.IsNullOrWhiteSpace(_options.Secret) ||
-            Encoding.UTF8.GetByteCount(_options.Secret) < 32)
+        var roleList = roles
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var now = DateTime.UtcNow;
+        var accessExpiresAt = now.AddMinutes(_options.ExpirationMinutes);
+
+        return new AuthTokenPair
         {
-            throw new InvalidOperationException(
-                "JWT secret yapılandırılmamış veya 32 byte'tan kısa.");
+            AccessToken = WriteToken(username, roleList, accessExpiresAt, tokenUse: "access"),
+            RefreshToken = WriteToken(username, roleList, now.AddDays(_options.RefreshExpirationDays), tokenUse: RefreshTokenUse),
+            AccessTokenExpiresAtUtc = accessExpiresAt,
+        };
+    }
+
+    public RefreshTokenValidationResult ValidateRefreshToken(string refreshToken)
+    {
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return RefreshTokenValidationResult.Fail("Refresh token boş olamaz.");
         }
 
-        // HIGH FIX: Use PBKDF2 for proper key derivation instead of raw UTF-8 bytes.
-        // This ensures low-entropy passphrases are strengthened via key derivation.
-        var derivedKey = DeriveKeyFromSecret(_options.Secret);
-        var key = new SymmetricSecurityKey(derivedKey);
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var principal = handler.ValidateToken(refreshToken, BuildValidationParameters(), out var validatedToken);
+            if (validatedToken is not JwtSecurityToken jwt)
+            {
+                return RefreshTokenValidationResult.Fail("Refresh token biçimi geçersiz.");
+            }
+
+            var tokenUse = principal.Claims.FirstOrDefault(c => c.Type == TokenUseClaim)?.Value;
+            if (!string.Equals(tokenUse, RefreshTokenUse, StringComparison.Ordinal))
+            {
+                return RefreshTokenValidationResult.Fail("Refresh token türü geçersiz.");
+            }
+
+            var username = principal.Identity?.Name
+                ?? principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                return RefreshTokenValidationResult.Fail("Refresh token kullanıcı bilgisi içermiyor.");
+            }
+
+            var roles = principal.Claims
+                .Where(c => c.Type == ClaimTypes.Role || c.Type == "role")
+                .Select(c => c.Value)
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return RefreshTokenValidationResult.Ok(username, roles);
+        }
+        catch
+        {
+            return RefreshTokenValidationResult.Fail("Refresh token geçersiz veya süresi dolmuş.");
+        }
+    }
+
+    private string WriteToken(string username, IEnumerable<string> roles, DateTime expiresAtUtc, string tokenUse)
+    {
+        var key = new SymmetricSecurityKey(DeriveSigningKey());
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, username),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(TokenUseClaim, tokenUse),
         };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
@@ -47,10 +103,37 @@ public class JwtTokenService : ITokenService
             audience: _options.Audience,
             claims: claims,
             notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddMinutes(_options.ExpirationMinutes),
+            expires: expiresAtUtc,
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private TokenValidationParameters BuildValidationParameters() =>
+        new()
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = _options.Issuer,
+            ValidAudience = _options.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(DeriveSigningKey()),
+            ClockSkew = TimeSpan.FromMinutes(1),
+            NameClaimType = JwtRegisteredClaimNames.Sub,
+            RoleClaimType = ClaimTypes.Role,
+        };
+
+    private byte[] DeriveSigningKey()
+    {
+        if (string.IsNullOrWhiteSpace(_options.Secret) ||
+            Encoding.UTF8.GetByteCount(_options.Secret) < 32)
+        {
+            throw new InvalidOperationException(
+                "JWT secret yapılandırılmamış veya 32 byte'tan kısa.");
+        }
+
+        return DeriveKeyFromSecret(_options.Secret);
     }
 
     /// <summary>

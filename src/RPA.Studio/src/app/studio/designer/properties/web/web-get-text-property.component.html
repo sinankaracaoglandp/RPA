@@ -9,6 +9,7 @@
     [invalid]="selectorControl.invalid && selectorControl.touched"
     [errorMessage]="'web.error.required' | translate"
     [hint]="'web.hint.selectorFormat' | translate"
+    [variables]="variables"
   ></app-expression-input>
   <app-expression-input
     inputId="web-get-text-wait-selector"
@@ -16,6 +17,7 @@
     [placeholder]="'web.field.selectorPlaceholder' | translate"
     [hint]="'web.hint.selectorFormat' | translate"
     formControlName="waitSelector"
+    [variables]="variables"
   ></app-expression-input>
   <div class="web-property__field">
     <label for="web-get-text-output-variable">

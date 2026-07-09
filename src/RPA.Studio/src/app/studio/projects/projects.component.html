@@ -1,69 +1,128 @@
-<div class="projects p-6">
-  <h1 class="text-xl font-semibold">{{ 'projects.title' | translate }}</h1>
+<section class="projects">
+  <header class="projects__hero">
+    <div class="projects__hero-copy">
+      <p class="projects__eyebrow">Studio</p>
+      <h1>{{ 'projects.title' | translate }}</h1>
+      <p class="projects__lead">Projeleri seç, workflow'ları yönet, gerekirse yeni akış aç.</p>
+    </div>
+    <button type="button" class="projects__home" data-testid="projects-back-home" (click)="backToHome()">
+      Ana sayfa
+    </button>
+
+    <div class="projects__create">
+      <label class="projects__label" for="new-project-name">{{ 'projects.newProject' | translate }}</label>
+      <div class="projects__create-row">
+        <input
+          id="new-project-name"
+          type="text"
+          data-testid="new-project-name"
+          [ngModel]="newProjectName()"
+          (ngModelChange)="newProjectName.set($event)"
+          [placeholder]="'projects.newProjectPlaceholder' | translate"
+        />
+        <button type="button" data-testid="create-project" (click)="createProject()">
+          {{ 'projects.newProject' | translate }}
+        </button>
+      </div>
+    </div>
+  </header>
 
   @if (error()) {
-    <p class="projects__error text-red-600" data-testid="projects-error">
+    <p class="projects__error" data-testid="projects-error">
       {{ error()! | translate }}
     </p>
   }
 
-  <div class="projects__create mt-4 flex gap-2">
-    <input
-      type="text"
-      data-testid="new-project-name"
-      [ngModel]="newProjectName()"
-      (ngModelChange)="newProjectName.set($event)"
-      [placeholder]="'projects.newProjectPlaceholder' | translate"
-    />
-    <button type="button" data-testid="create-project" (click)="createProject()">
-      {{ 'projects.newProject' | translate }}
-    </button>
-  </div>
-
-  <div class="projects__cards mt-6 grid grid-cols-3 gap-4">
-    @for (project of projects(); track project.id) {
-      <button
-        type="button"
-        class="projects__card rounded border p-4 text-left"
-        data-testid="project-card"
-        (click)="openProject(project.id)"
-      >
-        <h2 class="font-medium">{{ project.name }}</h2>
-        @if (project.description) {
-          <p class="text-sm opacity-70">{{ project.description }}</p>
-        }
-        <p class="text-sm">
-          {{ project.workflowCount }} {{ 'projects.workflowCount' | translate }}
-        </p>
-      </button>
-    }
-  </div>
-
-  @if (selectedProjectId()) {
-    <div class="projects__workflows mt-8">
-      <h2 class="font-medium">{{ 'projects.workflows' | translate }}</h2>
-      <div class="mt-2 flex gap-2">
-        <input
-          type="text"
-          data-testid="new-workflow-name"
-          [ngModel]="newWorkflowName()"
-          (ngModelChange)="newWorkflowName.set($event)"
-          [placeholder]="'projects.newWorkflowPlaceholder' | translate"
-        />
-        <button type="button" data-testid="create-workflow" (click)="createWorkflow()">
-          {{ 'projects.newWorkflow' | translate }}
-        </button>
+  <div class="projects__layout">
+    <section class="projects__panel">
+      <div class="projects__panel-header">
+        <div>
+          <h2>Projeler</h2>
+          <p>{{ projects().length }} proje</p>
+        </div>
       </div>
-      <ul class="mt-4">
-        @for (wf of workflows(); track wf.id) {
-          <li class="flex items-center justify-between border-b py-2" data-testid="workflow-row">
-            <span>{{ wf.name }}</span>
-            <button type="button" data-testid="open-workflow" (click)="openWorkflow(wf.id)">
-              {{ 'projects.open' | translate }}
+
+      @if (projects().length === 0) {
+        <div class="projects__empty">Henüz proje yok. İlk projeyi sağ üstten oluştur.</div>
+      } @else {
+        <div class="projects__cards">
+          @for (project of projects(); track project.id) {
+            <button
+              type="button"
+              class="projects__card"
+              [class.projects__card--active]="selectedProjectId() === project.id"
+              data-testid="project-card"
+              (click)="openProject(project.id)"
+            >
+              <div class="projects__card-top">
+                <h3>{{ project.name }}</h3>
+                <span class="projects__badge">{{ project.workflowCount }}</span>
+              </div>
+              @if (project.description) {
+                <p class="projects__description">{{ project.description }}</p>
+              } @else {
+                <p class="projects__description projects__description--empty">Açıklama yok.</p>
+              }
             </button>
-          </li>
+          }
+        </div>
+      }
+    </section>
+
+    <section class="projects__panel projects__panel--workflow">
+      <div class="projects__panel-header">
+        <div>
+          <h2>Workflow'lar</h2>
+          <p>
+            @if (selectedProject) {
+              {{ selectedProject.name }}
+            } @else {
+              Bir proje seç
+            }
+          </p>
+        </div>
+      </div>
+
+      @if (selectedProjectId()) {
+        <div class="projects__create projects__create--workflow">
+          <label class="projects__label" for="new-workflow-name">{{ 'projects.newWorkflow' | translate }}</label>
+          <div class="projects__create-row">
+            <input
+              id="new-workflow-name"
+              type="text"
+              data-testid="new-workflow-name"
+              [ngModel]="newWorkflowName()"
+              (ngModelChange)="newWorkflowName.set($event)"
+              [placeholder]="'projects.newWorkflowPlaceholder' | translate"
+            />
+            <button type="button" data-testid="create-workflow" (click)="createWorkflow()">
+              {{ 'projects.newWorkflow' | translate }}
+            </button>
+          </div>
+        </div>
+
+        @if (workflows().length === 0) {
+          <div class="projects__empty">Bu proje için workflow yok.</div>
+        } @else {
+          <ul class="projects__workflow-list">
+            @for (wf of workflows(); track wf.id) {
+              <li class="projects__workflow-row" data-testid="workflow-row">
+                <div class="projects__workflow-main">
+                  <span class="projects__workflow-name">{{ wf.name }}</span>
+                  @if (wf.updatedAt) {
+                    <span class="projects__workflow-meta">{{ wf.updatedAt }}</span>
+                  }
+                </div>
+                <button type="button" data-testid="open-workflow" (click)="openWorkflow(wf.id)">
+                  {{ 'projects.open' | translate }}
+                </button>
+              </li>
+            }
+          </ul>
         }
-      </ul>
-    </div>
-  }
-</div>
+      } @else {
+        <div class="projects__empty">Workflow listesini görmek için soldan bir proje seç.</div>
+      }
+    </section>
+  </div>
+</section>
