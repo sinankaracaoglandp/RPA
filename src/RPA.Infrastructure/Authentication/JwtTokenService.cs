@@ -40,6 +40,20 @@ public class JwtTokenService : ITokenService
         };
     }
 
+    public string GenerateToken(string username, IEnumerable<string> roles)
+    {
+        var roleList = roles
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return WriteToken(
+            username,
+            roleList,
+            DateTime.UtcNow.AddMinutes(_options.ExpirationMinutes),
+            tokenUse: "access");
+    }
+
     public RefreshTokenValidationResult ValidateRefreshToken(string refreshToken)
     {
         if (string.IsNullOrWhiteSpace(refreshToken))

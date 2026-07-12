@@ -37,7 +37,14 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // AD/LDAP + JWT kimlik doğrulama servisleri (Spec Bölüm 10).
-builder.Services.AddRpaAuthentication(builder.Configuration);
+// Debug + Development'ta gerçek AD'ye bind atılmaz (DevFakeLdapConnector) — hatalı giriş
+// denemelerinin domain hesabını kilitlemesini önler. Release/production'da gerçek LDAP kullanılır.
+#if DEBUG
+var useFakeLdap = builder.Environment.IsDevelopment();
+#else
+var useFakeLdap = false;
+#endif
+builder.Services.AddRpaAuthentication(builder.Configuration, useFakeLdap);
 
 // Credential Vault (HashiCorp / DPAPI) — Spec Bölüm 5.5, 10.
 builder.Services.AddVaultServices(builder.Configuration);
@@ -136,7 +143,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     context.Token = accessToken;
                 }
                 return Task.CompletedTask;
-            }
+            },
+            OnTokenValidated = context =>
+            {
+                var tokenUse = context.Principal?.Claims.FirstOrDefault(c => c.Type == "token_use")?.Value;
+                if (!string.Equals(tokenUse, "access", StringComparison.Ordinal))
+                {
+                    context.Fail("Only access tokens are accepted for bearer authentication.");
+                }
+
+                return Task.CompletedTask;
+            },
         };
     });
 

@@ -1,5 +1,6 @@
 import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
 
 /**
@@ -8,14 +9,29 @@ import { AuthService } from './auth.service';
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const token = authService.getToken();
+  const isAuthEndpoint = req.url.includes('/api/auth/login') || req.url.includes('/api/auth/refresh');
 
-  if (!token) {
-    return next(req);
-  }
-
-  const cloned = req.clone({
+  const authorizedReq = token && !isAuthEndpoint ? req.clone({
     setHeaders: { Authorization: `Bearer ${token}` },
-  });
+  }) : req;
 
-  return next(cloned);
+  return next(authorizedReq).pipe(
+    catchError((error) => {
+      if (isAuthEndpoint || error?.status !== 401 || !authService.getRefreshToken()) {
+        return throwError(() => error);
+      }
+
+      return authService.refreshToken().pipe(
+        switchMap((response) =>
+          next(req.clone({
+            setHeaders: { Authorization: `Bearer ${response.token}` },
+          })),
+        ),
+        catchError((refreshError) => {
+          authService.logout();
+          return throwError(() => refreshError);
+        }),
+      );
+    }),
+  );
 };

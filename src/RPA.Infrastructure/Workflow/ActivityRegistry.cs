@@ -22,6 +22,8 @@ public static class ActivityRegistry
     public const string CatEmail = "E-posta";
     public const string CatOtp = "OTP";
     public const string CatFile = "Dosya";
+    public const string CatDesktop = "Masaüstü";
+    public const string CatCode = "Kod & Veri";
 
     /// <summary>Tüm MVP aktivitelerini kaydeder ve immutable katalog döndürür.</summary>
     public static IReadOnlyDictionary<string, ActivityMetadata> BuildCatalog()
@@ -37,6 +39,8 @@ public static class ActivityRegistry
         RegisterEmail(b);
         RegisterOtp(b);
         RegisterFile(b);
+        RegisterDesktop(b);
+        RegisterCode(b);
 
         return b.Build();
     }
@@ -182,7 +186,7 @@ public static class ActivityRegistry
 
         b.Activity("Web.Click").DisplayName("Web Tıkla").Category(CatWeb).Capability(cap)
             .Description("Selector ile elemente tiklar veya hover yapar; acilir menu icin sonraki selector'u bekleyebilir.")
-            .Input("selector", "string")
+            .Input("selector", "string", pickerKind: "web")
             .Input("action", "string", required: false, defaultValue: "click")
             .Input("waitSelector", "string", required: false)
             .Input("timeoutMs", "int", required: false, defaultValue: 30000)
@@ -190,30 +194,30 @@ public static class ActivityRegistry
 
         b.Activity("Web.Fill").DisplayName("Web Alan Doldur").Category(CatWeb).Capability(cap)
             .Description("Bir input alanını doldurur.")
-            .Input("selector", "string").Input("value", "string");
+            .Input("selector", "string", pickerKind: "web").Input("value", "string");
 
         b.Activity("Web.GetText").DisplayName("Web Metin Oku").Category(CatWeb).Capability(cap)
             .Description("Elementin metnini okur.")
-            .Input("selector", "string")
+            .Input("selector", "string", pickerKind: "web")
             .Input("outputVariable", "string", required: false)
             .Output("text", "string");
 
         b.Activity("Web.WaitFor").DisplayName("Web Bekle").Category(CatWeb).Capability(cap)
             .Description("Bir elementin görünmesini/durumunu bekler.")
-            .Input("selector", "string").Input("timeoutMs", "int", required: false, defaultValue: 30000)
+            .Input("selector", "string", pickerKind: "web").Input("timeoutMs", "int", required: false, defaultValue: 30000)
             .ExceptionClassification("Timeout", ExceptionType.System);
 
         b.Activity("Web.Download").DisplayName("Web İndir").Category(CatWeb).Capability(cap)
             .Description("Tetiklenen indirmeyi kaydeder.")
-            .Input("selector", "string").Input("targetPath", "string").Output("path", "string");
+            .Input("selector", "string", pickerKind: "web").Input("targetPath", "string").Output("path", "string");
 
         b.Activity("Web.Upload").DisplayName("Web Yükle").Category(CatWeb).Capability(cap)
             .Description("Dosya input'una dosya yükler.")
-            .Input("selector", "string").Input("filePath", "string");
+            .Input("selector", "string", pickerKind: "web").Input("filePath", "string");
 
         b.Activity("Web.Screenshot").DisplayName("Web Ekran Görüntüsü").Category(CatWeb).Capability(cap)
             .Description("Sayfa/element görüntüsü alır.")
-            .Input("selector", "string", required: false)
+            .Input("selector", "string", required: false, pickerKind: "web")
             .Input("path", "string")
             .Output("path", "string");
 
@@ -336,5 +340,71 @@ public static class ActivityRegistry
         b.Activity("File.Unzip").DisplayName("Aç (Unzip)").Category(CatFile).Capability(cap)
             .Description("Zip arşivini hedef klasöre açar.")
             .Input("zipPath", "string").Input("targetFolder", "string").Output("files", "JSON");
+    }
+
+    // ---- Windows Masaüstü (Desktop.*, UIA/FlaUI) — Spec Bölüm 5, Paket E ----
+    private static void RegisterDesktop(ActivityCatalogBuilder b)
+    {
+        const string cap = "desktop";
+
+        b.Activity("Desktop.Attach").DisplayName("Uygulamaya Bağlan").Category(CatDesktop).Capability(cap)
+            .Description("Çalışan bir Windows uygulamasının penceresine bağlanır.")
+            .Input("processName", "string", required: false, description: "Süreç adı (örn. notepad).")
+            .Input("windowTitle", "string", required: false, description: "Pencere başlığı (regex).")
+            .Output("windowHandle", "string");
+
+        b.Activity("Desktop.Launch").DisplayName("Uygulama Başlat").Category(CatDesktop).Capability(cap)
+            .Description("Bir uygulamayı başlatır ve penceresine bağlanır.")
+            .Input("path", "string").Input("arguments", "string", required: false)
+            .Input("waitForIdle", "bool", required: false, defaultValue: true)
+            .Output("windowHandle", "string");
+
+        b.Activity("Desktop.Click").DisplayName("Masaüstü Tıkla").Category(CatDesktop).Capability(cap)
+            .Description("Bir elemente tıklar (buton, menü).")
+            .Input("selector", "string", pickerKind: "desktop")
+            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" });
+
+        b.Activity("Desktop.SetText").DisplayName("Masaüstü Metin Yaz").Category(CatDesktop).Capability(cap)
+            .Description("Bir alana (textbox) metin yazar.")
+            .Input("selector", "string", pickerKind: "desktop").Input("text", "string", required: false);
+
+        b.Activity("Desktop.GetText").DisplayName("Masaüstü Metin Oku").Category(CatDesktop).Capability(cap)
+            .Description("Bir elementin metnini okur.")
+            .Input("selector", "string", pickerKind: "desktop").Output("text", "string");
+
+        b.Activity("Desktop.SelectItem").DisplayName("Masaüstü Öğe Seç").Category(CatDesktop).Capability(cap)
+            .Description("Combobox / liste / menüde bir öğe seçer.")
+            .Input("selector", "string", pickerKind: "desktop").Input("item", "string");
+
+        b.Activity("Desktop.SendKeys").DisplayName("Masaüstü Tuş Gönder").Category(CatDesktop).Capability(cap)
+            .Description("Klavye tuşları gönderir. Selector boşsa aktif odağa.")
+            .Input("selector", "string", required: false, pickerKind: "desktop").Input("keys", "string");
+
+        b.Activity("Desktop.WaitFor").DisplayName("Masaüstü Bekle").Category(CatDesktop).Capability(cap)
+            .Description("Bir element görünür/etkin olana kadar bekler (timeout → System).")
+            .Input("selector", "string", pickerKind: "desktop")
+            .Input("timeoutMs", "int", required: false, defaultValue: 10000)
+            .ExceptionClassification("Timeout", ExceptionType.System);
+
+        b.Activity("Desktop.Screenshot").DisplayName("Masaüstü Ekran Görüntüsü").Category(CatDesktop).Capability(cap)
+            .Description("Ekran görüntüsü alır; selector doluysa yalnız o element.")
+            .Input("selector", "string", required: false, pickerKind: "desktop").Output("path", "string");
+    }
+
+    // ---- Kod & Veri ----
+    private static void RegisterCode(ActivityCatalogBuilder b)
+    {
+        b.Activity("System.InvokeCode").DisplayName("C# Kod Çalıştır").Category(CatCode).Capability("code")
+            .Description("Roslyn ile C# kodu çalıştırır. Get(\"ad\") oku, Set(\"ad\", deger) yaz, "
+                       + "ToDataTable(rows)/ToRows(dt) ile DataTable işle. Güvenlik: sandbox'sız.")
+            .Input("code", "string");
+
+        b.Activity("Data.ToDataTable").DisplayName("DataTable'a Çevir").Category(CatCode)
+            .Description("Satır listesini (sütun-değer) gerçek System.Data.DataTable'a dönüştürür.")
+            .Input("rows", "JSON").Output("table", "DataTable");
+
+        b.Activity("Data.FromDataTable").DisplayName("DataTable'dan Satırlar").Category(CatCode)
+            .Description("DataTable'ı satır listesine (sütun-değer) dönüştürür.")
+            .Input("table", "DataTable").Output("rows", "JSON");
     }
 }

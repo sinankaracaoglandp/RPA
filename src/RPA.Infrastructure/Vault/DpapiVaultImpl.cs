@@ -83,6 +83,38 @@ public sealed class DpapiVaultImpl : ICredentialVault
     public Task<bool> ExistsAsync(string key)
         => Task.FromResult(File.Exists(PathForKey(key)));
 
+    public Task<IEnumerable<VaultSecretReference>> ListSecretsAsync(string? tag = null)
+    {
+        var references = new List<VaultSecretReference>();
+        foreach (var file in Directory.EnumerateFiles(_storePath, "*.secret"))
+        {
+            SecretRecord record;
+            try
+            {
+                record = ReadRecord(file);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Vault kaydÄ± okunamadÄ±, atlanÄ±yor: {File}", file);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(tag) && !MatchesTag(record.Metadata, tag))
+            {
+                continue;
+            }
+
+            references.Add(new VaultSecretReference
+            {
+                Key = record.Key,
+                Metadata = new Dictionary<string, string>(record.Metadata),
+            });
+        }
+
+        return Task.FromResult<IEnumerable<VaultSecretReference>>(
+            references.OrderBy(r => r.Key, StringComparer.OrdinalIgnoreCase).ToList());
+    }
+
     public Task<IEnumerable<string>> ListSecretsByTagAsync(string tag)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);

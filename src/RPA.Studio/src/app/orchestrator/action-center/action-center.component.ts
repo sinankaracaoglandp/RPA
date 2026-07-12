@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { OrchestratorService } from '../orchestrator.service';
 import { ActionItem } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Action Center ekranı (WP-6.2, Spec Bölüm 8.2): bekleyen BusinessException / OTP / Onay
@@ -11,7 +12,7 @@ import { ActionItem } from '../orchestrator.models';
 @Component({
   selector: 'app-action-center',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BackHomeComponent],
   templateUrl: './action-center.component.html',
 })
 export class ActionCenterComponent implements OnInit {

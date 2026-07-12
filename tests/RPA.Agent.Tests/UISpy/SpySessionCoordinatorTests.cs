@@ -42,6 +42,49 @@ public class SpySessionCoordinatorTests
     }
 
     [Fact]
+    public async Task StartAsync_Desktop_SendsDesktopMessageWithSelectorAndSessionId()
+    {
+        var sessionId = Guid.NewGuid();
+        var sapPicker = new Mock<ISapGuiSinglePicker>();
+        var desktopPicker = new Mock<IDesktopSinglePicker>();
+        var transport = new Mock<ISpyElementTransport>();
+        desktopPicker.Setup(p => p.DetectOnceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DesktopUiElement("Window/Edit[AutomationId='amount']", "Edit", "Tutar")
+            {
+                AutomationId = "amount",
+                ProcessName = "calc",
+            });
+        transport.Setup(t => t.SendAsync(It.IsAny<SpyElementMessage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var coordinator = new SpySessionCoordinator(
+            sapPicker.Object, transport.Object,
+            Options.Create(new SpySessionOptions { TimeoutSeconds = 1 }),
+            NullLogger<SpySessionCoordinator>.Instance,
+            desktopPicker.Object);
+
+        await coordinator.StartAsync(sessionId, "desktop");
+
+        transport.Verify(t => t.SendAsync(
+            It.Is<SpyElementMessage>(m =>
+                m.SessionId == sessionId
+                && m.Kind == "desktop"
+                && m.ElementId == "Window/Edit[AutomationId='amount']"
+                && m.Selector == "Window/Edit[AutomationId='amount']"
+                && m.AutomationId == "amount"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        sapPicker.Verify(p => p.DetectOnceAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task StartAsync_Desktop_WithoutDesktopPicker_Throws()
+    {
+        var coordinator = Build(Mock.Of<ISapGuiSinglePicker>(), Mock.Of<ISpyElementTransport>());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.StartAsync(Guid.NewGuid(), "desktop"));
+    }
+
+    [Fact]
     public async Task StartAsync_WhenNoElement_DoesNotSendAndClearsSession()
     {
         var picker = new Mock<ISapGuiSinglePicker>();

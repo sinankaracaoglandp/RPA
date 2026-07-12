@@ -78,5 +78,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./orchestrator/environments/environments.component').then((m) => m.EnvironmentsComponent),
   },
+  {
+    path: 'orchestrator/credentials',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./orchestrator/credentials/credentials.component').then((m) => m.CredentialsComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

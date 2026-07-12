@@ -1,7 +1,9 @@
 namespace RPA.Infrastructure.Workflow;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Activities.Desktop;
 using RPA.Infrastructure.Idempotency;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Workflow.Activities.Api;
@@ -39,6 +41,25 @@ public static class WorkflowServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, WebUploadActivity>("Web.Upload");
         services.AddKeyedTransient<IActivity, WebScreenshotActivity>("Web.Screenshot");
         services.AddKeyedTransient<IActivity, WebFrameSwitchActivity>("Web.FrameSwitch");
+
+        // Paket E: Windows Masaüstü aktiviteleri (Desktop.*). IDesktopAutomationChannel
+        // implementasyonu (FlaUI/UIA) RPA.Agent sürecinde kayıtlıdır; aktiviteler yalnız
+        // arayüze bağlıdır, bu yüzden çalıştırma anında (robot süreci) çözülür.
+        services.TryAddSingleton<IDesktopAutomationChannel, UnavailableDesktopAutomationChannel>();
+        services.AddKeyedTransient<IActivity, DesktopAttachActivity>("Desktop.Attach");
+        services.AddKeyedTransient<IActivity, DesktopLaunchActivity>("Desktop.Launch");
+        services.AddKeyedTransient<IActivity, DesktopClickActivity>("Desktop.Click");
+        services.AddKeyedTransient<IActivity, DesktopSetTextActivity>("Desktop.SetText");
+        services.AddKeyedTransient<IActivity, DesktopGetTextActivity>("Desktop.GetText");
+        services.AddKeyedTransient<IActivity, DesktopSelectItemActivity>("Desktop.SelectItem");
+        services.AddKeyedTransient<IActivity, DesktopSendKeysActivity>("Desktop.SendKeys");
+        services.AddKeyedTransient<IActivity, DesktopWaitForActivity>("Desktop.WaitFor");
+        services.AddKeyedTransient<IActivity, DesktopScreenshotActivity>("Desktop.Screenshot");
+
+        // Kod & Veri: C# kod aktivitesi (Roslyn) + DataTable dönüşümleri.
+        services.AddKeyedTransient<IActivity, Activities.Code.InvokeCsharpActivity>("System.InvokeCode");
+        services.AddKeyedTransient<IActivity, Activities.Code.DataToDataTableActivity>("Data.ToDataTable");
+        services.AddKeyedTransient<IActivity, Activities.Code.DataFromDataTableActivity>("Data.FromDataTable");
 
         services.AddSingleton<IActivityFactory>(sp =>
             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));

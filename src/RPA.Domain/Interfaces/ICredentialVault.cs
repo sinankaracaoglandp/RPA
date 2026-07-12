@@ -35,7 +35,15 @@ public interface ICredentialVault
     /// <summary>
     /// Etiketle filtreleme (örn. type=SAP).
     /// </summary>
+    Task<IEnumerable<VaultSecretReference>> ListSecretsAsync(string? tag = null);
+
     Task<IEnumerable<string>> ListSecretsByTagAsync(string tag);
+}
+
+public sealed class VaultSecretReference
+{
+    public string Key { get; set; } = string.Empty;
+    public Dictionary<string, string> Metadata { get; set; } = new();
 }
 
 /// <summary>

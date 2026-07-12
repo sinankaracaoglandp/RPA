@@ -35,7 +35,10 @@ describe('NodeComponent', () => {
   it('emits nodeSelect on click', () => {
     let selected: { nodeId: string; additive: boolean } | undefined;
     component.nodeSelect.subscribe((event) => (selected = event));
-    fixture.nativeElement.querySelector('[data-testid="canvas-node"]').click();
+    // Node seçimi Rete sürüklemesini yenmek için capture-fazı 'pointerdown' dinler (bkz. node.component.ts).
+    fixture.nativeElement.querySelector('[data-testid="canvas-node"]').dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true }),
+    );
     expect(selected).toEqual({ nodeId: 'node-1', additive: false });
   });
 

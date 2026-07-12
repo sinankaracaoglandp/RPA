@@ -1,10 +1,26 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { DesignerComponent } from './designer.component';
 import { ModeService } from '../../shared/services/mode.service';
 import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
+import { SPY_HUB_CONNECTION_FACTORY } from '../../shared/services/spy.service';
+
+/** Zoneless ortamda mikrogörev kuyruğunu boşaltır (fakeAsync tick() yerine). */
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve();
+  }
+}
+
+/** RunLogService'in gerçek SignalR bağlantısı açmasını engelleyen no-op hub fabrikası. */
+const stubHubConnectionFactory = () => ({
+  start: () => Promise.resolve(),
+  stop: () => Promise.resolve(),
+  on: () => undefined,
+  invoke: () => Promise.resolve(),
+});
 
 describe('DesignerComponent — Simple Mode integration', () => {
   let fixture: ComponentFixture<DesignerComponent>;
@@ -96,7 +112,8 @@ describe('DesignerComponent — Simple Mode integration', () => {
     draft.setPending(workflow);
 
     const freshFixture = TestBed.createComponent(DesignerComponent);
-    expect(freshFixture.componentInstance.workflow()).toEqual(workflow);
+    // applyWorkflow, değişken listesini normalize eder (variables: []).
+    expect(freshFixture.componentInstance.workflow()).toEqual({ ...workflow, variables: [] });
   });
 });
 
@@ -114,6 +131,7 @@ describe('draft persistence (Paket B)', () => {
         provideHttpClientTesting(),
         provideRouter([]),
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ workflowId: 'w1' }) } } },
+        { provide: SPY_HUB_CONNECTION_FACTORY, useValue: stubHubConnectionFactory },
       ],
     }).compileComponents();
 
@@ -213,131 +231,158 @@ describe('draft persistence (Paket B)', () => {
     expect(component.dirty()).toBe(true);
   });
 
-  it('saves the draft before queuing a run', fakeAsync(() => {
-    fixture.detectChanges();
-    http.expectOne('/api/workflows/w1/draft').flush({
-      id: 'v1', workflowId: 'w1', version: '1.0.0',
-      jsonDefinition: JSON.stringify({
+  it('saves the draft before queuing a run', async () => {
+    vi.useFakeTimers();
+    try {
+      fixture.detectChanges();
+      http.expectOne('/api/workflows/w1/draft').flush({
+        id: 'v1', workflowId: 'w1', version: '1.0.0',
+        jsonDefinition: JSON.stringify({
+          schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+          nodes: [], connections: [],
+        }),
+      });
+      component.onGraphChanged({
         schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
         nodes: [], connections: [],
-      }),
-    });
-    component.onGraphChanged({
-      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
-      nodes: [], connections: [],
-    });
+      });
 
-    void component.run();
+      void component.run();
+      await flushMicrotasks();
 
-    const put = http.expectOne('/api/workflows/w1/draft');
-    expect(put.request.method).toBe('PUT');
-    put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
-    tick();
+      const put = http.expectOne('/api/workflows/w1/draft');
+      expect(put.request.method).toBe('PUT');
+      put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+      await flushMicrotasks();
 
-    const run = http.expectOne('/api/workflows/w1/run');
-    expect(run.request.method).toBe('POST');
-    run.flush({ queueItemId: '12345678-0000-0000-0000-000000000000', queueId: 'q1', status: 'New' });
-    fixture.detectChanges();
+      const run = http.expectOne('/api/workflows/w1/run');
+      expect(run.request.method).toBe('POST');
+      run.flush({ queueItemId: '12345678-0000-0000-0000-000000000000', queueId: 'q1', status: 'New' });
+      await flushMicrotasks();
+      fixture.detectChanges();
 
-    expect(component.runState()).toBe('queued');
-    expect(component.lastQueueItemId()).toBe('12345678-0000-0000-0000-000000000000');
-    expect(component.lastQueueId()).toBe('q1');
-    expect(component.lastRunStatus()).toBe('New');
-    expect(fixture.nativeElement.querySelector('[data-testid="designer-run-queue-item"]').textContent)
-      .toContain('12345678');
-    expect(fixture.nativeElement.querySelector('[data-testid="designer-run-status"]').textContent)
-      .toContain('New');
-    fixture.destroy();
-    discardPeriodicTasks();
-  }));
+      expect(component.runState()).toBe('queued');
+      expect(component.lastQueueItemId()).toBe('12345678-0000-0000-0000-000000000000');
+      expect(component.lastQueueId()).toBe('q1');
+      expect(component.lastRunStatus()).toBe('New');
+      expect(fixture.nativeElement.querySelector('[data-testid="designer-run-queue-item"]').textContent)
+        .toContain('12345678');
+      expect(fixture.nativeElement.querySelector('[data-testid="designer-run-status"]').textContent)
+        .toContain('New');
+      fixture.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-  it('polls the queued run status until it reaches a terminal status', fakeAsync(() => {
-    fixture.detectChanges();
-    http.expectOne('/api/workflows/w1/draft').flush({
-      id: 'v1', workflowId: 'w1', version: '1.0.0',
-      jsonDefinition: JSON.stringify({
+  it('polls the queued run status until it reaches a terminal status', async () => {
+    vi.useFakeTimers();
+    try {
+      fixture.detectChanges();
+      http.expectOne('/api/workflows/w1/draft').flush({
+        id: 'v1', workflowId: 'w1', version: '1.0.0',
+        jsonDefinition: JSON.stringify({
+          schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+          nodes: [], connections: [],
+        }),
+      });
+      component.onGraphChanged({
         schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
         nodes: [], connections: [],
-      }),
-    });
-    component.onGraphChanged({
-      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
-      nodes: [], connections: [],
-    });
+      });
 
-    void component.run();
-    http.expectOne('/api/workflows/w1/draft').flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
-    tick();
-    http.expectOne('/api/workflows/w1/run').flush({
-      queueItemId: 'qi1',
-      queueId: 'q1',
-      status: 'New',
-    });
+      void component.run();
+      await flushMicrotasks();
+      http.expectOne('/api/workflows/w1/draft').flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+      await flushMicrotasks();
+      http.expectOne('/api/workflows/w1/run').flush({
+        queueItemId: 'qi1',
+        queueId: 'q1',
+        status: 'New',
+      });
+      await flushMicrotasks();
 
-    tick(3000);
-    http.expectOne('/api/queues/q1/items/qi1').flush({
-      id: 'qi1',
-      queueId: 'q1',
-      status: 'Successful',
-      attemptCount: 1,
-      assignedRobotId: null,
-      payload: '{}',
-      errorDetail: null,
-    });
+      await vi.advanceTimersByTimeAsync(3000);
+      http.expectOne('/api/queues/q1/items/qi1').flush({
+        id: 'qi1',
+        queueId: 'q1',
+        status: 'Successful',
+        attemptCount: 1,
+        assignedRobotId: null,
+        payload: '{}',
+        errorDetail: null,
+      });
+      await flushMicrotasks();
 
-    expect(component.lastRunStatus()).toBe('Successful');
-    tick(3000);
-    http.expectNone('/api/queues/q1/items/qi1');
-  }));
+      expect(component.lastRunStatus()).toBe('Successful');
+      await vi.advanceTimersByTimeAsync(3000);
+      http.expectNone('/api/queues/q1/items/qi1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-  it('stops polling when the component is destroyed', fakeAsync(() => {
-    fixture.detectChanges();
-    http.expectOne('/api/workflows/w1/draft').flush({
-      id: 'v1', workflowId: 'w1', version: '1.0.0',
-      jsonDefinition: JSON.stringify({
+  it('stops polling when the component is destroyed', async () => {
+    vi.useFakeTimers();
+    try {
+      fixture.detectChanges();
+      http.expectOne('/api/workflows/w1/draft').flush({
+        id: 'v1', workflowId: 'w1', version: '1.0.0',
+        jsonDefinition: JSON.stringify({
+          schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
+          nodes: [], connections: [],
+        }),
+      });
+      component.onGraphChanged({
         schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
         nodes: [], connections: [],
-      }),
-    });
-    component.onGraphChanged({
-      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
-      nodes: [], connections: [],
-    });
+      });
 
-    void component.run();
-    http.expectOne('/api/workflows/w1/draft').flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
-    tick();
-    http.expectOne('/api/workflows/w1/run').flush({
-      queueItemId: 'qi1',
-      queueId: 'q1',
-      status: 'New',
-    });
+      void component.run();
+      await flushMicrotasks();
+      http.expectOne('/api/workflows/w1/draft').flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
+      await flushMicrotasks();
+      http.expectOne('/api/workflows/w1/run').flush({
+        queueItemId: 'qi1',
+        queueId: 'q1',
+        status: 'New',
+      });
+      await flushMicrotasks();
 
-    fixture.destroy();
-    tick(3000);
-    http.expectNone('/api/queues/q1/items/qi1');
-  }));
+      fixture.destroy();
+      await vi.advanceTimersByTimeAsync(3000);
+      http.expectNone('/api/queues/q1/items/qi1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-  it('treats abandoned as a terminal run status', fakeAsync(() => {
-    component.lastQueueId.set('q1');
-    component.lastQueueItemId.set('qi1');
-    component['startRunStatusPolling']('q1', 'qi1');
+  it('treats abandoned as a terminal run status', async () => {
+    vi.useFakeTimers();
+    try {
+      component.lastQueueId.set('q1');
+      component.lastQueueItemId.set('qi1');
+      component['startRunStatusPolling']('q1', 'qi1');
 
-    tick(3000);
-    http.expectOne('/api/queues/q1/items/qi1').flush({
-      id: 'qi1',
-      queueId: 'q1',
-      status: 'Abandoned',
-      attemptCount: 1,
-      assignedRobotId: null,
-      payload: '{}',
-      errorDetail: null,
-    });
+      await vi.advanceTimersByTimeAsync(3000);
+      http.expectOne('/api/queues/q1/items/qi1').flush({
+        id: 'qi1',
+        queueId: 'q1',
+        status: 'Abandoned',
+        attemptCount: 1,
+        assignedRobotId: null,
+        payload: '{}',
+        errorDetail: null,
+      });
+      await flushMicrotasks();
 
-    expect(component.lastRunStatus()).toBe('Abandoned');
-    tick(3000);
-    http.expectNone('/api/queues/q1/items/qi1');
-  }));
+      expect(component.lastRunStatus()).toBe('Abandoned');
+      await vi.advanceTimersByTimeAsync(3000);
+      http.expectNone('/api/queues/q1/items/qi1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('refreshes the queued run status', () => {
     component.lastQueueId.set('q1');

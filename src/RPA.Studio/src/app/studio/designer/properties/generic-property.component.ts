@@ -12,6 +12,9 @@ interface ExpressionValidationSegment {
   invalid: boolean;
 }
 
+/** Alan giriş kipi: sabit değer, tek değişken referansı veya serbest ifade ({{...}} içeren). */
+export type FieldMode = 'value' | 'variable' | 'expression';
+
 /**
  * Metadata güdümlü jenerik özellik editörü. Seçili aktivitenin katalog
  * metadata'sındaki `inputs` listesinden her parametre için bir form alanı üretir.
@@ -39,6 +42,9 @@ export class GenericPropertyComponent {
   editorVariablePickerOpen = false;
   variableError = '';
 
+  /** Alan başına giriş kipi: Değer (literal) / Değişken / İfade. Kullanıcı elle değiştirdiğinde saklanır. */
+  private readonly modeOverrides: Record<string, FieldMode> = {};
+
   @Input()
   set activityType(value: string | undefined) {
     if (value === this._activityType) {
@@ -60,7 +66,7 @@ export class GenericPropertyComponent {
   }
 
   /** Alan tipini HTML input türüne eşler. */
-  inputType(port: ActivityPort): 'text' | 'number' | 'checkbox' | 'password' {
+  inputType(port: ActivityPort): 'text' | 'number' | 'checkbox' | 'password' | 'date' | 'datetime-local' {
     if ((port.options?.length ?? 0) > 0) {
       return 'text';
     }
@@ -75,9 +81,84 @@ export class GenericPropertyComponent {
         return 'checkbox';
       case 'credential':
         return 'password';
+      case 'date':
+        return 'date';
+      case 'datetime':
+        return 'datetime-local';
       default:
         return 'text';
     }
+  }
+
+  // ---- Giriş kipi (Değer / Değişken / İfade) ----
+
+  /** Bu alan için kip seçici gösterilsin mi? Yalnız düz metin/sayı/tarih alanlarında. */
+  showModeSelector(port: ActivityPort): boolean {
+    if ((port.options?.length ?? 0) > 0) return false; // enum → dropdown
+    if (this.isVariableField(port) && this.variables.length > 0) return false; // değişken adı alanı
+    const t = this.inputType(port);
+    return t === 'text' || t === 'number' || t === 'date' || t === 'datetime-local';
+  }
+
+  /** Alanın geçerli kipi: kullanıcı seçtiyse o; yoksa mevcut değerden çıkarım. */
+  fieldMode(port: ActivityPort): FieldMode {
+    return this.modeOverrides[port.name] ?? this.inferMode(String(this.value(port) ?? ''));
+  }
+
+  private inferMode(value: string): FieldMode {
+    if (/^\{\{[^{}]+\}\}$/.test(value.trim())) return 'variable';
+    if (value.includes('{{')) return 'expression';
+    return 'value';
+  }
+
+  setFieldMode(port: ActivityPort, mode: FieldMode): void {
+    this.modeOverrides[port.name] = mode;
+    if (mode === 'value' && this.inferMode(String(this.value(port) ?? '')) !== 'value') {
+      // İfade/değişkenden düz değere geçişte token'ları temizleme; kullanıcı görsün diye dokunmuyoruz.
+    }
+    this.clearVariableError();
+  }
+
+  /** 'Değişken' kipinde seçilen değişken adını `{{ad}}` olarak yazar. */
+  selectFieldVariable(port: ActivityPort, variableName: string): void {
+    if (!variableName) {
+      this.onValueChange(port, '');
+      return;
+    }
+    this.onValueChange(port, `{{${variableName}}}`);
+  }
+
+  /** 'Değişken' kipinde <select> için mevcut değerden değişken adını çıkarır. */
+  variableNameOf(port: ActivityPort): string {
+    const m = /^\{\{([^{}]+)\}\}$/.exec(String(this.value(port) ?? '').trim());
+    return m ? m[1] : '';
+  }
+
+  /** 'İfade' kipinde açık `{{` token'ının kısmi metni (autocomplete tetikleyici); yoksa null. */
+  openTokenPartial(port: ActivityPort): string | null {
+    const val = String(this.value(port) ?? '');
+    const open = val.lastIndexOf('{{');
+    const close = val.lastIndexOf('}}');
+    if (open >= 0 && open > close) {
+      return val.slice(open + 2);
+    }
+    return null;
+  }
+
+  /** İfade kipinde açık token'a göre filtrelenmiş değişken önerileri. */
+  expressionSuggestions(port: ActivityPort): WorkflowVariable[] {
+    const partial = this.openTokenPartial(port);
+    if (partial === null) return [];
+    const q = partial.trim().toLowerCase();
+    return (this.variables ?? []).filter((v) => v.name.toLowerCase().includes(q)).slice(0, 8);
+  }
+
+  /** Öneriyi seçince açık `{{...` token'ını `{{ad}}` ile tamamlar. */
+  applySuggestion(port: ActivityPort, variableName: string): void {
+    const val = String(this.value(port) ?? '');
+    const open = val.lastIndexOf('{{');
+    const base = open >= 0 ? val.slice(0, open) : val;
+    this.onValueChange(port, `${base}{{${variableName}}}`);
   }
 
   value(port: ActivityPort): unknown {

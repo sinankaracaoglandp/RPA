@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { OrchestratorService } from '../orchestrator.service';
 import { Robot } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Orchestrator Robotlar ekranı (WP-6.1, Spec Bölüm 8.2): kayıtlı robotlar + sağlık/mod.
@@ -10,7 +11,7 @@ import { Robot } from '../orchestrator.models';
 @Component({
   selector: 'app-orchestrator-robots',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, BackHomeComponent],
   templateUrl: './robots.component.html',
 })
 export class RobotsComponent implements OnInit {

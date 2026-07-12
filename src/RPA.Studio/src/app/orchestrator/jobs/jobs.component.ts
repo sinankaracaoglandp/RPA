@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { OrchestratorService } from '../orchestrator.service';
 import { JobRun } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Orchestrator İşler ekranı (WP-6.1, Spec Bölüm 8.2): JobRun listesi + durum filtresi.
@@ -11,7 +12,7 @@ import { JobRun } from '../orchestrator.models';
 @Component({
   selector: 'app-orchestrator-jobs',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BackHomeComponent],
   templateUrl: './jobs.component.html',
 })
 export class JobsComponent implements OnInit {

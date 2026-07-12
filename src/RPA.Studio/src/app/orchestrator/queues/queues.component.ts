@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { OrchestratorService } from '../orchestrator.service';
 import { QueueItem, QueueSummary } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Orchestrator Kuyruklar ekranı (WP-6.1, Spec Bölüm 8.2): kuyruk listesi + durum sayaçları;
@@ -10,7 +11,7 @@ import { QueueItem, QueueSummary } from '../orchestrator.models';
 @Component({
   selector: 'app-orchestrator-queues',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, BackHomeComponent],
   templateUrl: './queues.component.html',
 })
 export class QueuesComponent implements OnInit {

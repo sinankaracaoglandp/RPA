@@ -8,10 +8,14 @@
     <Nullable>enable</Nullable>
     <RootNamespace>RPA.Agent</RootNamespace>
     <AssemblyName>RPA.Agent</AssemblyName>
+    <!-- Yerel geliştirici sırları için user-secrets (Development). Üretimde ortam değişkeni kullanın. -->
+    <UserSecretsId>rpa-agent-dev-secrets</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />

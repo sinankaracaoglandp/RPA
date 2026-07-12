@@ -140,45 +140,36 @@ public sealed class HashiCorpVaultClient : ICredentialVault
         return true;
     }
 
-    public async Task<IEnumerable<string>> ListSecretsByTagAsync(string tag)
+    public async Task<IEnumerable<VaultSecretReference>> ListSecretsAsync(string? tag = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+        var keys = await ListKeysAsync();
+        var references = new List<VaultSecretReference>();
 
-        // KV v2 list: GET v1/{mount}/metadata?list=true
-        var listResponse = await SendWithRetryAsync(() =>
-            new HttpRequestMessage(HttpMethod.Get,
-                $"v1/{_options.Mount}/metadata?list=true"));
-
-        if (listResponse.StatusCode == HttpStatusCode.NotFound)
-        {
-            return Array.Empty<string>();
-        }
-        listResponse.EnsureSuccessStatusCode();
-
-        var listBody = await listResponse.Content.ReadAsStringAsync();
-        var keys = JObject.Parse(listBody)["data"]?["keys"]?.Values<string>()
-            .Where(k => k is not null).Select(k => k!).ToList()
-            ?? new List<string>();
-
-        var matches = new List<string>();
         foreach (var key in keys)
         {
-            var metaResponse = await SendWithRetryAsync(
-                () => new HttpRequestMessage(HttpMethod.Get, MetadataPath(key)));
-            if (!metaResponse.IsSuccessStatusCode)
+            var metadata = await ReadMetadataAsync(key);
+            if (!string.IsNullOrWhiteSpace(tag) &&
+                !MatchesTag(JObject.FromObject(metadata), tag))
             {
                 continue;
             }
 
-            var metaBody = await metaResponse.Content.ReadAsStringAsync();
-            var custom = JObject.Parse(metaBody)["data"]?["custom_metadata"] as JObject;
-            if (custom is not null && MatchesTag(custom, tag))
+            references.Add(new VaultSecretReference
             {
-                matches.Add(key);
-            }
+                Key = key,
+                Metadata = metadata,
+            });
         }
 
-        return matches;
+        return references.OrderBy(r => r.Key, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    public async Task<IEnumerable<string>> ListSecretsByTagAsync(string tag)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+
+        var references = await ListSecretsAsync(tag);
+        return references.Select(r => r.Key).ToList();
     }
 
     private static bool MatchesTag(JObject custom, string tag)
@@ -199,6 +190,45 @@ public sealed class HashiCorpVaultClient : ICredentialVault
 
     private string DataPath(string key) => $"v1/{_options.Mount}/data/{Uri.EscapeDataString(key)}";
     private string MetadataPath(string key) => $"v1/{_options.Mount}/metadata/{Uri.EscapeDataString(key)}";
+
+    private async Task<List<string>> ListKeysAsync()
+    {
+        // KV v2 list: GET v1/{mount}/metadata?list=true
+        var listResponse = await SendWithRetryAsync(() =>
+            new HttpRequestMessage(HttpMethod.Get,
+                $"v1/{_options.Mount}/metadata?list=true"));
+
+        if (listResponse.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new List<string>();
+        }
+        listResponse.EnsureSuccessStatusCode();
+
+        var listBody = await listResponse.Content.ReadAsStringAsync();
+        return JObject.Parse(listBody)["data"]?["keys"]?.Values<string>()
+            .Where(k => !string.IsNullOrWhiteSpace(k) && !k.EndsWith("/", StringComparison.Ordinal))
+            .Select(k => k!)
+            .ToList()
+            ?? new List<string>();
+    }
+
+    private async Task<Dictionary<string, string>> ReadMetadataAsync(string key)
+    {
+        var metaResponse = await SendWithRetryAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, MetadataPath(key)));
+        if (!metaResponse.IsSuccessStatusCode)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        var metaBody = await metaResponse.Content.ReadAsStringAsync();
+        var custom = JObject.Parse(metaBody)["data"]?["custom_metadata"] as JObject;
+        return custom?.Properties().ToDictionary(
+            p => p.Name,
+            p => p.Value.Value<string>() ?? string.Empty,
+            StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, string>();
+    }
 
     private static StringContent JsonContent(JObject payload)
         => new(payload.ToString(Formatting.None), Encoding.UTF8, "application/json");

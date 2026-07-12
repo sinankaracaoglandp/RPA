@@ -70,5 +70,15 @@ public sealed class RobotHubClient : IJobHubClient
         _statusCoordinator.OnClosed(null);
     }
 
+    public async Task ReportNodeLogAsync(
+        RPA.Domain.Interfaces.NodeExecutionEvent evt, CancellationToken cancellationToken = default)
+    {
+        if (_connection.State != HubConnectionState.Connected)
+        {
+            return; // Bağlantı yoksa canlı log best-effort — sessizce atla.
+        }
+        await _connection.SendAsync("ReportNodeLog", evt, cancellationToken);
+    }
+
     public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
 }

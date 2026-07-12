@@ -1,0 +1,40 @@
+<section class="log-console" data-testid="log-console" aria-label="Çalıştırma konsolu">
+  <header class="log-console__header">
+    <span class="log-console__title">Konsol</span>
+    <span class="log-console__count" data-testid="log-console-count">{{ log.count() }}</span>
+    <span class="log-console__spacer"></span>
+    <button
+      type="button"
+      class="log-console__btn"
+      data-testid="log-console-clear"
+      (click)="clear()"
+    >
+      Temizle
+    </button>
+    <button
+      type="button"
+      class="log-console__btn"
+      data-testid="log-console-close"
+      aria-label="Konsolu kapat"
+      (click)="close()"
+    >
+      ✕
+    </button>
+  </header>
+
+  <div #scrollBox class="log-console__body" data-testid="log-console-body">
+    @if (log.entries().length === 0) {
+      <p class="log-console__empty">Çalıştırıldığında adımlar burada görünecek.</p>
+    } @else {
+      @for (entry of log.entries(); track entry.id) {
+        <div class="log-console__row log-console__row--{{ entry.level }}">
+          <span class="log-console__time">{{ entry.time }}</span>
+          <span class="log-console__msg">{{ entry.message }}</span>
+          @if (entry.detail) {
+            <span class="log-console__detail">{{ entry.detail }}</span>
+          }
+        </div>
+      }
+    }
+  </div>
+</section>

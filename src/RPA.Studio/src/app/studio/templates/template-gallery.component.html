@@ -3,7 +3,8 @@
   data-testid="template-gallery-root"
   [attr.aria-label]="'templates.gallery.ariaLabel' | translate"
 >
-  <div class="template-gallery__header">
+  <div class="template-gallery__header" style="display: flex; align-items: center; gap: 0.75rem;">
+    <app-back-home />
     <h1 class="template-gallery__title">{{ 'templates.gallery.title' | translate }}</h1>
   </div>
 

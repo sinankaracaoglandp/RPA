@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Yerel geliştirici sırları (DB bağlantısı vb.) için user-secrets; repo dışında saklanır. -->
+    <UserSecretsId>rpa-webapi-dev-secrets</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

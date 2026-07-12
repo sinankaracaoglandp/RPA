@@ -79,12 +79,15 @@ describe('ProjectsComponent', () => {
 
   it('navigates back to the home page from the projects header', () => {
     const router = TestBed.inject(Router);
-    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
     fixture.detectChanges();
     http.expectOne('/api/projects').flush([]);
 
-    fixture.nativeElement.querySelector('[data-testid="projects-back-home"]').click();
+    // Ortak app-back-home bileşeni: <a href="/"> tıklaması preventDefault + router.navigateByUrl('/').
+    fixture.nativeElement.querySelector('[data-testid="back-home"]').dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+    );
 
-    expect(navigate).toHaveBeenCalledWith(['/']);
+    expect(navigate).toHaveBeenCalledWith('/');
   });
 });

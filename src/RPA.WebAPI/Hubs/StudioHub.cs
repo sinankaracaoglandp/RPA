@@ -17,6 +17,7 @@ public class StudioHub : Hub
 {
     /// <summary>Studio istemcilerine yayınlanan olay adı.</summary>
     public const string DetectedElementEvent = "DetectedElement";
+    public const string SpyCancelledEvent = "SpyCancelled";
     public const string StartSpyCommand = "StartSpy";
     public const string StopSpyCommand = "StopSpy";
 
@@ -61,6 +62,23 @@ public class StudioHub : Hub
         }
 
         await Clients.All.SendAsync(DetectedElementEvent, element);
+    }
+
+    /// <summary>
+    /// Ajan, tek-seçim iptal edildiğinde (Esc) veya seçim yapılmadan bittiğinde çağırır;
+    /// oturumu başlatan Studio bağlantısına <c>SpyCancelled</c> yayınlanır ki 60 sn beklemesin.
+    /// </summary>
+    public async Task NotifySpyCancelled(Guid sessionId)
+    {
+        if (sessionId == Guid.Empty)
+        {
+            return;
+        }
+
+        if (SessionOwners.TryGetValue(sessionId, out var ownerConnectionId))
+        {
+            await Clients.Client(ownerConnectionId).SendAsync(SpyCancelledEvent, sessionId);
+        }
     }
 
     public async Task StartSpy(Guid sessionId, string kind)

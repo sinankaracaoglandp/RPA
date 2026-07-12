@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { OrchestratorService } from '../orchestrator.service';
 import { AlertRule } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Alarm Kuralları ekranı (WP-6.3, Spec Bölüm 8.2): kuralları listeler, aktif/pasif yapar ve
@@ -11,7 +12,7 @@ import { AlertRule } from '../orchestrator.models';
 @Component({
   selector: 'app-alert-rules',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BackHomeComponent],
   templateUrl: './alert-rules.component.html',
 })
 export class AlertRulesComponent implements OnInit {

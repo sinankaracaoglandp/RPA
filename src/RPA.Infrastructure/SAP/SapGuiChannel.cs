@@ -32,7 +32,10 @@ public sealed class SapGuiChannel : ISapGuiChannel
     {
         if (_session is { IsConnected: true })
         {
-            throw new BusinessException("SAP GUI kanalı zaten bağlı. Önce DisconnectAsync çağırın.");
+            _logger.LogWarning(
+                "SAP GUI kanalı zaten bağlı; mevcut oturum kapatılıp yeniden bağlanacak: {SessionId}.",
+                _session.Id);
+            await DisconnectAsync();
         }
 
         _session = await _sessionManager.LogonAsync(systemId, client, userId, password, language);

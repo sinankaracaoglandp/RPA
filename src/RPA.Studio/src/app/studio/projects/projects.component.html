@@ -5,9 +5,8 @@
       <h1>{{ 'projects.title' | translate }}</h1>
       <p class="projects__lead">Projeleri seç, workflow'ları yönet, gerekirse yeni akış aç.</p>
     </div>
-    <button type="button" class="projects__home" data-testid="projects-back-home" (click)="backToHome()">
-      Ana sayfa
-    </button>
+    <app-back-home />
+
 
     <div class="projects__create">
       <label class="projects__label" for="new-project-name">{{ 'projects.newProject' | translate }}</label>

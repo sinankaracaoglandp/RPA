@@ -26,6 +26,7 @@ public sealed class BaseRunner : IWorkflowRunner
     private readonly ILogger<BaseRunner> _logger;
     private readonly ICredentialVault? _vault;
     private readonly ICheckpointManager _checkpointManager;
+    private readonly IWorkflowExecutionObserver? _observer;
 
     /// <summary>componentCall node'ları için: (componentId, version) → component JSON çözümleyici.</summary>
     private readonly Func<string, string?, string?>? _componentResolver;
@@ -37,7 +38,8 @@ public sealed class BaseRunner : IWorkflowRunner
         ILogger<BaseRunner> logger,
         ICredentialVault? vault = null,
         Func<string, string?, string?>? componentResolver = null,
-        ICheckpointManager? checkpointManager = null)
+        ICheckpointManager? checkpointManager = null,
+        IWorkflowExecutionObserver? observer = null)
     {
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -46,6 +48,7 @@ public sealed class BaseRunner : IWorkflowRunner
         _vault = vault;
         _componentResolver = componentResolver;
         _checkpointManager = checkpointManager ?? new CheckpointManager();
+        _observer = observer;
     }
 
     /// <inheritdoc />
@@ -293,6 +296,13 @@ public sealed class BaseRunner : IWorkflowRunner
     private async Task<string?> ExecuteNodeAsync(WorkflowNode node, ExecutionState state)
     {
         _logger.LogInformation("Node {NodeId} ({NodeType}) başlatıldı", node.Id, node.Type);
+        NotifyStarted(new NodeExecutionEvent
+        {
+            JobRunId = state.Context.JobRunId,
+            NodeId = node.Id,
+            NodeType = node.Type,
+            ActivityId = string.IsNullOrEmpty(node.Activity) ? null : node.Activity,
+        });
 
         switch (node.Type)
         {
@@ -504,13 +514,35 @@ public sealed class BaseRunner : IWorkflowRunner
         // Node property'lerini çözerek node-local scope'a giriş değişkenleri olarak yaz.
         state.Scope.PushScope($"node-{node.Id}");
         Dictionary<string, object?> outputs;
+        var resolvedInputs = new Dictionary<string, object?>();
         try
         {
             foreach (var (key, token) in node.Properties)
             {
-                state.Scope.SetLocalVariable(key, EvaluateToken(token, state));
+                var value = EvaluateToken(token, state);
+                state.Scope.SetLocalVariable(key, value);
+                resolvedInputs[key] = value;
             }
-            outputs = await activity.ExecuteAsync(state.Context) ?? new();
+
+            try
+            {
+                outputs = await activity.ExecuteAsync(state.Context) ?? new();
+            }
+            catch (BusinessException bex)
+            {
+                NotifyActivityError(state, node, metadata, resolvedInputs, bex.Message, isBusiness: true);
+                throw;
+            }
+            catch (SystemException sex)
+            {
+                NotifyActivityError(state, node, metadata, resolvedInputs, sex.Message, isBusiness: false);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                NotifyActivityError(state, node, metadata, resolvedInputs, ex.Message, isBusiness: false);
+                throw;
+            }
         }
         finally
         {
@@ -526,6 +558,108 @@ public sealed class BaseRunner : IWorkflowRunner
         _logger.LogInformation(
             "Node {NodeId} tamamlandı ({Activity}), çıkış anahtarları: {Keys}",
             node.Id, metadata.ActivityId, string.Join(",", outputs.Keys));
+
+        NotifyCompleted(new NodeExecutionEvent
+        {
+            JobRunId = state.Context.JobRunId,
+            NodeId = node.Id,
+            NodeType = node.Type,
+            ActivityId = metadata.ActivityId,
+            Inputs = MaskAndStringify(resolvedInputs, metadata),
+            Outputs = MaskAndStringify(outputs, metadata),
+        });
+    }
+
+    private void NotifyActivityError(
+        ExecutionState state,
+        WorkflowNode node,
+        ActivityMetadata metadata,
+        IReadOnlyDictionary<string, object?> inputs,
+        string message,
+        bool isBusiness)
+    {
+        NotifyCompleted(new NodeExecutionEvent
+        {
+            JobRunId = state.Context.JobRunId,
+            NodeId = node.Id,
+            NodeType = node.Type,
+            ActivityId = metadata.ActivityId,
+            Inputs = MaskAndStringify(inputs, metadata),
+            Error = message,
+            IsBusinessError = isBusiness,
+        });
+    }
+
+    // ---- Gözlemci (canlı konsol) yardımcıları ----
+
+    private void NotifyStarted(NodeExecutionEvent evt)
+    {
+        if (_observer is null)
+        {
+            return;
+        }
+        try { _observer.OnNodeStarted(evt); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Gözlemci OnNodeStarted hatası (yok sayıldı)."); }
+    }
+
+    private void NotifyCompleted(NodeExecutionEvent evt)
+    {
+        if (_observer is null)
+        {
+            return;
+        }
+        try { _observer.OnNodeCompleted(evt); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Gözlemci OnNodeCompleted hatası (yok sayıldı)."); }
+    }
+
+    /// <summary>
+    /// Değerleri görüntülenebilir (maskeli/kısaltılmış) string'lere çevirir. Credential tipli
+    /// parametreler ve gizli görünen anahtarlar (password/secret/token/credential) asla açılmaz.
+    /// </summary>
+    private static Dictionary<string, string?> MaskAndStringify(
+        IEnumerable<KeyValuePair<string, object?>> values, ActivityMetadata? metadata)
+    {
+        var credentialKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (metadata is not null)
+        {
+            foreach (var p in metadata.Inputs.Concat(metadata.Outputs))
+            {
+                if (string.Equals(p.Type, "Credential", StringComparison.OrdinalIgnoreCase))
+                {
+                    credentialKeys.Add(p.Name);
+                }
+            }
+        }
+
+        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var (key, value) in values)
+        {
+            result[key] = credentialKeys.Contains(key) || LooksSecret(key)
+                ? "[MASKED]"
+                : Preview(value);
+        }
+        return result;
+    }
+
+    private static bool LooksSecret(string key)
+        => key.Contains("password", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("secret", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("token", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("credential", StringComparison.OrdinalIgnoreCase);
+
+    private static string? Preview(object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+        var text = value as string ?? value.ToString();
+        if (text is null)
+        {
+            return null;
+        }
+        const int max = 200;
+        return text.Length > max ? string.Concat(text.AsSpan(0, max), "…") : text;
     }
 
     private async Task ExecuteComponentCallAsync(WorkflowNode node, ExecutionState state)

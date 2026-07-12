@@ -62,7 +62,12 @@ describe('LoginComponent', () => {
 
     const req = httpMock.expectOne('/api/auth/login');
     expect(req.request.method).toBe('POST');
-    req.flush({ token: 'jwt-abc', roles: ['Developer'] });
+    req.flush({
+      token: 'jwt-abc',
+      refreshToken: 'refresh-abc',
+      accessTokenExpiresAtUtc: '2026-07-10T18:00:00Z',
+      roles: ['Developer'],
+    });
 
     expect(navigateSpy).toHaveBeenCalledWith('/');
   });

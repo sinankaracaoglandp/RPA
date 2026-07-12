@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "dySeWab/h/k=",
+  "dgSpecHash": "qPCeZKpeiws=",
   "success": true,
   "projectFilePath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
   "expectedPackageFiles": [
@@ -25,7 +25,9 @@
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.11.0\\microsoft.codeanalysis.analyzers.3.11.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.common\\5.0.0\\microsoft.codeanalysis.common.5.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.csharp\\5.0.0\\microsoft.codeanalysis.csharp.5.0.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.csharp.scripting\\4.14.0\\microsoft.codeanalysis.csharp.scripting.4.14.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.csharp.workspaces\\5.0.0\\microsoft.codeanalysis.csharp.workspaces.5.0.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.scripting.common\\4.14.0\\microsoft.codeanalysis.scripting.common.4.14.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.workspaces.common\\5.0.0\\microsoft.codeanalysis.workspaces.common.5.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.codeanalysis.workspaces.msbuild\\5.0.0\\microsoft.codeanalysis.workspaces.msbuild.5.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\microsoft.entityframeworkcore\\10.0.9\\microsoft.entityframeworkcore.10.0.9.nupkg.sha512",
@@ -79,5 +81,42 @@
     "C:\\Users\\sinan\\.nuget\\packages\\system.io.packaging\\10.0.9\\system.io.packaging.10.0.9.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\system.security.cryptography.pkcs\\10.0.0\\system.security.cryptography.pkcs.10.0.0.nupkg.sha512"
   ],
-  "logs": []
+  "logs": [
+    {
+      "code": "NU1608",
+      "level": "Warning",
+      "message": "Detected package version outside of dependency constraint: Microsoft.CodeAnalysis.CSharp.Scripting 4.14.0 requires Microsoft.CodeAnalysis.Common (= 4.14.0) but version Microsoft.CodeAnalysis.Common 5.0.0 was resolved.",
+      "projectPath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
+      "libraryId": "Microsoft.CodeAnalysis.Common",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1608",
+      "level": "Warning",
+      "message": "Detected package version outside of dependency constraint: Microsoft.CodeAnalysis.CSharp.Scripting 4.14.0 requires Microsoft.CodeAnalysis.CSharp (= 4.14.0) but version Microsoft.CodeAnalysis.CSharp 5.0.0 was resolved.",
+      "projectPath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
+      "libraryId": "Microsoft.CodeAnalysis.CSharp",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1608",
+      "level": "Warning",
+      "message": "Detected package version outside of dependency constraint: Microsoft.CodeAnalysis.Scripting.Common 4.14.0 requires Microsoft.CodeAnalysis.Common (= 4.14.0) but version Microsoft.CodeAnalysis.Common 5.0.0 was resolved.",
+      "projectPath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Source\\RPA\\src\\RPA.WebAPI\\RPA.WebAPI.csproj",
+      "libraryId": "Microsoft.CodeAnalysis.Common",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    }
+  ]
 }

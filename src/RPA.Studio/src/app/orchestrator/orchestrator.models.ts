@@ -116,3 +116,20 @@ export interface WorkflowVersion {
   environmentId: string;
   changeNotes?: string | null;
 }
+
+export interface CredentialReference {
+  key: string;
+  type?: string | null;
+  environment?: string | null;
+  description?: string | null;
+  metadata: Record<string, string>;
+}
+
+export interface StoreCredentialRequest {
+  key: string;
+  secret: string;
+  type?: string;
+  environment?: string;
+  description?: string;
+  metadata?: Record<string, string>;
+}

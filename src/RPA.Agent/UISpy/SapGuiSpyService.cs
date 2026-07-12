@@ -96,6 +96,12 @@ public sealed class SignalRSpyElementTransport : ISpyElementTransport, IAsyncDis
         await _connection.InvokeAsync("ReceiveDetectedElement", message, cancellationToken);
     }
 
+    public async Task NotifyCancelledAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        await EnsureStartedAsync(cancellationToken);
+        await _connection.InvokeAsync("NotifySpyCancelled", sessionId, cancellationToken);
+    }
+
     private async Task EnsureStartedAsync(CancellationToken cancellationToken)
     {
         if (_started)

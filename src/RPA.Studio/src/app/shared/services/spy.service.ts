@@ -115,6 +115,7 @@ export class SpyService {
 
     const connection = this.connectionFactory(SPY_HUB_URL, () => this.auth.getToken());
     connection.on('DetectedElement', (payload) => this.onDetectedElement(payload as SpyElement));
+    connection.on('SpyCancelled', (sessionId) => this.onSpyCancelled(sessionId as string));
     await connection.start();
     this.connection = connection;
     return connection;
@@ -129,6 +130,17 @@ export class SpyService {
     clearTimeout(pending.timeoutId);
     this.pending = undefined;
     pending.resolve(element);
+  }
+
+  private onSpyCancelled(sessionId: string): void {
+    const pending = this.pending;
+    if (!pending || sessionId !== pending.sessionId) {
+      return;
+    }
+
+    clearTimeout(pending.timeoutId);
+    this.pending = undefined;
+    pending.reject(new Error('Spy selection cancelled'));
   }
 
   private async stopPending(

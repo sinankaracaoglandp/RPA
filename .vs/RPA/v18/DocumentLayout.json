@@ -126,21 +126,8 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 7,
+          "SelectedChildIndex": 6,
           "Children": [
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "WorkflowsController.cs",
-              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
-              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
-              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
-              "RelativeToolTip": "src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
-              "ViewState": "AgIAAAsAAAAAAAAAAAAYwB0AAAAJAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-07-07T12:52:24.292Z",
-              "EditorCaption": ""
-            },
             {
               "$type": "Document",
               "DocumentIndex": 4,
@@ -221,10 +208,22 @@
               "RelativeDocumentMoniker": "src\\RPA.Infrastructure\\Robots\\RobotService.cs",
               "ToolTip": "C:\\Source\\RPA\\src\\RPA.Infrastructure\\Robots\\RobotService.cs",
               "RelativeToolTip": "src\\RPA.Infrastructure\\Robots\\RobotService.cs",
-              "ViewState": "AgIAAAkAAAAAAAAAAADwvxgAAAAIAAAAAAAAAA==",
+              "ViewState": "AgIAAAkAAAAAAAAAAADwvxAAAABSAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-07-07T05:48:40.392Z",
               "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "WorkflowsController.cs",
+              "DocumentMoniker": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
+              "RelativeDocumentMoniker": "src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
+              "ToolTip": "C:\\Source\\RPA\\src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
+              "RelativeToolTip": "src\\RPA.WebAPI\\Controllers\\WorkflowsController.cs",
+              "ViewState": "AgIAAAsAAAAAAAAAAAAYwB0AAAAJAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-07T12:52:24.292Z"
             },
             {
               "$type": "Document",

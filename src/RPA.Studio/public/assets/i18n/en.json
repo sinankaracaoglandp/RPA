@@ -28,7 +28,9 @@
     "alertRulesTitle": "Alert Rules",
     "alertRulesDesc": "Notification and alarm rules",
     "environmentsTitle": "Environments",
-    "environmentsDesc": "Environment and deployment configuration"
+    "environmentsDesc": "Environment and deployment configuration",
+    "credentialsTitle": "Credentials",
+    "credentialsDesc": "Vault keys and secret references"
   },
   "designer": {
     "save": "Save",

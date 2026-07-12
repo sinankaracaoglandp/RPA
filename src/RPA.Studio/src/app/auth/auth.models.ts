@@ -5,5 +5,11 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
+  refreshToken: string;
+  accessTokenExpiresAtUtc: string;
   roles: string[];
+}
+
+export interface RefreshRequest {
+  refreshToken: string;
 }

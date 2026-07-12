@@ -44,6 +44,22 @@
                 {{ port.description || port.name }}
                 @if (port.required) { <span class="generic-property__req">*</span> }
               </label>
+              @if (showModeSelector(port)) {
+                <div class="generic-property__mode" role="group" aria-label="Giriş kipi">
+                  <button type="button" class="generic-property__mode-btn"
+                    [class.generic-property__mode-btn--active]="fieldMode(port) === 'value'"
+                    [attr.data-testid]="'prop-' + port.name + '-mode-value'"
+                    (click)="setFieldMode(port, 'value')">Değer</button>
+                  <button type="button" class="generic-property__mode-btn"
+                    [class.generic-property__mode-btn--active]="fieldMode(port) === 'variable'"
+                    [attr.data-testid]="'prop-' + port.name + '-mode-variable'"
+                    (click)="setFieldMode(port, 'variable')">Değişken</button>
+                  <button type="button" class="generic-property__mode-btn"
+                    [class.generic-property__mode-btn--active]="fieldMode(port) === 'expression'"
+                    [attr.data-testid]="'prop-' + port.name + '-mode-expression'"
+                    (click)="setFieldMode(port, 'expression')">İfade</button>
+                </div>
+              }
               <div class="generic-property__input-row">
                 @if (isVariableField(port) && variables.length > 0) {
                   <select
@@ -70,13 +86,26 @@
                       <option [value]="option">{{ option }}</option>
                     }
                   </select>
+                } @else if (showModeSelector(port) && fieldMode(port) === 'variable') {
+                  <select
+                    [id]="'prop-' + port.name"
+                    [value]="variableNameOf(port)"
+                    (change)="selectFieldVariable(port, $any($event.target).value)"
+                    class="generic-property__input"
+                    [attr.data-testid]="'prop-' + port.name"
+                  >
+                    <option value="">Değişken seç…</option>
+                    @for (variable of variables; track variable.name) {
+                      <option [value]="variable.name">{{ variable.name }}</option>
+                    }
+                  </select>
                 } @else {
                   <input
                     [id]="'prop-' + port.name"
-                    [type]="inputType(port)"
+                    [type]="fieldMode(port) === 'expression' ? 'text' : inputType(port)"
                     [value]="value(port)"
                     (input)="onValueChange(port, $any($event.target).value)"
-                    [placeholder]="port.name"
+                    [placeholder]="fieldMode(port) === 'expression' ? '{{degisken}} veya sabit' : port.name"
                     class="generic-property__input"
                     [class.generic-property__input--invalid]="hasExpressionSpacingError(port)"
                     [attr.data-testid]="'prop-' + port.name"
@@ -123,6 +152,17 @@
                   ></app-selector-picker-button>
                 }
               </div>
+              @if (showModeSelector(port) && fieldMode(port) === 'expression' && expressionSuggestions(port).length > 0) {
+                <div class="generic-property__suggest" [attr.data-testid]="'prop-' + port.name + '-suggest'">
+                  @for (variable of expressionSuggestions(port); track variable.name) {
+                    <button
+                      type="button"
+                      class="generic-property__suggest-item"
+                      (click)="applySuggestion(port, variable.name)"
+                    >{{ variable.name }}</button>
+                  }
+                </div>
+              }
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
               @if (hasExpressionSpacingError(port)) {
                 <p class="generic-property__error" role="alert">{{ expressionValidationMessage(port) }}</p>

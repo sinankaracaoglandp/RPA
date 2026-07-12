@@ -1,5 +1,15 @@
 # RPA Platform v3 — Proje Kuralları
 
+## Kontrat Degisikligi - 2026-07-11 (Credential Vault Management)
+
+`ICredentialVault` sozlesmesine plaintext icermeyen guvenli listeleme eklendi:
+- **Yeni:** `ListSecretsAsync(string? tag = null) -> IEnumerable<VaultSecretReference>`
+- **Yeni DTO:** `VaultSecretReference { Key, Metadata }`
+
+Mevcut `GetSecretAsync`, `StoreSecretAsync`, `DeleteSecretAsync`, `ExistsAsync`, `ListSecretsByTagAsync` imzalari degismedi.
+Etkilenen paketler: WebAPI Credentials endpoint, DPAPI Vault, HashiCorp Vault, Studio Orchestrator Credentials ekrani.
+Gerekce: Kullanicinin credential degerini UI uzerinden Vault'a yazabilmesi ve listede yalnizca key/metadata gorebilmesi icin secret degerini dondurmeyen listeleme sozlesmesi gerekliydi.
+
 **Spec:** `docs/specs/2026-07-04-rpa-platform-v3-design.md`
 **Plan:** `docs/plans/2026-07-04-implementation.md`
 **Kontrat Paketi:** Aşağıda belirtilen arayüzler ve şemalar — **değişmez referans.**

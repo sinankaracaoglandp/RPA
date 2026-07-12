@@ -14,6 +14,12 @@ public interface ISpyElementTransport
 {
     /// <summary>Element yükünü Studio'ya (StudioHub.ReceiveDetectedElement) iletir.</summary>
     Task SendAsync(SpyElementMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tek-seçim iptal/boş bittiğinde Studio'ya bildirir (StudioHub.NotifySpyCancelled),
+    /// böylece Studio 60 sn beklemeden picker'ı kapatır.
+    /// </summary>
+    Task NotifyCancelledAsync(Guid sessionId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -55,6 +61,50 @@ public sealed record SpyElementMessage
             Text = element.Text,
             Enabled = element.Enabled,
             Changeable = element.Changeable,
+            X = element.X,
+            Y = element.Y,
+        };
+    }
+
+    /// <summary>Bir <see cref="WebUiElement"/>'ten web (DOM) mesajı oluşturur.</summary>
+    public static SpyElementMessage FromWeb(WebUiElement element, Guid sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "web",
+            ElementId = element.Selector,
+            Selector = element.Selector,
+            TagName = element.TagName,
+            InnerTextPreview = element.InnerTextPreview,
+            PageUrl = element.PageUrl,
+            Type = element.TagName,
+            Text = element.InnerTextPreview,
+            Enabled = true,
+            Changeable = true,
+        };
+    }
+
+    /// <summary>Bir <see cref="DesktopUiElement"/>'ten masaüstü (UIA) mesajı oluşturur.</summary>
+    public static SpyElementMessage FromDesktop(DesktopUiElement element, Guid sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "desktop",
+            ElementId = element.UiaPath,
+            Selector = element.UiaPath,
+            UiaPath = element.UiaPath,
+            AutomationId = element.AutomationId,
+            ControlType = element.ControlType,
+            Name = element.Name,
+            ProcessName = element.ProcessName,
+            Type = element.ControlType,
+            Text = element.Name,
+            Enabled = true,
+            Changeable = true,
             X = element.X,
             Y = element.Y,
         };

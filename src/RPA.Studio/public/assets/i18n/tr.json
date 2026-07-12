@@ -28,7 +28,9 @@
     "alertRulesTitle": "Uyarı Kuralları",
     "alertRulesDesc": "Bildirim ve alarm kuralları",
     "environmentsTitle": "Ortamlar",
-    "environmentsDesc": "Ortam ve dağıtım yapılandırması"
+    "environmentsDesc": "Ortam ve dağıtım yapılandırması",
+    "credentialsTitle": "Credentials",
+    "credentialsDesc": "Vault key ve secret referanslari"
   },
   "designer": {
     "save": "Kaydet",

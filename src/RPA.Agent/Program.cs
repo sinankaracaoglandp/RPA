@@ -6,6 +6,7 @@ using RPA.Agent;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Queues;
 using RPA.Infrastructure.Robots;
+using RPA.Infrastructure.SAP;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
 using Serilog;
@@ -27,6 +28,14 @@ try
 
     var builder = Host.CreateApplicationBuilder(args);
 
+#if DEBUG
+    // DEBUG derlemede user-secrets'ı ortamdan bağımsız yükle. Host.CreateApplicationBuilder
+    // bunu yalnızca ortam "Development" iken ekler; konsol Agent varsayılan olarak "Production"
+    // ortamında koştuğu için aksi halde gerçek DB connection string'i (user-secrets'taki)
+    // yüklenmez ve appsettings'teki localhost fallback'ine düşerek bağlantı reddi alınır.
+    builder.Configuration.AddUserSecrets<Program>(optional: true);
+#endif
+
     // Windows Service olarak çalıştırılabilir (Unattended). Konsol/tray için de çalışır.
     builder.Services.AddWindowsService(o => o.ServiceName = "RPA.Agent");
 
@@ -40,6 +49,7 @@ try
 
     builder.Services.AddVaultServices(builder.Configuration); // Orchestrator/Vault kimlik bilgileri.
     builder.Services.AddWorkflowServices();                   // IWorkflowRunner (BaseRunner).
+    builder.Services.AddSapGuiChannel();                      // Sap.Gui.* — gerçek SAP GUI Scripting (COM).
     builder.Services.AddRobotServices();                      // IRobotService (kayıt + heartbeat).
     builder.Services.AddQueueServices();                      // IQueueService (iş çekme).
 

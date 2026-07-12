@@ -8,6 +8,7 @@ import { WorkflowVersion } from '../../shared/models/workflow.model';
 import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
 import { TemplateCardComponent } from './template-card.component';
 import { TemplateWizardComponent } from './template-wizard/template-wizard.component';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /** Sentinel category value meaning "no filter". */
 const ALL_CATEGORIES = '__all__';
@@ -20,7 +21,7 @@ const ALL_CATEGORIES = '__all__';
 @Component({
   selector: 'app-template-gallery',
   standalone: true,
-  imports: [CommonModule, TranslatePipe, TemplateCardComponent, TemplateWizardComponent],
+  imports: [CommonModule, TranslatePipe, TemplateCardComponent, TemplateWizardComponent, BackHomeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './template-gallery.component.html',
   styleUrls: ['./template-gallery.component.scss'],

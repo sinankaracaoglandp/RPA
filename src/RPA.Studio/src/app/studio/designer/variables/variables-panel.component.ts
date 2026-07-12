@@ -123,7 +123,10 @@ export class VariablesPanelComponent {
   }
 
   private normalizeDateTime(raw: string): string {
-    const parsed = new Date(raw);
+    // datetime-local girişi (tz'siz) UTC olarak yorumlanır — böylece saklanan ISO değer,
+    // makinenin saat diliminden bağımsızdır (TZ-stabil round-trip).
+    const hasTimezone = /Z|[+-]\d{2}:\d{2}$/.test(raw);
+    const parsed = new Date(hasTimezone ? raw : `${raw}Z`);
     return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString();
   }
 
@@ -133,11 +136,12 @@ export class VariablesPanelComponent {
       return String(value);
     }
 
+    // UTC bileşenleriyle biçimlendir (yerel değil) — ekranda saklanan UTC saati birebir gösterilir.
     const pad = (part: number) => String(part).padStart(2, '0');
     return [
-      parsed.getFullYear(),
-      pad(parsed.getMonth() + 1),
-      pad(parsed.getDate()),
-    ].join('-') + `T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+      parsed.getUTCFullYear(),
+      pad(parsed.getUTCMonth() + 1),
+      pad(parsed.getUTCDate()),
+    ].join('-') + `T${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}`;
   }
 }

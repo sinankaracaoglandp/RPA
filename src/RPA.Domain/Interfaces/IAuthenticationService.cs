@@ -27,6 +27,11 @@ public class AuthenticationResult
 {
     public bool Success { get; set; }
     public string? AccessToken { get; set; }
+    public string? JwtToken
+    {
+        get => AccessToken;
+        set => AccessToken = value;
+    }
     public string? RefreshToken { get; set; }
     public DateTime AccessTokenExpiresAtUtc { get; set; }
     public string? ErrorMessage { get; set; }
@@ -34,6 +39,16 @@ public class AuthenticationResult
 
     public static AuthenticationResult Fail(string message) =>
         new() { Success = false, ErrorMessage = message };
+
+    public static AuthenticationResult Ok(string jwtToken, List<string> roles) =>
+        new()
+        {
+            Success = true,
+            AccessToken = jwtToken,
+            RefreshToken = string.Empty,
+            AccessTokenExpiresAtUtc = DateTime.UtcNow.AddMinutes(60),
+            Roles = roles,
+        };
 
     public static AuthenticationResult Ok(AuthTokenPair pair, List<string> roles) =>
         new()

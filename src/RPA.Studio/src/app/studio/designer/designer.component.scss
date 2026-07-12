@@ -11,8 +11,18 @@
 }
 
 .designer__canvas {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: #eef2f7;
+}
+
+.designer__canvas app-canvas {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .designer__header {
@@ -177,4 +187,12 @@
   color: #b42318;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.designer__console {
+  flex: 0 0 auto;
+  height: 240px;
+  min-height: 0;
+  overflow: hidden;
+  resize: vertical;
 }

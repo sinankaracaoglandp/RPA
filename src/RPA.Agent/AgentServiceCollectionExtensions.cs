@@ -59,6 +59,10 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<JobEventRouter>();
         services.AddSingleton<IJobHubClient, RobotHubClient>();
 
+        // Canlı çalıştırma konsolu: BaseRunner node olaylarını RobotHub üzerinden Studio'ya iletir.
+        // BaseRunner (transient) opsiyonel IWorkflowExecutionObserver parametresini DI'dan çözer.
+        services.AddSingleton<RPA.Domain.Interfaces.IWorkflowExecutionObserver, Jobs.AgentWorkflowExecutionObserver>();
+
         // Oturum yönetimi (RDP/AutoLogon/tscon — Spec Bölüm 9).
         services.AddOptions<SessionManagerOptions>()
             .Bind(configuration.GetSection(SessionManagerOptions.SectionName));
@@ -99,11 +103,22 @@ public static class AgentServiceCollectionExtensions
             services.AddOptions<SpySessionOptions>()
                 .Bind(configuration.GetSection(SpySessionOptions.SectionName));
             services.AddSingleton<ISapGuiSinglePicker, SapGuiSinglePicker>();
+            // Paket E: DesktopSpy tek-seçim picker'ı (FlaUI/UIA). Koordinatör kind:"desktop" için kullanır.
+            services.AddSingleton<IDesktopSinglePicker, Desktop.FlaUiDesktopSinglePicker>();
+            // Paket D: WebSpy tek-seçim picker'ı (Playwright/DOM). Koordinatör kind:"web" için kullanır.
+            services.AddSingleton<IWebSinglePicker, PlaywrightWebSinglePicker>();
             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
 
             services.AddHostedService<UiSpyHostedService>();
             services.AddHostedService<SpyHubCommandHostedService>();
+        }
+
+        // Paket E: Windows Masaüstü otomasyon kanalı (FlaUI/UIA3). Desktop.* aktiviteleri
+        // bu kanalı çalıştırma anında kullanır. Yalnız Windows'ta kayıtlıdır.
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<IDesktopAutomationChannel, Desktop.FlaUiDesktopAutomationChannel>();
         }
 
         return services;

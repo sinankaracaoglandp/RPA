@@ -1,8 +1,9 @@
 <div
-  class="designer flex h-full w-full"
+  class="designer flex flex-col h-full w-full"
   (keydown.control.s)="onSaveShortcut($event)"
   tabindex="-1"
 >
+  <div class="designer__main-row flex min-h-0 w-full flex-1">
   @if (isSimpleMode()) {
     <app-simplified-toolbox [canvas]="canvas()"></app-simplified-toolbox>
   } @else {
@@ -15,6 +16,7 @@
   <main class="designer__canvas relative min-w-0 flex-1">
     <div class="designer__header flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
       <app-simple-mode-toggle></app-simple-mode-toggle>
+      <app-back-home />
       <button
         type="button"
         class="designer__back inline-flex min-h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold leading-none text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
@@ -90,6 +92,18 @@
           {{ 'debug.panel.title' | translate }}
         </button>
       }
+      <button
+        type="button"
+        class="designer__console-toggle inline-flex min-h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold leading-none text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 aria-pressed:border-slate-800 aria-pressed:bg-slate-800 aria-pressed:text-white"
+        data-testid="designer-console-toggle"
+        [attr.aria-pressed]="log.visible()"
+        (click)="log.toggle()"
+      >
+        Konsol
+        @if (log.count() > 0) {
+          <span class="ml-1.5 rounded-full bg-slate-200 px-1.5 text-xs text-slate-700">{{ log.count() }}</span>
+        }
+      </button>
     </div>
     <app-canvas
       [workflow]="workflow()"
@@ -111,5 +125,11 @@
       [variables]="variables()"
       (propertiesChange)="onPropertiesChange($event)"
     ></app-properties-panel>
+  }
+  </div>
+  @if (log.visible()) {
+    <div class="designer__console">
+      <app-log-console></app-log-console>
+    </div>
   }
 </div>

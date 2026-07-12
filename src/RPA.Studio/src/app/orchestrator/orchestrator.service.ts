@@ -5,6 +5,7 @@ import {
   ActionItem,
   AlertRule,
   CreateAlertRuleRequest,
+  CredentialReference,
   DashboardSummary,
   Environment,
   JobRun,
@@ -14,6 +15,7 @@ import {
   QueueItem,
   QueueSummary,
   Robot,
+  StoreCredentialRequest,
   WorkflowVersion,
 } from './orchestrator.models';
 
@@ -157,5 +159,22 @@ export class OrchestratorService {
       `/api/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(version)}/approve`,
       {},
     );
+  }
+
+  /** Credential Vault referanslarini plaintext secret donmeden listeler. */
+  listCredentials(tag?: string): Observable<CredentialReference[]> {
+    let params = new HttpParams();
+    if (tag) params = params.set('tag', tag);
+    return this.http.get<CredentialReference[]>('/api/credentials', { params });
+  }
+
+  /** Secret degerini Vault'a yazar; response secret icermez. */
+  storeCredential(request: StoreCredentialRequest): Observable<CredentialReference> {
+    return this.http.post<CredentialReference>('/api/credentials', request);
+  }
+
+  /** Credential referansini Vault'tan siler. */
+  deleteCredential(key: string): Observable<void> {
+    return this.http.delete<void>(`/api/credentials/${encodeURIComponent(key)}`);
   }
 }

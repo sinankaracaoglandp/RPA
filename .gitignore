@@ -868,3 +868,12 @@ cypress.env.json
 cypress/screenshots/
 cypress/videos/
 cypress/downloads/
+
+# --- Local secrets / config overrides (never commit real credentials) ---
+appsettings.Local.json
+appsettings.*.Local.json
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+*.secrets.json
+.env
+.env.local

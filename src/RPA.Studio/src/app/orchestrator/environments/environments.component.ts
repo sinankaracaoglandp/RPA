@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { OrchestratorService } from '../orchestrator.service';
 import { Environment } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Ortam yönetimi ekranı (WP-6.4, Spec Bölüm 5.5): Dev/Test/Prod ortamlarını listeler ve
@@ -12,7 +13,7 @@ import { Environment } from '../orchestrator.models';
 @Component({
   selector: 'app-orchestrator-environments',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BackHomeComponent],
   templateUrl: './environments.component.html',
 })
 export class EnvironmentsComponent implements OnInit {

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using RPA.Domain.Interfaces;
+using RPA.WebAPI.Hubs;
 
 /// <summary>
 /// Robot ajanları ile çift yönlü SignalR kanalı (Task 3.1, Spec Bölüm 9).
@@ -14,11 +15,13 @@ using RPA.Domain.Interfaces;
 public class RobotHub : Hub
 {
     private readonly IRobotService _robotService;
+    private readonly IHubContext<StudioHub> _studioHub;
     private readonly ILogger<RobotHub> _logger;
 
-    public RobotHub(IRobotService robotService, ILogger<RobotHub> logger)
+    public RobotHub(IRobotService robotService, IHubContext<StudioHub> studioHub, ILogger<RobotHub> logger)
     {
         _robotService = robotService;
+        _studioHub = studioHub;
         _logger = logger;
     }
 
@@ -63,5 +66,18 @@ public class RobotHub : Hub
         }
 
         await Clients.Caller.SendAsync("HeartbeatAck", robot.LastHeartbeat);
+    }
+
+    /// <summary>
+    /// Ajanın yürütme sırasında gönderdiği node yaşam döngüsü olayını Studio canlı konsoluna
+    /// (StudioHub → "NodeLog") yayınlar. Studio, olayı kendi çalıştırdığı jobRunId'ye göre süzer.
+    /// </summary>
+    public async Task ReportNodeLog(NodeExecutionEvent evt)
+    {
+        if (evt is null)
+        {
+            return;
+        }
+        await _studioHub.Clients.All.SendAsync("NodeLog", evt);
     }
 }

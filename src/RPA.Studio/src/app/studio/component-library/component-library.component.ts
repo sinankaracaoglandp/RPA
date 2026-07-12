@@ -10,6 +10,7 @@ import { TranslatePipe } from '../../core/translate.pipe';
 import { ComponentDetailService } from '../../shared/services/component-detail.service';
 import { ComponentVersion } from '../../shared/models/component.model';
 import { PublishWizardComponent } from './publish-wizard/publish-wizard.component';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Component library panel — displays published/draft components in a grid/list.
@@ -18,7 +19,7 @@ import { PublishWizardComponent } from './publish-wizard/publish-wizard.componen
 @Component({
   selector: 'app-component-library',
   standalone: true,
-  imports: [CommonModule, TranslatePipe, PublishWizardComponent],
+  imports: [CommonModule, TranslatePipe, PublishWizardComponent, BackHomeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './component-library.component.html',
   styleUrls: ['./component-library.component.scss'],

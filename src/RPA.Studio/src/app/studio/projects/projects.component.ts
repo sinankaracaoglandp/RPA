@@ -8,12 +8,13 @@ import {
   ProjectSummary,
   WorkflowSummary,
 } from '../../shared/services/project.service';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /** Projelerim: proje kartları → workflow listesi → designer'a aç (Paket B). */
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [CommonModule, FormsModule, TranslatePipe],
+  imports: [CommonModule, FormsModule, TranslatePipe, BackHomeComponent],
   templateUrl: './projects.component.html',
   styleUrls: ['./projects.component.scss'],
 })
@@ -82,9 +83,5 @@ export class ProjectsComponent implements OnInit {
 
   openWorkflow(workflowId: string): void {
     void this.router.navigate(['/designer', workflowId]);
-  }
-
-  backToHome(): void {
-    void this.router.navigate(['/']);
   }
 }

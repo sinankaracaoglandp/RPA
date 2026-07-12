@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { OrchestratorService } from '../orchestrator.service';
 import { DashboardSummary } from '../orchestrator.models';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 
 /**
  * Orchestrator Dashboard (WP-6.1, Spec Bölüm 8.2): bugünkü işler, başarı oranı ve
@@ -10,7 +11,7 @@ import { DashboardSummary } from '../orchestrator.models';
 @Component({
   selector: 'app-orchestrator-dashboard',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, BackHomeComponent],
   templateUrl: './orchestrator-dashboard.component.html',
   styleUrls: ['./orchestrator-dashboard.component.scss'],
 })

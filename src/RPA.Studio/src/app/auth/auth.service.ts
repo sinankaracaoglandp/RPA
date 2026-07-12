@@ -1,9 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable, tap } from 'rxjs';
-import { LoginRequest, LoginResponse } from './auth.models';
+import { LoginRequest, LoginResponse, RefreshRequest } from './auth.models';
 
 const TOKEN_KEY = 'rpa.auth.token';
+const REFRESH_TOKEN_KEY = 'rpa.auth.refreshToken';
+const ACCESS_TOKEN_EXPIRES_AT_KEY = 'rpa.auth.accessTokenExpiresAtUtc';
 const ROLES_KEY = 'rpa.auth.roles';
 
 /**
@@ -13,6 +15,7 @@ const ROLES_KEY = 'rpa.auth.roles';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly loginUrl = '/api/auth/login';
+  private readonly refreshUrl = '/api/auth/refresh';
 
   constructor(private http: HttpClient) {}
 
@@ -20,14 +23,29 @@ export class AuthService {
     const body: LoginRequest = { username, password };
     return this.http.post<LoginResponse>(this.loginUrl, body).pipe(
       tap((response) => {
-        this.setToken(response.token);
-        this.setRoles(response.roles);
+        this.storeSession(response);
+      }),
+    );
+  }
+
+  refreshToken(): Observable<LoginResponse> {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) {
+      throw new Error('Refresh token bulunamadı.');
+    }
+
+    const body: RefreshRequest = { refreshToken };
+    return this.http.post<LoginResponse>(this.refreshUrl, body).pipe(
+      tap((response) => {
+        this.storeSession(response);
       }),
     );
   }
 
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(ACCESS_TOKEN_EXPIRES_AT_KEY);
     localStorage.removeItem(ROLES_KEY);
   }
 
@@ -37,6 +55,10 @@ export class AuthService {
 
   getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
+  }
+
+  getRefreshToken(): string | null {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
   }
 
   getRoles(): string[] {
@@ -60,8 +82,11 @@ export class AuthService {
     }
   }
 
-  private setToken(token: string): void {
-    localStorage.setItem(TOKEN_KEY, token);
+  private storeSession(response: LoginResponse): void {
+    localStorage.setItem(TOKEN_KEY, response.token);
+    localStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken);
+    localStorage.setItem(ACCESS_TOKEN_EXPIRES_AT_KEY, response.accessTokenExpiresAtUtc);
+    this.setRoles(response.roles);
   }
 
   private setRoles(roles: string[]): void {

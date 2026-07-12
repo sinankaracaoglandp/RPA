@@ -16,6 +16,10 @@ import { SimpleModeToggleComponent } from '../simple-mode/simple-mode-toggle.com
 import { SimplifiedToolboxComponent } from '../simple-mode/simplified-toolbox.component';
 import { PropertiesPanelComponent } from './properties/properties-panel.component';
 import { VariablesPanelComponent } from './variables/variables-panel.component';
+import { BackHomeComponent } from '../../shared/back-home/back-home.component';
+import { LogConsoleComponent } from './log-console/log-console.component';
+import { ExecutionLogService } from '../../shared/services/execution-log.service';
+import { RunLogService } from '../../shared/services/run-log.service';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -38,6 +42,8 @@ import { VariablesPanelComponent } from './variables/variables-panel.component';
     SimplifiedToolboxComponent,
     PropertiesPanelComponent,
     VariablesPanelComponent,
+    BackHomeComponent,
+    LogConsoleComponent,
   ],
   templateUrl: './designer.component.html',
   styleUrls: ['./designer.component.scss'],
@@ -57,6 +63,8 @@ export class DesignerComponent implements OnDestroy {
   private readonly modeService = inject(ModeService);
   private readonly draft = inject(WorkflowDraftService);
   private readonly orchestrator = inject(OrchestratorService);
+  readonly log = inject(ExecutionLogService);
+  private readonly runLog = inject(RunLogService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private runStatusPolling?: Subscription;
@@ -209,12 +217,24 @@ export class DesignerComponent implements OnDestroy {
       return;
     }
 
+    // Konsolu aç ve önceki çalıştırmanın günlüğünü temizle.
+    this.log.clear();
+    this.log.open();
+    this.log.info(`Çalıştırma başlatıldı: ${this.workflow()?.name ?? id}`);
+
+    // Canlı node olayları için StudioHub'a bağlan (best-effort, ateşle-unut; çalıştırmayı
+    // geciktirmez — başarısızsa konsol yine çalıştırma-durumu satırlarını gösterir).
+    void this.runLog.connect().catch(() => undefined);
+
     this.runState.set('saving');
+    this.log.step('Taslak kaydediliyor…');
     await this.save();
     if (this.saveState() === 'error') {
       this.runState.set('error');
+      this.log.error('Kaydetme başarısız — çalıştırma iptal edildi.');
       return;
     }
+    this.log.success('Taslak kaydedildi.');
 
     return new Promise<void>((resolve) => {
       this.draft.run(id).subscribe({
@@ -223,11 +243,15 @@ export class DesignerComponent implements OnDestroy {
           this.lastQueueId.set(result.queueId);
           this.lastRunStatus.set(result.status);
           this.runState.set('queued');
+          // Canlı node loglarını bu çalıştırmaya (jobRunId = queue item id) göre süz.
+          this.runLog.setActiveJobRun(result.queueItemId);
+          this.log.success('Kuyruğa alındı.', `İş kalemi: ${result.queueItemId.slice(0, 8)} · durum: ${result.status}`);
           this.startRunStatusPolling(result.queueId, result.queueItemId);
           resolve();
         },
         error: () => {
           this.runState.set('error');
+          this.log.error('Çalıştırma kuyruğa alınamadı.');
           resolve();
         },
       });
@@ -261,9 +285,23 @@ export class DesignerComponent implements OnDestroy {
   }
 
   private applyRunStatus(status: string): void {
+    const changed = this.lastRunStatus() !== status;
     this.lastRunStatus.set(status);
+    if (changed) {
+      const lower = status.toLowerCase();
+      if (lower === 'successful') {
+        this.log.success(`Durum: ${status}`);
+      } else if (lower === 'failed' || lower === 'businessexception' || lower === 'abandoned') {
+        this.log.error(`Durum: ${status}`);
+      } else {
+        this.log.step(`Durum: ${status}`);
+      }
+    }
     if (DesignerComponent.TerminalRunStatuses.has(status.toLowerCase())) {
       this.runStatusPolling?.unsubscribe();
+      if (changed) {
+        this.log.info('Çalıştırma tamamlandı.');
+      }
     }
   }
 

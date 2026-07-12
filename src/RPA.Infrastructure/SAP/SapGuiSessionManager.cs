@@ -19,11 +19,19 @@ using SystemException = RPA.Domain.Exceptions.SystemException;
 public sealed class SapGuiSessionManager : ISapGuiSessionManager
 {
     private readonly ILogger<SapGuiSessionManager> _logger;
+    private readonly ISapGuiSessionFactory _sessionFactory;
     private readonly ConcurrentDictionary<string, ISapGuiSession> _sessions = new();
 
-    public SapGuiSessionManager(ILogger<SapGuiSessionManager> logger)
+    /// <param name="sessionFactory">
+    /// Oturum üreticisi. Null ise <see cref="StubSapGuiSessionFactory"/> kullanılır (birim testleri /
+    /// SAP olmayan ortam). Gerçek sürüş için DI'da <see cref="ComSapGuiSessionFactory"/> kaydedilir.
+    /// </param>
+    public SapGuiSessionManager(
+        ILogger<SapGuiSessionManager> logger,
+        ISapGuiSessionFactory? sessionFactory = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _sessionFactory = sessionFactory ?? new StubSapGuiSessionFactory();
     }
 
     public IReadOnlyCollection<ISapGuiSession> ActiveSessions => _sessions.Values.ToList().AsReadOnly();
@@ -55,9 +63,8 @@ public sealed class SapGuiSessionManager : ISapGuiSessionManager
 
         try
         {
-            // Gerçek impl: GuiApplication.OpenConnectionByConnectionString(...); session = conn.Children(0);
-            //             session.findById("wnd[0]/usr/txtRSYST-BNAME").text = userId; ... sendVKey 0;
-            var session = new StubSapGuiSession(systemId, client, userId, language);
+            // Gerçek modda ComSapGuiSessionFactory COM logon yapar; stub modda deterministik oturum.
+            var session = _sessionFactory.Create(systemId, client, userId, password, language);
             _sessions[session.Id] = session;
 
             _logger.LogInformation(
