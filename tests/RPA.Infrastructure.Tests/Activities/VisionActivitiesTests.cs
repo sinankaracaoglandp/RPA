@@ -1,0 +1,83 @@
+namespace RPA.Infrastructure.Tests.Activities;
+
+using Moq;
+using RPA.Domain.Exceptions;
+using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Activities.Vision;
+using Xunit;
+
+public class VisionActivitiesTests
+{
+    private static Mock<IActivityExecutionContext> Ctx(Dictionary<string, object?> vars)
+    {
+        var ctx = new Mock<IActivityExecutionContext>();
+        ctx.Setup(c => c.GetVariable<string?>(It.IsAny<string>()))
+           .Returns((string n) => vars.TryGetValue(n, out var v) ? (string?)v : null);
+        ctx.Setup(c => c.GetVariable<double>(It.IsAny<string>()))
+           .Returns((string n) => vars.TryGetValue(n, out var v) && v is double d ? d : 0d);
+        ctx.Setup(c => c.GetVariable<int>(It.IsAny<string>()))
+           .Returns((string n) => vars.TryGetValue(n, out var v) && v is int i ? i : 0);
+        return ctx;
+    }
+
+    [Fact]
+    public async Task Click_EmptyImage_ThrowsBusiness()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickActivity(channel.Object);
+        var ctx = Ctx(new() { ["image"] = "" });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+    }
+
+    [Fact]
+    public async Task Click_ValidImage_CallsChannelWithDefaults()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickActivity(channel.Object);
+        var ctx = Ctx(new() { ["image"] = "BASE64", ["confidence"] = 0d, ["timeoutMs"] = 0 });
+
+        await activity.ExecuteAsync(ctx.Object);
+
+        // confidence 0 → varsayılan 0.8, clickType null → "left" kanala bırakılır
+        channel.Verify(c => c.ClickImageAsync("BASE64", 0.8, null, 0), Times.Once);
+    }
+
+    [Fact]
+    public async Task Exists_NotFound_ReturnsFalse_NoThrow()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        channel.Setup(c => c.ImageExistsAsync(It.IsAny<string>(), It.IsAny<double>(), It.IsAny<int>()))
+               .ReturnsAsync(false);
+        var activity = new VisionExistsActivity(channel.Object);
+        var ctx = Ctx(new() { ["image"] = "BASE64" });
+
+        var result = await activity.ExecuteAsync(ctx.Object);
+
+        Assert.Equal(false, result["exists"]);
+    }
+
+    [Fact]
+    public async Task GetText_DefaultLanguage_IsTurEng()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        channel.Setup(c => c.GetTextAsync(null, null, null, null, "tur+eng")).ReturnsAsync("okunan");
+        var activity = new VisionGetTextActivity(channel.Object);
+        var ctx = Ctx(new());
+
+        var result = await activity.ExecuteAsync(ctx.Object);
+
+        Assert.Equal("okunan", result["text"]);
+        channel.Verify(c => c.GetTextAsync(null, null, null, null, "tur+eng"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ClickText_EmptyText_ThrowsBusiness()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickTextActivity(channel.Object);
+        var ctx = Ctx(new() { ["text"] = "  " });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+    }
+}
