@@ -1,0 +1,169 @@
+namespace RPA.Agent.Vision;
+
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
+using OpenCvSharp;
+using RPA.Domain.Interfaces;
+using RPA.Domain.ValueObjects;
+using Tesseract;
+using SystemException = RPA.Domain.Exceptions.SystemException;
+
+/// <summary>
+/// IVisionAutomationChannel'ın OpenCvSharp (template) + Tesseract (OCR) implementasyonu.
+/// Etkileşimli masaüstü oturumu gerektirir. Bulunamadı/timeout → SystemException.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
+{
+    private readonly ILogger<TesseractOpenCvVisionChannel> _logger;
+    private readonly string _tessdataPath;
+
+    public TesseractOpenCvVisionChannel(ILogger<TesseractOpenCvVisionChannel> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
+    }
+
+    public async Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs)
+    {
+        var match = await PollForImageAsync(imageBase64, confidence, timeoutMs);
+        if (match is null)
+        {
+            throw new SystemException("Görüntü ekranda bulunamadı (timeout).");
+        }
+        DoClick(match.CenterX, match.CenterY, clickType);
+    }
+
+    public async Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs)
+    {
+        var match = await PollForImageAsync(imageBase64, confidence, Math.Max(timeoutMs, 1));
+        if (match is null)
+        {
+            throw new SystemException("Görüntü beklenirken zaman aşımı.");
+        }
+    }
+
+    public async Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs)
+        => await PollForImageAsync(imageBase64, confidence, timeoutMs) is not null;
+
+    public Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language)
+    {
+        using var region = ScreenCapture.Capture(x, y, width, height);
+        var (text, _) = RunOcr(region, language);
+        return Task.FromResult(text);
+    }
+
+    public async Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs)
+    {
+        var box = await PollForTextAsync(text, language, matchMode, timeoutMs);
+        if (box is null)
+        {
+            throw new SystemException($"Metin ekranda bulunamadı: '{text}' (timeout).");
+        }
+        DoClick(box.CenterX, box.CenterY, clickType);
+    }
+
+    public async Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs)
+        => await PollForTextAsync(text, language, matchMode, timeoutMs) is not null;
+
+    private async Task<VisionMatch?> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
+    {
+        using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
+        var sw = Stopwatch.StartNew();
+        do
+        {
+            using var screen = ScreenCapture.Capture(null, null, null, null);
+            var match = TemplateMatcher.FindBest(screen, needle, confidence);
+            if (match is not null)
+            {
+                return match;
+            }
+            if (sw.ElapsedMilliseconds >= timeoutMs)
+            {
+                break;
+            }
+            await Task.Delay(250);
+        }
+        while (sw.ElapsedMilliseconds < timeoutMs);
+        return null;
+    }
+
+    private async Task<VisionMatch?> PollForTextAsync(string text, string language, string matchMode, int timeoutMs)
+    {
+        var sw = Stopwatch.StartNew();
+        do
+        {
+            using var screen = ScreenCapture.Capture(null, null, null, null);
+            var (_, words) = RunOcr(screen, language);
+            var hit = words.FirstOrDefault(w => OcrTextMatch.Matches(w.Text, text, matchMode));
+            if (hit is not null)
+            {
+                return hit.Box;
+            }
+            if (sw.ElapsedMilliseconds >= timeoutMs)
+            {
+                break;
+            }
+            await Task.Delay(250);
+        }
+        while (sw.ElapsedMilliseconds < timeoutMs);
+        return null;
+    }
+
+    private (string Text, List<OcrWord> Words) RunOcr(Mat image, string language)
+    {
+        try
+        {
+            using var engine = new TesseractEngine(_tessdataPath, language, EngineMode.Default);
+            var bytes = image.ImEncode(".png");
+            using var pix = Pix.LoadFromMemory(bytes);
+            using var page = engine.Process(pix);
+            var full = page.GetText() ?? string.Empty;
+
+            var words = new List<OcrWord>();
+            using var iter = page.GetIterator();
+            iter.Begin();
+            do
+            {
+                if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
+                {
+                    var w = iter.GetText(PageIteratorLevel.Word);
+                    words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
+                }
+            }
+            while (iter.Next(PageIteratorLevel.Word));
+            return (full, words);
+        }
+        catch (Exception ex) when (ex is not RPA.Domain.Exceptions.SystemException)
+        {
+            throw new SystemException($"OCR başarısız: {ex.Message}", ex);
+        }
+    }
+
+    private void DoClick(int x, int y, string? clickType)
+    {
+        System.Windows.Forms.Cursor.Position = new System.Drawing.Point(x, y);
+        var kind = string.IsNullOrWhiteSpace(clickType) ? "left" : clickType.ToLowerInvariant();
+        MouseDownUp(kind == "right" ? RightDown : LeftDown, kind == "right" ? RightUp : LeftUp);
+        if (kind == "double")
+        {
+            MouseDownUp(LeftDown, LeftUp);
+        }
+        _logger.LogInformation("Vision tıklama: ({X},{Y}) {Kind}", x, y, kind);
+    }
+
+    private static void MouseDownUp(uint down, uint up)
+    {
+        mouse_event(down, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(up, 0, 0, 0, UIntPtr.Zero);
+    }
+
+    private const uint LeftDown = 0x0002, LeftUp = 0x0004, RightDown = 0x0008, RightUp = 0x0010;
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+
+    private sealed record OcrWord(string Text, VisionMatch Box);
+}
