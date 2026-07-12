@@ -45,6 +45,8 @@ public sealed record SpyElementMessage
     public string? Name { get; init; }
     public string? UiaPath { get; init; }
     public string? ProcessName { get; init; }
+    public string? ImageBase64 { get; init; }
+    public string? Region { get; init; }
 
     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
     public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
@@ -107,6 +109,22 @@ public sealed record SpyElementMessage
             Changeable = true,
             X = element.X,
             Y = element.Y,
+        };
+    }
+
+    /// <summary>🎯 image picker'dan gelen bölge/görüntü seçiminden mesaj oluşturur.</summary>
+    public static SpyElementMessage FromImage(string? imageBase64, string? regionJson, Guid sessionId)
+    {
+        return new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "image",
+            ElementId = "image",
+            ImageBase64 = imageBase64,
+            Region = regionJson,
+            Selector = imageBase64 ?? regionJson,
+            Enabled = true,
+            Changeable = true,
         };
     }
 }

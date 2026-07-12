@@ -23,6 +23,15 @@ public interface IWebSinglePicker
     Task<WebUiElement?> DetectOnceAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>🎯 image bölge picker'ı — ekranda dikdörtgen çiz, PNG/koordinat döndür.</summary>
+public interface IImageRegionPicker
+{
+    Task<ImagePick?> DetectOnceAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Image picker sonucu: base64 PNG (image alanı için) ve/veya {x,y,width,height} JSON (region alanı için).</summary>
+public sealed record ImagePick(string? ImageBase64, string? RegionJson);
+
 public sealed class SpySessionOptions
 {
     public const string SectionName = "SpySession";
@@ -43,6 +52,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
     private readonly ILogger<SpySessionCoordinator> _logger;
     private readonly IDesktopSinglePicker? _desktopPicker;
     private readonly IWebSinglePicker? _webPicker;
+    private readonly IImageRegionPicker? _imagePicker;
     private readonly object _gate = new();
     private Guid _activeSessionId;
     private CancellationTokenSource? _activeCts;
@@ -53,7 +63,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         IOptions<SpySessionOptions> options,
         ILogger<SpySessionCoordinator> logger,
         IDesktopSinglePicker? desktopPicker = null,
-        IWebSinglePicker? webPicker = null)
+        IWebSinglePicker? webPicker = null,
+        IImageRegionPicker? imagePicker = null)
     {
         _sapPicker = sapPicker ?? throw new ArgumentNullException(nameof(sapPicker));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -61,6 +72,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _desktopPicker = desktopPicker;
         _webPicker = webPicker;
+        _imagePicker = imagePicker;
     }
 
     public async Task StartAsync(Guid sessionId, string kind, CancellationToken cancellationToken = default)
@@ -73,7 +85,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         var isSap = string.Equals(kind, "sap", StringComparison.OrdinalIgnoreCase);
         var isDesktop = string.Equals(kind, "desktop", StringComparison.OrdinalIgnoreCase);
         var isWeb = string.Equals(kind, "web", StringComparison.OrdinalIgnoreCase);
-        if (!isSap && !isDesktop && !isWeb)
+        var isImage = string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase);
+        if (!isSap && !isDesktop && !isWeb && !isImage)
         {
             throw new InvalidOperationException($"Desteklenmeyen spy tipi: {kind}");
         }
@@ -86,6 +99,11 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         if (isWeb && _webPicker is null)
         {
             throw new InvalidOperationException("Web picker bu ortamda kayıtlı değil.");
+        }
+
+        if (isImage && _imagePicker is null)
+        {
+            throw new InvalidOperationException("Image picker bu ortamda kayıtlı değil (yalnız Windows).");
         }
 
         CancellationTokenSource linkedCts;
@@ -116,6 +134,11 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
             {
                 var element = await _webPicker!.DetectOnceAsync(linkedCts.Token);
                 message = element is null ? null : SpyElementMessage.FromWeb(element, sessionId);
+            }
+            else if (isImage)
+            {
+                var pick = await _imagePicker!.DetectOnceAsync(linkedCts.Token);
+                message = pick is null ? null : SpyElementMessage.FromImage(pick.ImageBase64, pick.RegionJson, sessionId);
             }
             else
             {
