@@ -107,6 +107,8 @@ public static class AgentServiceCollectionExtensions
             services.AddSingleton<IDesktopSinglePicker, Desktop.FlaUiDesktopSinglePicker>();
             // Paket D: WebSpy tek-seçim picker'ı (Playwright/DOM). Koordinatör kind:"web" için kullanır.
             services.AddSingleton<IWebSinglePicker, PlaywrightWebSinglePicker>();
+            // Paket F: image bölge picker'ı. Koordinatör kind:"image" için kullanır.
+            services.AddSingleton<IImageRegionPicker, GdiImageRegionPicker>();
             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
 
@@ -119,6 +121,9 @@ public static class AgentServiceCollectionExtensions
         if (OperatingSystem.IsWindows())
         {
             services.AddSingleton<IDesktopAutomationChannel, Desktop.FlaUiDesktopAutomationChannel>();
+            // Paket F: Görüntü/OCR fallback otomasyon kanalı (OpenCvSharp4 + Tesseract). Infrastructure'daki
+            // UnavailableVisionAutomationChannel (TryAddSingleton) kaydını Windows'ta gerçek impl ile değiştirir.
+            services.AddSingleton<RPA.Domain.Interfaces.IVisionAutomationChannel, Vision.TesseractOpenCvVisionChannel>();
         }
 
         return services;
