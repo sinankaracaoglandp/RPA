@@ -259,7 +259,15 @@ export class GenericPropertyComponent {
     this.propertiesChange.emit(next);
   }
 
+  // Paket F: image picker sonuclarinin onizlemesi (port.name -> base64 PNG).
+  readonly imagePreviews: Record<string, string> = {};
+
   onPicked(port: ActivityPort, element: SpyElement): void {
+    if (element.kind === 'image') {
+      this.onValueChange(port, element.imageBase64 ?? '');
+      this.imagePreviews[port.name] = element.imageBase64 ?? '';
+      return;
+    }
     this.onValueChange(port, element.elementId);
   }
 

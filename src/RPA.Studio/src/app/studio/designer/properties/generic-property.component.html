@@ -152,6 +152,14 @@
                   ></app-selector-picker-button>
                 }
               </div>
+              @if (port.pickerKind === 'image' && imagePreviews[port.name]) {
+                <img
+                  class="generic-property__image-preview"
+                  [attr.data-testid]="'prop-' + port.name + '-image-preview'"
+                  [src]="'data:image/png;base64,' + imagePreviews[port.name]"
+                  alt="Secilen bolge onizlemesi"
+                />
+              }
               @if (showModeSelector(port) && fieldMode(port) === 'expression' && expressionSuggestions(port).length > 0) {
                 <div class="generic-property__suggest" [attr.data-testid]="'prop-' + port.name + '-suggest'">
                   @for (variable of expressionSuggestions(port); track variable.name) {

@@ -2,7 +2,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { AuthService } from '../../auth/auth.service';
 
-export type SpyKind = 'sap' | 'web' | 'desktop';
+export type SpyKind = 'sap' | 'web' | 'desktop' | 'image';
 
 export interface SpyElement {
   sessionId: string;
@@ -14,6 +14,9 @@ export interface SpyElement {
   changeable?: boolean;
   x?: number;
   y?: number;
+  // Paket F: image picker sonucu (kind === 'image') — base64 PNG + secilen bolge.
+  imageBase64?: string;
+  region?: { x: number; y: number; width: number; height: number };
 }
 
 export interface SpyHubConnection {
