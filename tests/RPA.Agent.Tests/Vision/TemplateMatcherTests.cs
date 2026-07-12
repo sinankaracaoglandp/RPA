@@ -6,26 +6,26 @@ using Xunit;
 
 public class TemplateMatcherTests
 {
-    // 100x100 beyaz zemin, (40,30) konumunda 10x10 siyah kare içeren haystack üret.
-    private static Mat MakeHaystack(out Rect knownBox)
-    {
-        var img = new Mat(new Size(100, 100), MatType.CV_8UC3, Scalar.White);
-        knownBox = new Rect(40, 30, 10, 10);
-        Cv2.Rectangle(img, knownBox, Scalar.Black, thickness: -1);
-        return img;
-    }
-
+    // Dokulu (sıfır olmayan varyanslı) 10x10 needle: siyah zemin + beyaz iç kare.
+    // Tekdüze renk DEĞİL — CCoeffNormed'in dejenere olmaması için gerekli.
     private static Mat MakeNeedle()
     {
-        // 10x10 siyah kare — haystack'teki desenle aynı.
-        return new Mat(new Size(10, 10), MatType.CV_8UC3, Scalar.Black);
+        var needle = new Mat(new Size(10, 10), MatType.CV_8UC3, Scalar.Black);
+        Cv2.Rectangle(needle, new Rect(2, 2, 6, 6), Scalar.White, thickness: -1);
+        return needle;
     }
 
     [Fact]
     public void FindBest_LocatesNeedle_AtKnownPosition()
     {
-        using var haystack = MakeHaystack(out var box);
+        var box = new Rect(40, 30, 10, 10);
+        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, new Scalar(128, 128, 128));
         using var needle = MakeNeedle();
+        // Needle'ı haystack'e piksel-birebir kopyala (bilinen konumda kesin eşleşme).
+        using (var roi = new Mat(haystack, box))
+        {
+            needle.CopyTo(roi);
+        }
 
         var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.8);
 
@@ -38,8 +38,12 @@ public class TemplateMatcherTests
     [Fact]
     public void FindBest_ReturnsNull_WhenBelowConfidence()
     {
-        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, Scalar.White);
-        using var needle = MakeNeedle(); // siyah kare beyaz zeminde yok
+        // Orta-gri zemin + needle'dan FARKLI iki şekil (renk/boyut farklı) — needle burada yok,
+        // ama zemin varyanslı (tekdüze değil) ki CCoeffNormed dejenere olmasın.
+        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, new Scalar(128, 128, 128));
+        Cv2.Circle(haystack, new Point(20, 20), 8, Scalar.White, thickness: -1);
+        Cv2.Rectangle(haystack, new Rect(70, 70, 15, 15), new Scalar(200, 50, 50), thickness: -1);
+        using var needle = MakeNeedle(); // haystack içinde yok
 
         var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.95);
 

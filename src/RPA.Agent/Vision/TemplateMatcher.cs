@@ -28,20 +28,12 @@ public static class TemplateMatcher
             }
 
             using var result = new Mat();
-            // SQDIFF (unnormalized) is used instead of the *_NORMED variants because those
-            // divide by the template's own norm — a uniform-color template (norm 0, e.g. a
-            // solid-color icon) produces a 0/0 degenerate score everywhere. SQDIFF has no such
-            // division; we convert it to a [0,1] similarity by scaling against the theoretical
-            // worst case (every pixel/channel maximally different).
-            Cv2.MatchTemplate(haystack, scaled, result, TemplateMatchModes.SqDiff);
-            Cv2.MinMaxLoc(result, out double minVal, out _, out Point minLoc, out _);
+            Cv2.MatchTemplate(haystack, scaled, result, TemplateMatchModes.CCoeffNormed);
+            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
 
-            double maxPossibleSqDiff = (double)scaled.Rows * scaled.Cols * scaled.Channels() * 255.0 * 255.0;
-            double score = maxPossibleSqDiff > 0 ? 1.0 - (minVal / maxPossibleSqDiff) : 1.0;
-
-            if (score >= confidence && (best is null || score > best.Score))
+            if (maxVal >= confidence && (best is null || maxVal > best.Score))
             {
-                best = new VisionMatch(minLoc.X, minLoc.Y, scaled.Width, scaled.Height, score);
+                best = new VisionMatch(maxLoc.X, maxLoc.Y, scaled.Width, scaled.Height, maxVal);
             }
         }
         return best;
