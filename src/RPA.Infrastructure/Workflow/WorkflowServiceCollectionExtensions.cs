@@ -61,6 +61,16 @@ public static class WorkflowServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, Activities.Code.DataToDataTableActivity>("Data.ToDataTable");
         services.AddKeyedTransient<IActivity, Activities.Code.DataFromDataTableActivity>("Data.FromDataTable");
 
+        // Paket F: Görüntü/OCR fallback aktiviteleri (Vision.*). IVisionAutomationChannel
+        // implementasyonu Agent sürecinde kayıtlıdır; aktiviteler yalnız arayüze bağlıdır.
+        services.TryAddSingleton<IVisionAutomationChannel, RPA.Infrastructure.Activities.Vision.UnavailableVisionAutomationChannel>();
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickActivity>("Vision.Click");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionWaitForActivity>("Vision.WaitFor");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionExistsActivity>("Vision.Exists");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionGetTextActivity>("Vision.GetText");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextActivity>("Vision.ClickText");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionTextExistsActivity>("Vision.TextExists");
+
         services.AddSingleton<IActivityFactory>(sp =>
             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
 

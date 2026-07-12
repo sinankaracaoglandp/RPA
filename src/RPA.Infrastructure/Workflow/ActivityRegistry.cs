@@ -24,6 +24,7 @@ public static class ActivityRegistry
     public const string CatFile = "Dosya";
     public const string CatDesktop = "Masaüstü";
     public const string CatCode = "Kod & Veri";
+    public const string CatVision = "Görüntü";
 
     /// <summary>Tüm MVP aktivitelerini kaydeder ve immutable katalog döndürür.</summary>
     public static IReadOnlyDictionary<string, ActivityMetadata> BuildCatalog()
@@ -41,6 +42,7 @@ public static class ActivityRegistry
         RegisterFile(b);
         RegisterDesktop(b);
         RegisterCode(b);
+        RegisterVision(b);
 
         return b.Build();
     }
@@ -406,5 +408,56 @@ public static class ActivityRegistry
         b.Activity("Data.FromDataTable").DisplayName("DataTable'dan Satırlar").Category(CatCode)
             .Description("DataTable'ı satır listesine (sütun-değer) dönüştürür.")
             .Input("table", "DataTable").Output("rows", "JSON");
+    }
+
+    // ---- Görüntü/OCR Fallback (Vision.*) — Paket F ----
+    private static void RegisterVision(ActivityCatalogBuilder b)
+    {
+        const string cap = "vision";
+
+        b.Activity("Vision.Click").DisplayName("Görüntüye Tıkla").Category(CatVision).Capability(cap)
+            .Description("Ekranda bir görüntüyü bulur ve merkezine tıklar.")
+            .Input("image", "string", pickerKind: "image", description: "Aranacak görüntü (base64 PNG).")
+            .Input("confidence", "number", required: false, defaultValue: 0.8)
+            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
+            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
+            .ExceptionClassification("Timeout", ExceptionType.System);
+
+        b.Activity("Vision.WaitFor").DisplayName("Görüntü Bekle").Category(CatVision).Capability(cap)
+            .Description("Bir görüntü ekranda görünene kadar bekler (timeout → System).")
+            .Input("image", "string", pickerKind: "image")
+            .Input("confidence", "number", required: false, defaultValue: 0.8)
+            .Input("timeoutMs", "int", required: false, defaultValue: 10000)
+            .ExceptionClassification("Timeout", ExceptionType.System);
+
+        b.Activity("Vision.Exists").DisplayName("Görüntü Var mı?").Category(CatVision).Capability(cap)
+            .Description("Görüntü ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
+            .Input("image", "string", pickerKind: "image")
+            .Input("confidence", "number", required: false, defaultValue: 0.8)
+            .Input("timeoutMs", "int", required: false, defaultValue: 0)
+            .Output("exists", "bool");
+
+        b.Activity("Vision.GetText").DisplayName("Görüntüden Metin Oku (OCR)").Category(CatVision).Capability(cap)
+            .Description("Bir ekran bölgesinden (boşsa tam ekran) OCR ile metin okur.")
+            .Input("region", "string", required: false, pickerKind: "image", description: "Bölge {x,y,width,height}.")
+            .Input("language", "string", required: false, defaultValue: "tur+eng")
+            .Output("text", "string");
+
+        b.Activity("Vision.ClickText").DisplayName("Metne Tıkla (OCR)").Category(CatVision).Capability(cap)
+            .Description("OCR ile bir metni bulur ve tıklar (timeout → System).")
+            .Input("text", "string")
+            .Input("language", "string", required: false, defaultValue: "tur+eng")
+            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
+            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
+            .ExceptionClassification("Timeout", ExceptionType.System);
+
+        b.Activity("Vision.TextExists").DisplayName("Metin Var mı? (OCR)").Category(CatVision).Capability(cap)
+            .Description("Metin ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
+            .Input("text", "string")
+            .Input("language", "string", required: false, defaultValue: "tur+eng")
+            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+            .Input("timeoutMs", "int", required: false, defaultValue: 0)
+            .Output("exists", "bool");
     }
 }
