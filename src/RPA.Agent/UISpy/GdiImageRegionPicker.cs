@@ -31,9 +31,10 @@ public sealed class GdiImageRegionPicker : IImageRegionPicker
 }
 
 /// <summary>
-/// Tam ekranı kaplayan, yarı saydam WinForms overlay — fareyle dikdörtgen çizip bırakınca
-/// seçimi onaylar; Esc iptal eder. STA thread gerektirir (FlaUiDesktopSinglePicker deseniyle
-/// aynı biçimde ayrı bir STA thread'de gösterilir).
+/// Tüm monitörleri (sanal ekran) kaplayan, yarı saydam WinForms overlay — fareyle dikdörtgen
+/// çizip bırakınca seçimi onaylar; Esc iptal eder. Seçim mutlak sanal-ekran koordinatı olarak
+/// döner (çoklu monitör). STA thread gerektirir (FlaUiDesktopSinglePicker deseniyle aynı biçimde
+/// ayrı bir STA thread'de gösterilir).
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class RegionOverlayForm
@@ -79,7 +80,9 @@ internal static class RegionOverlayForm
         public OverlayForm()
         {
             FormBorderStyle = FormBorderStyle.None;
-            WindowState = FormWindowState.Maximized;
+            // Tüm monitörleri kapsayan sanal ekranı kapla (Maximized yalnız tek monitörü kaplardı).
+            StartPosition = FormStartPosition.Manual;
+            Bounds = SystemInformation.VirtualScreen;
             TopMost = true;
             BackColor = Color.Black;
             Opacity = 0.3;

@@ -144,14 +144,19 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
 
     private void DoClick(int x, int y, string? clickType)
     {
-        System.Windows.Forms.Cursor.Position = new System.Drawing.Point(x, y);
+        // Eşleşme koordinatları tam-ekran (sanal ekran) yakalamasına göredir; mutlak imleç
+        // konumuna çevirmek için sanal ekran orijini eklenir (çoklu monitör; sol/üst negatif olabilir).
+        var (ox, oy) = ScreenCapture.VirtualScreenOrigin;
+        var absX = x + ox;
+        var absY = y + oy;
+        System.Windows.Forms.Cursor.Position = new System.Drawing.Point(absX, absY);
         var kind = string.IsNullOrWhiteSpace(clickType) ? "left" : clickType.ToLowerInvariant();
         MouseDownUp(kind == "right" ? RightDown : LeftDown, kind == "right" ? RightUp : LeftUp);
         if (kind == "double")
         {
             MouseDownUp(LeftDown, LeftUp);
         }
-        _logger.LogInformation("Vision tıklama: ({X},{Y}) {Kind}", x, y, kind);
+        _logger.LogInformation("Vision tıklama: ({X},{Y}) {Kind}", absX, absY, kind);
     }
 
     private static void MouseDownUp(uint down, uint up)

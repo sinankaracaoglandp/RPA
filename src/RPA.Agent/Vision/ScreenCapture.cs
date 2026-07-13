@@ -6,17 +6,33 @@ using System.Runtime.Versioning;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 
-/// <summary>GDI ile tam ekran veya bölge yakalar ve OpenCv Mat'e dönüştürür (BGR).</summary>
+/// <summary>GDI ile tam ekran veya bölge yakalar ve OpenCv Mat'e dönüştürür (BGR).
+/// Tam ekran = tüm monitörleri kapsayan sanal ekran (çoklu monitör desteği).</summary>
 [SupportedOSPlatform("windows")]
 public static class ScreenCapture
 {
+    /// <summary>
+    /// Tüm monitörleri kapsayan sanal ekranın sol-üst köşesi. Birincil monitör (0,0); soldaki/üstteki
+    /// monitörler negatif olabilir. Tam-ekran yakalamanın (0,0) noktası bu koordinata denk gelir;
+    /// template/OCR eşleşme koordinatı bu offset ile mutlak imleç konumuna çevrilir.
+    /// </summary>
+    public static (int X, int Y) VirtualScreenOrigin
+    {
+        get
+        {
+            var vs = System.Windows.Forms.SystemInformation.VirtualScreen;
+            return (vs.X, vs.Y);
+        }
+    }
+
     public static Mat Capture(int? x, int? y, int? width, int? height)
     {
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        var rx = x ?? bounds.X;
-        var ry = y ?? bounds.Y;
-        var rw = width ?? bounds.Width;
-        var rh = height ?? bounds.Height;
+        // Varsayılan (null) = tüm monitörleri kapsayan sanal ekran (yalnız birincil değil).
+        var vs = System.Windows.Forms.SystemInformation.VirtualScreen;
+        var rx = x ?? vs.X;
+        var ry = y ?? vs.Y;
+        var rw = width ?? vs.Width;
+        var rh = height ?? vs.Height;
 
         using var bmp = new Bitmap(rw, rh, PixelFormat.Format24bppRgb);
         using (var g = Graphics.FromImage(bmp))
