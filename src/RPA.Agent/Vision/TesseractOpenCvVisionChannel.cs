@@ -28,25 +28,30 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
 
     public async Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs)
     {
-        var match = await PollForImageAsync(imageBase64, confidence, timeoutMs);
+        var (match, bestScore) = await PollForImageAsync(imageBase64, confidence, timeoutMs);
         if (match is null)
         {
-            throw new SystemException("Görüntü ekranda bulunamadı (timeout).");
+            throw new SystemException(ImageNotFoundMessage(confidence, bestScore));
         }
         DoClick(match.CenterX, match.CenterY, clickType);
     }
 
     public async Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs)
     {
-        var match = await PollForImageAsync(imageBase64, confidence, Math.Max(timeoutMs, 1));
+        var (match, bestScore) = await PollForImageAsync(imageBase64, confidence, Math.Max(timeoutMs, 1));
         if (match is null)
         {
-            throw new SystemException("Görüntü beklenirken zaman aşımı.");
+            throw new SystemException(ImageNotFoundMessage(confidence, bestScore));
         }
     }
 
     public async Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs)
-        => await PollForImageAsync(imageBase64, confidence, timeoutMs) is not null;
+        => (await PollForImageAsync(imageBase64, confidence, timeoutMs)).Match is not null;
+
+    private static string ImageNotFoundMessage(double confidence, double bestScore) =>
+        $"Ekran görüntüsü bulunamadı. Ulaşılan en iyi eşleşme skoru {bestScore:0.00}, eşik (confidence) {confidence:0.00}. " +
+        "Menünün/pencerenin çalışma anında ekranda ve aynı görünümde (vurgusuz) olduğundan emin olun; " +
+        "gerekirse 'confidence' değerini en iyi skorun biraz altına düşürün.";
 
     public Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language)
     {
@@ -68,17 +73,22 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
     public async Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs)
         => await PollForTextAsync(text, language, matchMode, timeoutMs) is not null;
 
-    private async Task<VisionMatch?> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
+    private async Task<(VisionMatch? Match, double BestScore)> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
     {
         using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
         var sw = Stopwatch.StartNew();
+        var bestSeen = 0d;
         do
         {
             using var screen = ScreenCapture.Capture(null, null, null, null);
-            var match = TemplateMatcher.FindBest(screen, needle, confidence);
+            var match = TemplateMatcher.FindBest(screen, needle, confidence, out var score);
+            if (score > bestSeen)
+            {
+                bestSeen = score;
+            }
             if (match is not null)
             {
-                return match;
+                return (match, score);
             }
             if (sw.ElapsedMilliseconds >= timeoutMs)
             {
@@ -87,7 +97,7 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
             await Task.Delay(250);
         }
         while (sw.ElapsedMilliseconds < timeoutMs);
-        return null;
+        return (null, bestSeen);
     }
 
     private async Task<VisionMatch?> PollForTextAsync(string text, string language, string matchMode, int timeoutMs)

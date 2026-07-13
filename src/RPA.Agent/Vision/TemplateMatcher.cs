@@ -15,7 +15,15 @@ public static class TemplateMatcher
     private static readonly double[] Scales = { 1.0, 0.9, 1.1, 0.8, 1.25 };
 
     public static VisionMatch? FindBest(Mat haystack, Mat needle, double confidence)
+        => FindBest(haystack, needle, confidence, out _);
+
+    /// <summary>
+    /// En iyi eşleşmeyi bulur; <paramref name="bestScore"/> eşiğin altında olsa bile ulaşılan en yüksek
+    /// normalize skoru döndürür (tanı/confidence ayarı için — "bulunamadı" hatasında gösterilir).
+    /// </summary>
+    public static VisionMatch? FindBest(Mat haystack, Mat needle, double confidence, out double bestScore)
     {
+        bestScore = 0d;
         VisionMatch? best = null;
         foreach (var scale in Scales)
         {
@@ -30,6 +38,11 @@ public static class TemplateMatcher
             using var result = new Mat();
             Cv2.MatchTemplate(haystack, scaled, result, TemplateMatchModes.CCoeffNormed);
             Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
+
+            if (maxVal > bestScore)
+            {
+                bestScore = maxVal;
+            }
 
             if (maxVal >= confidence && (best is null || maxVal > best.Score))
             {
