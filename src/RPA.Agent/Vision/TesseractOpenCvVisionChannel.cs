@@ -79,13 +79,19 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
         using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
         var sw = Stopwatch.StartNew();
         var bestSeen = 0d;
+        Mat? firstScreen = null;
         Mat? lastScreen = null;
         try
         {
             do
             {
-                lastScreen?.Dispose();
+                if (!ReferenceEquals(lastScreen, firstScreen))
+                {
+                    lastScreen?.Dispose();
+                }
                 lastScreen = ScreenCapture.Capture(null, null, null, null);
+                // İlk kareyi sakla (node başında ekran durumu — menü açık mıydı tanısı için).
+                firstScreen ??= lastScreen.Clone();
                 var match = TemplateMatcher.FindBest(lastScreen, needle, confidence, out var score);
                 if (score > bestSeen)
                 {
@@ -103,26 +109,34 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
             }
             while (sw.ElapsedMilliseconds < timeoutMs);
 
-            // Başarısız: robotun EN SON gördüğü ekranı + aranan görüntüyü diske yaz (tanı için).
-            var dumpPath = TryDumpFailure(lastScreen, needle);
+            // Başarısız: node başındaki (first) + en son (screen) kareyi + aranan görüntüyü diske yaz.
+            var dumpPath = TryDumpFailure(firstScreen, lastScreen, needle);
             return (null, bestSeen, dumpPath);
         }
         finally
         {
-            lastScreen?.Dispose();
+            if (!ReferenceEquals(lastScreen, firstScreen))
+            {
+                lastScreen?.Dispose();
+            }
+            firstScreen?.Dispose();
         }
     }
 
-    private string? TryDumpFailure(Mat? screen, Mat needle)
+    private string? TryDumpFailure(Mat? firstScreen, Mat? lastScreen, Mat needle)
     {
         try
         {
             var dir = Path.Combine(Path.GetTempPath(), "rpa-vision");
             Directory.CreateDirectory(dir);
             var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
-            if (screen is not null)
+            if (firstScreen is not null)
             {
-                screen.SaveImage(Path.Combine(dir, $"screen-{stamp}.png"));
+                firstScreen.SaveImage(Path.Combine(dir, $"ilk-{stamp}.png"));
+            }
+            if (lastScreen is not null && !ReferenceEquals(lastScreen, firstScreen))
+            {
+                lastScreen.SaveImage(Path.Combine(dir, $"son-{stamp}.png"));
             }
             needle.SaveImage(Path.Combine(dir, $"aranan-{stamp}.png"));
             _logger.LogWarning("Vision: görüntü bulunamadı; tanı görüntüleri {Dir} klasörüne yazıldı.", dir);
