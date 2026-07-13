@@ -260,15 +260,24 @@ export class GenericPropertyComponent {
   }
 
   // Paket F: image picker sonuclarinin onizlemesi (port.name -> base64 PNG).
-  readonly imagePreviews: Record<string, string> = {};
-
   onPicked(port: ActivityPort, element: SpyElement): void {
     if (element.kind === 'image') {
       this.onValueChange(port, element.imageBase64 ?? '');
-      this.imagePreviews[port.name] = element.imageBase64 ?? '';
       return;
     }
     this.onValueChange(port, element.elementId);
+  }
+
+  /// <summary>
+  // Önizleme her node'un KENDİ kayıtlı değerinden türetilir (port adına göre paylaşılan bir
+  // harita değil) — böylece aynı tipteki (aynı port adı) node'lar birbirinin görüntüsünü göstermez
+  // ve workflow yeniden açıldığında da önizleme gelir. Değişken/ifade ise önizleme gösterilmez.
+  imagePreviewOf(port: ActivityPort): string | null {
+    const v = this.value(port);
+    if (typeof v !== 'string' || v.length === 0 || v.includes('{{')) {
+      return null;
+    }
+    return v;
   }
 
   canOpenEditor(port: ActivityPort): boolean {

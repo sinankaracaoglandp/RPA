@@ -152,11 +152,11 @@
                   ></app-selector-picker-button>
                 }
               </div>
-              @if (port.pickerKind === 'image' && imagePreviews[port.name]) {
+              @if (port.pickerKind === 'image' && imagePreviewOf(port); as preview) {
                 <img
                   class="generic-property__image-preview"
                   [attr.data-testid]="'prop-' + port.name + '-image-preview'"
-                  [src]="'data:image/png;base64,' + imagePreviews[port.name]"
+                  [src]="'data:image/png;base64,' + preview"
                   alt="Secilen bolge onizlemesi"
                 />
               }
