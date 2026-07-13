@@ -190,3 +190,11 @@ Paket B: ✅ COMPLETE (6 task, commits 4907841..14b900e, final Opus review: Read
 Testler: Infrastructure 443/443, WebAPI 81/81, Studio 208/208.
 Backlog minors: designer header SCSS'i; AddAsync boilerplate; SaveDraft validasyon sırası; Dev env yarışı; ListProjects N+1; dirtyGuard unit testi; jsdom elementsFromPoint uyarısı (Paket A alanı).
 Bekleyen: kullanıcı elle tarayıcı doğrulaması (Projelerim → workflow aç → düzenle → Kaydet → yenile → geri gelir).
+
+Paket F: ✅ TÜM TASKLAR TAMAM (7 task, commits 9ac4466..0eb06c2). Final whole-branch review sırada.
+
+## Paket F: ✅ FINAL REVIEW APPROVED (Opus, 9ac4466..0eb06c2, 9 commits)
+- Verdict: Ready to merge. 0 Critical, 0 Important.
+- DI override verified: Program.cs AddWorkflowServices (TryAdd Unavailable) before AddAgentCore (AddSingleton real Tesseract channel, Windows-gated) → real wins on Windows, Unavailable keeps non-Windows DI valid.
+- Cross-task ID coherence exact (6 activity IDs ↔ keyed DI ↔ catalog ↔ tests); Onion boundary clean (OpenCvSharp/Tesseract confined to Agent).
+- Post-merge follow-ups (Minors): (1) align confidence metadata "double"→"number"; (2) Exists/TextExists defensive try/return-false on OCR-init/base64-decode; (3) cache TesseractEngine per (path,language) instead of per-poll; (4) Studio imagePreviews reset on node switch + hydrate from stored value; (5) multi-monitor capture; (6) base64 workflow-JSON size note.

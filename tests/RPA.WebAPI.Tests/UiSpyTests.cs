@@ -213,6 +213,22 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         await connection.DisposeAsync();
     }
 
+    [Theory]
+    [InlineData("sap")]
+    [InlineData("web")]
+    [InlineData("desktop")]
+    [InlineData("image")]
+    public async Task StudioHub_StartSpy_AcceptsSupportedKind(string kind)
+    {
+        var connection = CreateHubConnection(GenerateToken());
+        await connection.StartAsync();
+
+        // Desteklenen tip HubException fırlatmamalı (image = Paket F görüntü/OCR picker'ı).
+        await connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), kind);
+
+        await connection.DisposeAsync();
+    }
+
     [Fact]
     public async Task StudioHub_WithoutToken_IsRejected()
     {

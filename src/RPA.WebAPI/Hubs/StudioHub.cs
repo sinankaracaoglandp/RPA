@@ -27,6 +27,7 @@ public class StudioHub : Hub
         "sap",
         "web",
         "desktop",
+        "image",
     };
 
     private readonly ILogger<StudioHub> _logger;
