@@ -332,6 +332,28 @@ Etkilenen paketler: Studio picker metadata tüketicileri (yeni `image` kind), Ag
 SAP/Web/Desktop picker'lar etkilenmez (additive).
 Gerekçe: UIA/DOM sunmayan uygulamalar için (eski Win32, custom-render) otomasyon boşluğu.
 
+### Ek — 2026-07-13 (Paket F izleme düzeltmeleri)
+
+- **StudioHub whitelist:** `StudioHub.SupportedKinds`'e `"image"` eklendi (eksikti; picker
+  "Desteklenmeyen spy tipi: image" alıyordu).
+- **Çoklu monitör:** `ScreenCapture` tam-ekran yakalama `SystemInformation.VirtualScreen` (tüm
+  monitörler) + `VirtualScreenOrigin`; `TesseractOpenCvVisionChannel.DoClick` tıklamayı sanal-ekran
+  orijiniyle kaydırır; `GdiImageRegionPicker` overlay tüm monitörleri kaplar.
+- **Freeze/dondurma (geçici menü/pencere yakalama) — kontrat genişledi:**
+  - `IImageRegionPicker.DetectOnceAsync(ImagePickerOptions options, CancellationToken)` — yeni
+    `ImagePickerOptions(CaptureMode "f2"|"timer", DelaySeconds)` (JSON parse; varsayılan F2).
+  - `ISpySessionCoordinator.StartAsync(sessionId, kind, string? optionsJson, ct)` — image için
+    picker seçeneklerini taşır; image timeout ≥300 sn (manuel UI hazırlığı).
+  - `ISpyCommandConnection.OnStartSpy(Func<Guid,string,string?,Task>)` + `StudioHub.StartSpy(sessionId,
+    kind, string? optionsJson)` — **SignalR istemcileri artık StartSpy'ı 3 argümanla çağırmalı**
+    (non-image için `null`).
+  - `GdiImageRegionPicker`: iki aşamalı — arm (F2 global hotkey / geri sayım) → ekranı **dondur**
+    (snapshot) → donmuş görüntü üzerinde seçim; kırpma canlı ekrandan değil snapshot'tan yapılır.
+  - Studio: `SpyService.pick(kind, options?)` + picker düğmesinde mod/saniye kontrolleri (yalnız
+    `image`), i18n `picker.captureMode/modeF2/modeTimer/delaySeconds/seconds`.
+  Etkilenen: Studio spy tüketicileri, Agent UI Spy transport, WebAPI StudioHub. Gerekçe: OCR/görüntü
+  ile açılan geçici SAP menüsü/pencere, picker overlay hemen açılınca yakalanamıyordu.
+
 ---
 
 ## Kontrat Değişiklik Prosedürü

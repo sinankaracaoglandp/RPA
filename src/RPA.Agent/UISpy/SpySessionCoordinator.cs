@@ -26,11 +26,48 @@ public interface IWebSinglePicker
 /// <summary>🎯 image bölge picker'ı — ekranda dikdörtgen çiz, PNG/koordinat döndür.</summary>
 public interface IImageRegionPicker
 {
-    Task<ImagePick?> DetectOnceAsync(CancellationToken cancellationToken = default);
+    Task<ImagePick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Image picker sonucu: base64 PNG (image alanı için) ve/veya {x,y,width,height} JSON (region alanı için).</summary>
 public sealed record ImagePick(string? ImageBase64, string? RegionJson);
+
+/// <summary>
+/// Image picker'ın "ekran dondurma" (freeze) davranışı. Geçici menü/pencere yakalamak için:
+/// önce hedef UI açılır, sonra ekran dondurulup donmuş görüntü üzerinde seçim yapılır.
+/// <para><see cref="CaptureMode"/>: <c>"f2"</c> = kullanıcı F2'ye basınca dondur (süre sınırsız);
+/// <c>"timer"</c> = <see cref="DelaySeconds"/> saniye geri sayıp otomatik dondur.</para>
+/// </summary>
+public sealed record ImagePickerOptions(string CaptureMode, int DelaySeconds)
+{
+    public const string ModeF2 = "f2";
+    public const string ModeTimer = "timer";
+
+    public static ImagePickerOptions Default { get; } = new(ModeF2, 5);
+
+    /// <summary>Studio'dan gelen JSON ({captureMode, delaySeconds}); null/bozuk ise varsayılan (F2).</summary>
+    public static ImagePickerOptions Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return Default;
+        }
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var mode = root.TryGetProperty("captureMode", out var m) ? m.GetString() : null;
+            mode = string.Equals(mode, ModeTimer, StringComparison.OrdinalIgnoreCase) ? ModeTimer : ModeF2;
+            var seconds = root.TryGetProperty("delaySeconds", out var s) && s.TryGetInt32(out var v) ? v : 5;
+            seconds = Math.Clamp(seconds, 1, 120);
+            return new ImagePickerOptions(mode, seconds);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Default;
+        }
+    }
+}
 
 public sealed class SpySessionOptions
 {
@@ -40,7 +77,7 @@ public sealed class SpySessionOptions
 
 public interface ISpySessionCoordinator
 {
-    Task StartAsync(Guid sessionId, string kind, CancellationToken cancellationToken = default);
+    Task StartAsync(Guid sessionId, string kind, string? optionsJson = null, CancellationToken cancellationToken = default);
     Task StopAsync(Guid sessionId, CancellationToken cancellationToken = default);
 }
 
@@ -75,7 +112,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         _imagePicker = imagePicker;
     }
 
-    public async Task StartAsync(Guid sessionId, string kind, CancellationToken cancellationToken = default)
+    public async Task StartAsync(Guid sessionId, string kind, string? optionsJson = null, CancellationToken cancellationToken = default)
     {
         if (sessionId == Guid.Empty)
         {
@@ -121,8 +158,14 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
 
         try
         {
-            var timeout = TimeSpan.FromSeconds(Math.Max(1, _options.TimeoutSeconds));
-            linkedCts.CancelAfter(timeout);
+            // Image picker'da kullanıcı hedef menüyü/pencereyi elle açtığı için (F2/zamanlayıcı ile
+            // dondurma) daha uzun süre gerekir; diğer picker'lar için normal timeout uygulanır.
+            var timeoutSeconds = Math.Max(1, _options.TimeoutSeconds);
+            if (isImage)
+            {
+                timeoutSeconds = Math.Max(timeoutSeconds, 300);
+            }
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
             SpyElementMessage? message;
             if (isDesktop)
@@ -137,7 +180,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
             }
             else if (isImage)
             {
-                var pick = await _imagePicker!.DetectOnceAsync(linkedCts.Token);
+                var pickerOptions = ImagePickerOptions.Parse(optionsJson);
+                var pick = await _imagePicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
                 message = pick is null ? null : SpyElementMessage.FromImage(pick.ImageBase64, pick.RegionJson, sessionId);
             }
             else

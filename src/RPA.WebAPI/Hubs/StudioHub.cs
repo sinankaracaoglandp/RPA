@@ -82,7 +82,7 @@ public class StudioHub : Hub
         }
     }
 
-    public async Task StartSpy(Guid sessionId, string kind)
+    public async Task StartSpy(Guid sessionId, string kind, string? optionsJson = null)
     {
         if (sessionId == Guid.Empty)
         {
@@ -99,7 +99,8 @@ public class StudioHub : Hub
 
         // Robot/Agent gruplama Paket C Task 3'te baglanacak; simdilik komut,
         // istegi baslatan Studio disindaki baglantilara gider.
-        await Clients.Others.SendAsync(StartSpyCommand, sessionId, kind);
+        // optionsJson (Paket F image picker): freeze modu/gecikme; diger kind'ler icin null.
+        await Clients.Others.SendAsync(StartSpyCommand, sessionId, kind, optionsJson);
     }
 
     public async Task StopSpy(Guid sessionId)

@@ -119,7 +119,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         await owner.StartAsync();
         await other.StartAsync();
         await agent.StartAsync();
-        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap");
+        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap", (string?)null);
 
         await agent.InvokeAsync("ReceiveDetectedElement", new SpyElementMessage
         {
@@ -152,7 +152,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
 
         await owner.StartAsync();
         await agent.StartAsync();
-        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap");
+        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap", (string?)null);
         await owner.InvokeAsync(StudioHub_StopSpyCommand, sessionId);
         await agent.InvokeAsync("ReceiveDetectedElement", new SpyElementMessage
         {
@@ -183,7 +183,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         await owner.StartAsync();
         await other.StartAsync();
         await agent.StartAsync();
-        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap");
+        await owner.InvokeAsync(StudioHub_StartSpyCommand, sessionId, "sap", (string?)null);
         await other.InvokeAsync(StudioHub_StopSpyCommand, sessionId);
         await agent.InvokeAsync("ReceiveDetectedElement", new SpyElementMessage
         {
@@ -208,7 +208,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         await connection.StartAsync();
 
         await Assert.ThrowsAnyAsync<Exception>(
-            () => connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), "mainframe"));
+            () => connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), "mainframe", (string?)null));
 
         await connection.DisposeAsync();
     }
@@ -224,7 +224,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         await connection.StartAsync();
 
         // Desteklenen tip HubException fırlatmamalı (image = Paket F görüntü/OCR picker'ı).
-        await connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), kind);
+        await connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), kind, (string?)null);
 
         await connection.DisposeAsync();
     }

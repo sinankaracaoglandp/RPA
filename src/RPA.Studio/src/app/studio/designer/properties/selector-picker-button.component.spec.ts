@@ -36,8 +36,22 @@ describe('SelectorPickerButtonComponent', () => {
     fixture.nativeElement.querySelector('[data-testid="selector-picker"]').click();
     await fixture.whenStable();
 
-    expect(spy.pick).toHaveBeenCalledWith('sap');
+    // Non-image kind → options undefined.
+    expect(spy.pick).toHaveBeenCalledWith('sap', undefined);
     expect(emitted).toEqual(['wnd[0]/usr/btn[OK]']);
+  });
+
+  it('passes image capture options (mode + delay) to SpyService.pick', async () => {
+    component.pickerKind = 'image';
+    spy.pick.mockResolvedValue({ sessionId: 's1', kind: 'image', elementId: 'image', imageBase64: 'B64' });
+    component.onModeChange('timer');
+    component.onDelayChange(10);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="selector-picker"]').click();
+    await fixture.whenStable();
+
+    expect(spy.pick).toHaveBeenCalledWith('image', { captureMode: 'timer', delaySeconds: 10 });
   });
 
   it('shows an error state when picking fails', async () => {

@@ -27,6 +27,33 @@
   opacity: 0.65;
 }
 
+.selector-picker__capture {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.3rem;
+  margin-right: 0.35rem;
+}
+
+.selector-picker__mode,
+.selector-picker__delay {
+  border: 1px solid #c7d1df;
+  border-radius: 0.4rem;
+  background: #ffffff;
+  color: #1f2a37;
+  font-size: 0.75rem;
+  min-height: 2.2rem;
+  padding: 0 0.4rem;
+}
+
+.selector-picker__delay {
+  width: 3.4rem;
+}
+
+.selector-picker__unit {
+  color: #526173;
+  font-size: 0.72rem;
+}
+
 .selector-picker__status {
   color: #526173;
   font-size: 0.75rem;

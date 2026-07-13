@@ -42,6 +42,21 @@ public static class ScreenCapture
         return BitmapConverter.ToMat(bmp);
     }
 
+    /// <summary>
+    /// Tüm monitörleri kapsayan sanal ekranın anlık görüntüsünü <see cref="Bitmap"/> olarak alır
+    /// (image picker'ın "dondur" akışı için; çağıran dispose eder). (0,0) = sanal ekran sol-üstü.
+    /// </summary>
+    public static Bitmap CaptureVirtualScreenBitmap()
+    {
+        var vs = System.Windows.Forms.SystemInformation.VirtualScreen;
+        var bmp = new Bitmap(vs.Width, vs.Height, PixelFormat.Format24bppRgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.CopyFromScreen(vs.X, vs.Y, 0, 0, new System.Drawing.Size(vs.Width, vs.Height));
+        }
+        return bmp;
+    }
+
     public static Mat DecodeBase64Png(string base64)
     {
         var bytes = Convert.FromBase64String(base64);

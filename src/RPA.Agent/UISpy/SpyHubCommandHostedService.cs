@@ -8,7 +8,7 @@ using RPA.Agent.Configuration;
 
 public interface ISpyCommandConnection : IAsyncDisposable
 {
-    void OnStartSpy(Func<Guid, string, Task> handler);
+    void OnStartSpy(Func<Guid, string, string?, Task> handler);
     void OnStopSpy(Func<Guid, Task> handler);
     Task StartAsync(CancellationToken cancellationToken = default);
     Task StopAsync(CancellationToken cancellationToken = default);
@@ -27,7 +27,7 @@ public sealed class SignalRSpyCommandConnection : ISpyCommandConnection
             .Build();
     }
 
-    public void OnStartSpy(Func<Guid, string, Task> handler)
+    public void OnStartSpy(Func<Guid, string, string?, Task> handler)
         => _connection.On("StartSpy", handler);
 
     public void OnStopSpy(Func<Guid, Task> handler)
@@ -60,11 +60,11 @@ public sealed class SpyHubCommandHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _connection.OnStartSpy(async (sessionId, kind) =>
+        _connection.OnStartSpy(async (sessionId, kind, optionsJson) =>
         {
             try
             {
-                await _coordinator.StartAsync(sessionId, kind, stoppingToken);
+                await _coordinator.StartAsync(sessionId, kind, optionsJson, stoppingToken);
             }
             catch (Exception ex)
             {

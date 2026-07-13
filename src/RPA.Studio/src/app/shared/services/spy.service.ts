@@ -4,6 +4,13 @@ import { AuthService } from '../../auth/auth.service';
 
 export type SpyKind = 'sap' | 'web' | 'desktop' | 'image';
 
+// Paket F: image picker "ekran dondurma" seçenekleri (geçici menü/pencere yakalama).
+export type ImageCaptureMode = 'f2' | 'timer';
+export interface ImagePickerOptions {
+  captureMode: ImageCaptureMode;
+  delaySeconds: number;
+}
+
 export interface SpyElement {
   sessionId: string;
   kind: SpyKind;
@@ -72,7 +79,7 @@ export class SpyService {
   private connection?: SpyHubConnection;
   private pending?: PendingPick;
 
-  async pick(kind: SpyKind): Promise<SpyElement> {
+  async pick(kind: SpyKind, options?: ImagePickerOptions): Promise<SpyElement> {
     if (this.pending) {
       throw new Error('A spy session is already active');
     }
@@ -80,16 +87,22 @@ export class SpyService {
     const connection = await this.ensureConnection();
     const sessionId = this.sessionIdFactory();
 
+    // Image picker'da kullanıcı hedef menüyü elle açıp F2/zamanlayıcı ile dondurduğu için
+    // daha uzun süre gerekir; diğer picker'lar normal timeout kullanır.
+    const timeoutMs = kind === 'image' ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
+
     const result = new Promise<SpyElement>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         void this.stopPending(sessionId, reject, new Error('Spy selection timed out'));
-      }, this.timeoutMs);
+      }, timeoutMs);
 
       this.pending = { sessionId, resolve, reject, timeoutId };
     });
 
+    const optionsJson = kind === 'image' && options ? JSON.stringify(options) : null;
+
     try {
-      await connection.invoke('StartSpy', sessionId, kind);
+      await connection.invoke('StartSpy', sessionId, kind, optionsJson);
     } catch (error) {
       const active = this.pending as PendingPick | undefined;
       if (active?.sessionId === sessionId) {

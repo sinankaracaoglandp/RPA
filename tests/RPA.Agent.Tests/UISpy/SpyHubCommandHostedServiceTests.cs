@@ -20,8 +20,8 @@ public class SpyHubCommandHostedServiceTests
         await client.StartedTask;
 
         Assert.True(client.Started);
-        await client.TriggerStartAsync(Guid.NewGuid(), "sap");
-        coordinator.Verify(c => c.StartAsync(It.IsAny<Guid>(), "sap", It.IsAny<CancellationToken>()), Times.Once);
+        await client.TriggerStartAsync(Guid.NewGuid(), "sap", null);
+        coordinator.Verify(c => c.StartAsync(It.IsAny<Guid>(), "sap", null, It.IsAny<CancellationToken>()), Times.Once);
 
         await service.StopAsync(CancellationToken.None);
     }
@@ -47,14 +47,14 @@ public class SpyHubCommandHostedServiceTests
 
     private sealed class FakeSpyCommandConnection : ISpyCommandConnection
     {
-        private Func<Guid, string, Task>? _startHandler;
+        private Func<Guid, string, string?, Task>? _startHandler;
         private Func<Guid, Task>? _stopHandler;
 
         public bool Started { get; private set; }
         public Task StartedTask => _started.Task;
         private readonly TaskCompletionSource _started = new();
 
-        public void OnStartSpy(Func<Guid, string, Task> handler) => _startHandler = handler;
+        public void OnStartSpy(Func<Guid, string, string?, Task> handler) => _startHandler = handler;
         public void OnStopSpy(Func<Guid, Task> handler) => _stopHandler = handler;
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
@@ -65,7 +65,7 @@ public class SpyHubCommandHostedServiceTests
         public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public Task TriggerStartAsync(Guid sessionId, string kind) => _startHandler!(sessionId, kind);
+        public Task TriggerStartAsync(Guid sessionId, string kind, string? optionsJson) => _startHandler!(sessionId, kind, optionsJson);
         public Task TriggerStopAsync(Guid sessionId) => _stopHandler!(sessionId);
     }
 }

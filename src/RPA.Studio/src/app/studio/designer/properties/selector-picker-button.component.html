@@ -1,3 +1,32 @@
+@if (isImage) {
+  <span class="selector-picker__capture" data-testid="selector-picker-capture">
+    <select
+      class="selector-picker__mode"
+      data-testid="selector-picker-mode"
+      [disabled]="state() === 'picking'"
+      [ngModel]="captureMode()"
+      (ngModelChange)="onModeChange($event)"
+      [title]="'picker.captureMode' | translate"
+    >
+      <option value="f2">{{ 'picker.modeF2' | translate }}</option>
+      <option value="timer">{{ 'picker.modeTimer' | translate }}</option>
+    </select>
+    @if (captureMode() === 'timer') {
+      <input
+        type="number"
+        class="selector-picker__delay"
+        data-testid="selector-picker-delay"
+        min="1"
+        max="120"
+        [disabled]="state() === 'picking'"
+        [ngModel]="delaySeconds()"
+        (ngModelChange)="onDelayChange($event)"
+        [title]="'picker.delaySeconds' | translate"
+      />
+      <span class="selector-picker__unit">{{ 'picker.seconds' | translate }}</span>
+    }
+  </span>
+}
 <button
   type="button"
   class="selector-picker"

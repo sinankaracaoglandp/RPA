@@ -57,7 +57,12 @@
     "pick": "Pick target",
     "waitingSap": "Click a target in SAP",
     "failed": "Target could not be selected",
-    "timeout": "Target selection timed out"
+    "timeout": "Target selection timed out",
+    "captureMode": "Capture mode",
+    "modeF2": "Freeze with F2",
+    "modeTimer": "Timer",
+    "delaySeconds": "Freeze delay (s)",
+    "seconds": "s"
   },
   "login": {
     "title": "Sign in to RPA Studio",

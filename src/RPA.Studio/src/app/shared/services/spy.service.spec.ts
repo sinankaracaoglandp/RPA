@@ -72,7 +72,8 @@ describe('SpyService', () => {
     await flushPromises();
 
     expect(connection.started).toBe(true);
-    expect(connection.invoked[0]).toEqual({ method: 'StartSpy', args: ['session-1', 'sap'] });
+    // Non-image kind → options JSON null (StartSpy her zaman 3 argümanla çağrılır).
+    expect(connection.invoked[0]).toEqual({ method: 'StartSpy', args: ['session-1', 'sap', null] });
 
     connection.emit('DetectedElement', {
       sessionId: 'session-1',
@@ -84,6 +85,24 @@ describe('SpyService', () => {
       kind: 'sap',
       elementId: 'wnd[0]/usr/btn[OK]',
     });
+  });
+
+  it('passes image capture options as JSON to the hub', async () => {
+    const promise = service.pick('image', { captureMode: 'timer', delaySeconds: 8 });
+    await flushPromises();
+
+    expect(connection.invoked[0]).toEqual({
+      method: 'StartSpy',
+      args: ['session-1', 'image', JSON.stringify({ captureMode: 'timer', delaySeconds: 8 })],
+    });
+
+    connection.emit('DetectedElement', {
+      sessionId: 'session-1',
+      kind: 'image',
+      elementId: 'image',
+      imageBase64: 'BASE64',
+    });
+    await promise;
   });
 
   it('ignores detected elements for another session', async () => {

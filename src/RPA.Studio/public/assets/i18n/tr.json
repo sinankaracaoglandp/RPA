@@ -57,7 +57,12 @@
     "pick": "Hedef goster",
     "waitingSap": "SAP ekraninda hedefe tiklayin",
     "failed": "Hedef secilemedi",
-    "timeout": "Hedef secimi zaman asimina ugradi"
+    "timeout": "Hedef secimi zaman asimina ugradi",
+    "captureMode": "Yakalama modu",
+    "modeF2": "F2 ile dondur",
+    "modeTimer": "Zamanlayici",
+    "delaySeconds": "Dondurma gecikmesi (sn)",
+    "seconds": "sn"
   },
   "login": {
     "title": "RPA Studio'ya Giriş",

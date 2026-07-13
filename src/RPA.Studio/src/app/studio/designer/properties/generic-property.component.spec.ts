@@ -122,7 +122,7 @@ describe('GenericPropertyComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(spy.pick).toHaveBeenCalledWith('sap');
+    expect(spy.pick).toHaveBeenCalledWith('sap', undefined);
     expect((fixture.nativeElement.querySelector('[data-testid="prop-elementId"]') as HTMLInputElement).value)
       .toBe('wnd[0]/usr/btn[OK]');
     expect(emitted.at(-1)).toEqual({ elementId: 'wnd[0]/usr/btn[OK]' });
