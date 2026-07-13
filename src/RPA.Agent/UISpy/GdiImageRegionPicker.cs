@@ -135,6 +135,17 @@ internal sealed class ArmForm : Form
 
     protected override bool ShowWithoutActivation => true;
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // İmlecin bulunduğu monitörün altına yerleştir (kullanıcı hangi ekranda çalışıyorsa orada görünsün).
+        var wa = Screen.FromPoint(Cursor.Position).WorkingArea;
+        Location = new Point(wa.Left + (wa.Width - Width) / 2, wa.Bottom - Height - 24);
+        // Odağı çalmadan (SAP menüsü açık kalsın) topmost z-sırasının en üstüne getir; aksi halde
+        // SAP ön plandayken çubuk arkada kalıp hiç görünmüyordu.
+        NativeForeground.RaiseTopMostNoActivate(Handle);
+    }
+
     protected override CreateParams CreateParams
     {
         get
@@ -288,6 +299,15 @@ internal sealed class SelectionForm : Form
         Paint += OnPaint;
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // Ekran donduruldu; seçim katmanını zorla ön plana al (SAP menüsü açıkken foreground kilidi
+        // yüzünden arkada kalıp fare girdisi alamıyordu). Menü snapshot'a alındığı için kapanması sorun değil.
+        NativeForeground.ForceForeground(Handle);
+        Activate();
+    }
+
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
         _start = e.Location;
@@ -384,4 +404,69 @@ internal sealed class SelectionForm : Form
         Application.Run(form);
         return form.SelectedClientRect;
     }
+}
+
+/// <summary>
+/// Pencereyi ön plana / topmost z-sırasına getiren P/Invoke yardımcıları. SAP gibi başka bir
+/// uygulama ön plandayken (özellikle açık menü varken) Windows foreground kilidini aşmak için
+/// AttachThreadInput hilesi kullanılır.
+/// </summary>
+[SupportedOSPlatform("windows")]
+internal static class NativeForeground
+{
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpShowWindow = 0x0040;
+
+    /// <summary>Odağı çalmadan pencereyi topmost z-sırasının en üstüne çıkarır (arm çubuğu için).</summary>
+    public static void RaiseTopMostNoActivate(IntPtr hWnd)
+    {
+        SetWindowPos(hWnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow);
+    }
+
+    /// <summary>Pencereyi zorla ön plana getirir (seçim katmanı için); foreground kilidini aşar.</summary>
+    public static void ForceForeground(IntPtr hWnd)
+    {
+        var foreground = GetForegroundWindow();
+        var foregroundThread = GetWindowThreadProcessId(foreground, IntPtr.Zero);
+        var thisThread = GetCurrentThreadId();
+
+        var attached = false;
+        if (foregroundThread != 0 && foregroundThread != thisThread)
+        {
+            attached = AttachThreadInput(thisThread, foregroundThread, true);
+        }
+
+        RaiseTopMostNoActivate(hWnd);
+        BringWindowToTop(hWnd);
+        SetForegroundWindow(hWnd);
+
+        if (attached)
+        {
+            AttachThreadInput(thisThread, foregroundThread, false);
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
 }
