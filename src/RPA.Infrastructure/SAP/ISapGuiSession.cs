@@ -28,6 +28,12 @@ public interface ISapGuiSession
     /// <summary>Tab-strip sekmesi seç.</summary>
     Task SelectTabAsync(string elementId);
 
+    /// <summary>
+    /// Menü çubuğunda metin yoluyla gezinerek bir menü öğesi seçer (örn. ["Sistem","Liste","Yazdır"]).
+    /// Element ID'lerinden bağımsızdır ve odak/görünürlükten etkilenmez.
+    /// </summary>
+    Task SelectMenuAsync(IReadOnlyList<string> menuTexts);
+
     /// <summary>ALV grid içeriğini oku.</summary>
     Task<List<Dictionary<string, object?>>> ReadGridAsync(string gridId);
 

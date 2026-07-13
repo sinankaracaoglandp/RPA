@@ -8,6 +8,7 @@ public class VisionCatalogTests
 {
     [Theory]
     [InlineData("Vision.Click")]
+    [InlineData("Vision.ClickSequence")]
     [InlineData("Vision.WaitFor")]
     [InlineData("Vision.Exists")]
     [InlineData("Vision.GetText")]
@@ -24,7 +25,7 @@ public class VisionCatalogTests
     {
         var catalog = ActivityRegistry.BuildCatalog();
         var vision = catalog.Where(a => a.Key.StartsWith("Vision.")).ToList();
-        Assert.Equal(6, vision.Count);
+        Assert.Equal(7, vision.Count);
         Assert.All(vision, a => Assert.Contains("vision", a.Value.RequiredCapabilities));
     }
 }

@@ -54,6 +54,12 @@ public interface ISapGuiChannel
     Task SelectTabAsync(string elementId);
 
     /// <summary>
+    /// Menü çubuğunda metin yoluyla gezinerek bir menü öğesi seçer (element ID gerekmez).
+    /// </summary>
+    /// <param name="menuPath">"/" ile ayrılmış menü metni yolu (örn. "Sistem/Liste/Yazdır")</param>
+    Task SelectMenuAsync(string menuPath);
+
+    /// <summary>
     /// ALV grid oku (SAP listeyi otomatik al).
     /// </summary>
     /// <param name="gridId">Grid element ID</param>

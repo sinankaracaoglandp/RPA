@@ -77,6 +77,23 @@ public sealed class SapGuiChannel : ISapGuiChannel
         return GuardedAsync(nameof(SelectTabAsync), id, s => s.SelectTabAsync(id));
     }
 
+    public Task SelectMenuAsync(string menuPath)
+    {
+        if (string.IsNullOrWhiteSpace(menuPath))
+        {
+            throw new BusinessException("Menü yolu boş olamaz.");
+        }
+
+        var segments = menuPath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length == 0)
+        {
+            throw new BusinessException("Menü yolu en az bir segment içermelidir (örn. 'Sistem/Liste/Yazdır').");
+        }
+
+        return GuardedAsync(nameof(SelectMenuAsync), menuPath, s => s.SelectMenuAsync(segments));
+    }
+
     public async Task<List<Dictionary<string, object?>>> ReadGridAsync(string gridId)
     {
         var id = RequireElementId(gridId);

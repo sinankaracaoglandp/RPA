@@ -44,6 +44,46 @@ public class VisionActivitiesTests
     }
 
     [Fact]
+    public async Task ClickSequence_EmptySteps_ThrowsBusiness()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickSequenceActivity(channel.Object);
+        var ctx = Ctx(new() { ["steps"] = "[]" });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+    }
+
+    [Fact]
+    public async Task ClickSequence_InvalidJson_ThrowsBusiness()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickSequenceActivity(channel.Object);
+        var ctx = Ctx(new() { ["steps"] = "not-json" });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+    }
+
+    [Fact]
+    public async Task ClickSequence_ClicksEachStepInOrder_WithPerStepClickType()
+    {
+        var calls = new List<(string Image, string? ClickType)>();
+        var channel = new Mock<IVisionAutomationChannel>();
+        channel.Setup(c => c.ClickImageAsync(It.IsAny<string>(), It.IsAny<double>(), It.IsAny<string?>(), It.IsAny<int>()))
+               .Callback((string img, double _, string? ct, int _) => calls.Add((img, ct)))
+               .Returns(Task.CompletedTask);
+        var activity = new VisionClickSequenceActivity(channel.Object);
+        var steps = "[{\"image\":\"A\",\"clickType\":\"left\",\"waitMs\":0}," +
+                    "{\"image\":\"B\",\"clickType\":\"double\",\"waitMs\":0}]";
+        var ctx = Ctx(new() { ["steps"] = steps, ["confidence"] = 0d, ["timeoutMs"] = 0 });
+
+        await activity.ExecuteAsync(ctx.Object);
+
+        Assert.Equal(new[] { ("A", (string?)"left"), ("B", (string?)"double") }, calls);
+        // confidence 0 → 0.8; timeoutMs 0 → 5000 varsayılan
+        channel.Verify(c => c.ClickImageAsync("A", 0.8, "left", 5000), Times.Once);
+    }
+
+    [Fact]
     public async Task Exists_NotFound_ReturnsFalse_NoThrow()
     {
         var channel = new Mock<IVisionAutomationChannel>();

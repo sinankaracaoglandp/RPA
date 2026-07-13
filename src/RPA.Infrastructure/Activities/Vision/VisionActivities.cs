@@ -128,6 +128,113 @@ public sealed class VisionClickActivity : IActivity
     }
 }
 
+/// <summary>
+/// Tek node içinde sırayla birden çok görüntüye tıklar (iç içe menü gezinme). Adımlar aynı
+/// node'da art arda çalıştığı için node'lar arası odak kaybı olmaz — açılır menü zincir boyunca
+/// açık kalır. Her adım arası opsiyonel bekleme (menü açılma süresi) uygulanabilir.
+/// </summary>
+public sealed class VisionClickSequenceActivity : IActivity
+{
+    private readonly IVisionAutomationChannel _channel;
+    public VisionClickSequenceActivity(IVisionAutomationChannel channel)
+        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+
+    public ActivityMetadata GetMetadata() => new()
+    {
+        ActivityId = "Vision.ClickSequence",
+        DisplayName = "Sıralı Görüntüye Tıkla (Menü)",
+        Category = VisionMeta.Category,
+        Description = "Tek node içinde sırayla birden çok görüntüye tıklar (iç içe menüler için). " +
+                      "Her adım: 🎯 resim + tıklama türü + sonraki bekleme (ms).",
+        Inputs = new()
+        {
+            new ActivityParameter
+            {
+                Name = "steps", Type = "string", Required = true,
+                Description = "Adım listesi (JSON dizisi): her adım {image, clickType, waitMs}. 🎯 ile oluşturun.",
+                PickerKind = "image-sequence",
+            },
+            VisionMeta.Confidence(),
+            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Adım başına zaman aşımı (ms).", DefaultValue = 5000 },
+        },
+        Outputs = new(),
+        RequiredCapabilities = new() { VisionMeta.Capability },
+        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
+    };
+
+    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
+    {
+        var steps = VisionClickStep.ParseList(context.GetVariable<string?>("steps"));
+        if (steps.Count == 0)
+        {
+            throw new BusinessException("'steps' en az bir adım (resim) içermelidir.");
+        }
+
+        var confidence = VisionMeta.ConfidenceOrDefault(context);
+        var timeoutMs = context.GetVariable<int>("timeoutMs");
+        if (timeoutMs <= 0)
+        {
+            timeoutMs = 5000;
+        }
+
+        for (var i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            context.Log($"Sıralı tıklama adım {i + 1}/{steps.Count} ({step.ClickType ?? "left"}).");
+            await _channel.ClickImageAsync(step.Image, confidence, step.ClickType, timeoutMs);
+            if (step.WaitMs > 0)
+            {
+                await Task.Delay(step.WaitMs);
+            }
+        }
+        return new();
+    }
+}
+
+/// <summary>Sıralı tıklama adımı: aranacak görüntü (base64 PNG), tıklama türü ve sonraki bekleme (ms).</summary>
+internal readonly record struct VisionClickStep(string Image, string? ClickType, int WaitMs)
+{
+    public static List<VisionClickStep> ParseList(string? json)
+    {
+        var list = new List<VisionClickStep>();
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return list;
+        }
+
+        System.Text.Json.JsonDocument doc;
+        try
+        {
+            doc = System.Text.Json.JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new BusinessException($"'steps' geçerli bir JSON dizisi değil: {ex.Message}");
+        }
+
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                throw new BusinessException("'steps' bir JSON dizisi olmalıdır.");
+            }
+
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var image = el.TryGetProperty("image", out var img) ? img.GetString() : null;
+                if (string.IsNullOrWhiteSpace(image))
+                {
+                    continue; // resmi olmayan adımı atla
+                }
+                var clickType = el.TryGetProperty("clickType", out var ct) ? ct.GetString() : null;
+                var waitMs = el.TryGetProperty("waitMs", out var w) && w.TryGetInt32(out var ms) ? ms : 0;
+                list.Add(new VisionClickStep(image, string.IsNullOrWhiteSpace(clickType) ? null : clickType, waitMs < 0 ? 0 : waitMs));
+            }
+        }
+        return list;
+    }
+}
+
 /// <summary>Görüntü görünene kadar bekler.</summary>
 public sealed class VisionWaitForActivity : IActivity
 {

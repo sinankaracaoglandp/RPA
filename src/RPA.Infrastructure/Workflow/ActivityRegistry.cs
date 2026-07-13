@@ -132,6 +132,10 @@ public static class ActivityRegistry
             .Description("Sekme kontrolünde sekme seçer.")
             .Input("elementId", "string", pickerKind: "sap");
 
+        b.Activity("Sap.Gui.SelectMenu").DisplayName("SAP GUI Menü Seç").Category(CatSapGui).Capability(cap)
+            .Description("Menü çubuğunda metin yoluyla gezinip menü öğesi seçer (Sistem/Liste/Yazdır).")
+            .Input("menuPath", "string", description: "'/' ile ayrılmış menü metni yolu.");
+
         b.Activity("Sap.Gui.GridRead").DisplayName("SAP GUI ALV Oku").Category(CatSapGui).Capability(cap)
             .Description("ALV grid içeriğini DataTable olarak okur.")
             .Input("gridElementId", "string", pickerKind: "sap").Output("data", "DataTable");
@@ -420,6 +424,13 @@ public static class ActivityRegistry
             .Input("image", "string", pickerKind: "image", description: "Aranacak görüntü (base64 PNG).")
             .Input("confidence", "number", required: false, defaultValue: 0.8)
             .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
+            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
+            .ExceptionClassification("Timeout", ExceptionType.System);
+
+        b.Activity("Vision.ClickSequence").DisplayName("Sıralı Görüntüye Tıkla (Menü)").Category(CatVision).Capability(cap)
+            .Description("Tek node içinde sırayla birden çok görüntüye tıklar (iç içe menüler).")
+            .Input("steps", "string", pickerKind: "image-sequence", description: "Adım listesi (JSON): {image, clickType, waitMs}.")
+            .Input("confidence", "number", required: false, defaultValue: 0.8)
             .Input("timeoutMs", "int", required: false, defaultValue: 5000)
             .ExceptionClassification("Timeout", ExceptionType.System);
 

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RPA.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9cbecbf01e6390ea486230622776b74c7b36aea0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+824178813282725f85c06fc636749dfc2bdceb06")]
 [assembly: System.Reflection.AssemblyProductAttribute("RPA.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RPA.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

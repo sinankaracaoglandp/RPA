@@ -64,6 +64,68 @@ public sealed class ComSapGuiSession : ISapGuiSession
         SapCom.Invoke(el, "Select");
     });
 
+    public Task SelectMenuAsync(IReadOnlyList<string> menuTexts) => Run(() =>
+    {
+        if (menuTexts is null || menuTexts.Count == 0)
+        {
+            throw new SystemException("SAP GUI menü yolu boş olamaz.");
+        }
+
+        // Menü çubuğundan başla (wnd[0]/mbar) ve her segmentte metne göre alt menüye in.
+        var current = Find("wnd[0]/mbar");
+        object? target = null;
+        for (var i = 0; i < menuTexts.Count; i++)
+        {
+            var children = SapCom.Get(current, "Children")
+                ?? throw new SystemException($"SAP GUI menüsünde '{menuTexts[i]}' için alt öğe yok.");
+            target = FindMenuChildByText(children, menuTexts[i]);
+            current = target;
+        }
+
+        SapCom.Invoke(target!, "Select");
+    });
+
+    /// <summary>Bir GuiComponentCollection içinde Text'i verilen metinle eşleşen menü öğesini bulur.</summary>
+    private static object FindMenuChildByText(object children, string text)
+    {
+        var count = Convert.ToInt32(SapCom.Get(children, "Count"));
+        var wanted = NormalizeMenuText(text);
+
+        // Önce tam (normalize) eşleşme, bulunamazsa StartsWith/Contains.
+        object? contains = null;
+        for (var i = 0; i < count; i++)
+        {
+            var child = SapCom.Invoke(children, "ElementAt", i);
+            if (child is null)
+            {
+                continue;
+            }
+            string childText;
+            try { childText = NormalizeMenuText((string?)SapCom.Get(child, "Text") ?? string.Empty); }
+            catch { continue; } // ayraç/başlıksız öğe
+
+            if (childText.Length == 0)
+            {
+                continue;
+            }
+            if (childText == wanted)
+            {
+                return child;
+            }
+            if (contains is null && (childText.StartsWith(wanted, StringComparison.Ordinal) || childText.Contains(wanted, StringComparison.Ordinal)))
+            {
+                contains = child;
+            }
+        }
+
+        return contains
+            ?? throw new SystemException($"SAP GUI menüsünde '{text}' öğesi bulunamadı.");
+    }
+
+    /// <summary>Menü metnini karşılaştırma için normalleştirir: kısayol '&' işaretini, sonundaki '...' ve boşlukları temizler, küçük harfe indirir.</summary>
+    private static string NormalizeMenuText(string text)
+        => text.Replace("&", string.Empty).TrimEnd('.', ' ', '\t').Trim().ToLowerInvariant();
+
     public Task<List<Dictionary<string, object?>>> ReadGridAsync(string gridId) => Run(() =>
     {
         var grid = Find(gridId);

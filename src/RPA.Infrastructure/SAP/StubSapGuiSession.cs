@@ -41,6 +41,9 @@ internal sealed class StubSapGuiSession : ISapGuiSession
     /// <summary>Son seçilen tab (test doğrulaması için).</summary>
     public string? LastSelectedTab { get; private set; }
 
+    /// <summary>Son seçilen menü yolu (test doğrulaması için).</summary>
+    public IReadOnlyList<string>? LastSelectedMenu { get; private set; }
+
     private void EnsureConnected()
     {
         if (!_connected)
@@ -80,6 +83,13 @@ internal sealed class StubSapGuiSession : ISapGuiSession
     {
         EnsureConnected();
         LastSelectedTab = elementId;
+        return Task.CompletedTask;
+    }
+
+    public Task SelectMenuAsync(IReadOnlyList<string> menuTexts)
+    {
+        EnsureConnected();
+        LastSelectedMenu = menuTexts;
         return Task.CompletedTask;
     }
 

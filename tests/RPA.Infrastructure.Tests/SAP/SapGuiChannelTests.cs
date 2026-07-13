@@ -195,6 +195,20 @@ public class SapGuiChannelTests
     }
 
     [Fact]
+    public async Task Channel_SelectMenu_Succeeds()
+    {
+        var channel = await NewConnectedChannel();
+        await channel.SelectMenuAsync("Sistem/Liste/Yazdır"); // no throw
+    }
+
+    [Fact]
+    public async Task Channel_SelectMenu_EmptyPath_ThrowsBusinessException()
+    {
+        var channel = await NewConnectedChannel();
+        await Assert.ThrowsAsync<BusinessException>(() => channel.SelectMenuAsync("   "));
+    }
+
+    [Fact]
     public async Task Channel_ReadGrid_ReturnsRows()
     {
         var channel = await NewConnectedChannel();
@@ -412,6 +426,26 @@ public class SapGuiChannelTests
     }
 
     [Fact]
+    public async Task SelectMenuActivity_CallsChannel()
+    {
+        var channel = new Mock<ISapGuiChannel>();
+        var activity = new SapGuiSelectMenuActivity(channel.Object);
+        var ctx = Ctx();
+        ctx.SetVariable("menuPath", "Sistem/Liste/Yazdır");
+
+        await activity.ExecuteAsync(ctx);
+
+        channel.Verify(c => c.SelectMenuAsync("Sistem/Liste/Yazdır"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SelectMenuActivity_MissingMenuPath_ThrowsBusinessException()
+    {
+        var activity = new SapGuiSelectMenuActivity(Mock.Of<ISapGuiChannel>());
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(Ctx()));
+    }
+
+    [Fact]
     public async Task GridReadActivity_SetsRowsOutput()
     {
         var rows = new List<Dictionary<string, object?>> { new() { ["MATNR"] = "1" } };
@@ -459,6 +493,7 @@ public class SapGuiChannelTests
             new SapGuiSetTextActivity(channel),
             new SapGuiGetTextActivity(channel),
             new SapGuiSelectTabActivity(channel),
+            new SapGuiSelectMenuActivity(channel),
             new SapGuiGridReadActivity(channel),
             new SapGuiScreenshotActivity(channel),
         };
