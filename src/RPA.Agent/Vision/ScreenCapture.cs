@@ -2,6 +2,7 @@ namespace RPA.Agent.Vision;
 
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
@@ -34,11 +35,7 @@ public static class ScreenCapture
         var rw = width ?? vs.Width;
         var rh = height ?? vs.Height;
 
-        using var bmp = new Bitmap(rw, rh, PixelFormat.Format24bppRgb);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.CopyFromScreen(rx, ry, 0, 0, new System.Drawing.Size(rw, rh));
-        }
+        using var bmp = CaptureBitmap(rx, ry, rw, rh);
         return BitmapConverter.ToMat(bmp);
     }
 
@@ -49,12 +46,7 @@ public static class ScreenCapture
     public static Bitmap CaptureVirtualScreenBitmap()
     {
         var vs = System.Windows.Forms.SystemInformation.VirtualScreen;
-        var bmp = new Bitmap(vs.Width, vs.Height, PixelFormat.Format24bppRgb);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.CopyFromScreen(vs.X, vs.Y, 0, 0, new System.Drawing.Size(vs.Width, vs.Height));
-        }
-        return bmp;
+        return CaptureBitmap(vs.X, vs.Y, vs.Width, vs.Height);
     }
 
     public static Mat DecodeBase64Png(string base64)
@@ -62,4 +54,50 @@ public static class ScreenCapture
         var bytes = Convert.FromBase64String(base64);
         return Cv2.ImDecode(bytes, ImreadModes.Color);
     }
+
+    /// <summary>
+    /// Ekranın bir bölgesini GDI <c>BitBlt</c> ile <c>SRCCOPY | CAPTUREBLT</c> bayrağıyla yakalar.
+    /// <see cref="Graphics.CopyFromScreen"/> yalnız <c>SRCCOPY</c> kullanır ve layered pencereleri
+    /// (WS_EX_LAYERED — SAP/Win32 açılır menüleri, tooltip'ler, bazı popup'lar) yakalamaz;
+    /// <c>CAPTUREBLT</c> bunları da dahil eder. Çağıran bitmap'i dispose eder.
+    /// </summary>
+    private static Bitmap CaptureBitmap(int x, int y, int width, int height)
+    {
+        var bmp = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+        try
+        {
+            using var g = Graphics.FromImage(bmp);
+            var hdcDest = g.GetHdc();
+            var hdcSrc = GetDC(IntPtr.Zero);
+            try
+            {
+                BitBlt(hdcDest, 0, 0, width, height, hdcSrc, x, y, SRCCOPY | CAPTUREBLT);
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, hdcSrc);
+                g.ReleaseHdc(hdcDest);
+            }
+            return bmp;
+        }
+        catch
+        {
+            bmp.Dispose();
+            throw;
+        }
+    }
+
+    private const int SRCCOPY = 0x00CC0020;
+    private const int CAPTUREBLT = 0x40000000;
+
+    [DllImport("gdi32.dll")]
+    private static extern bool BitBlt(
+        IntPtr hdcDest, int xDest, int yDest, int width, int height,
+        IntPtr hdcSrc, int xSrc, int ySrc, int rop);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 }
