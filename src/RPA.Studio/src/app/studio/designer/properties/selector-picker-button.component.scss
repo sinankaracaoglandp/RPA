@@ -1,3 +1,16 @@
+:host {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+// Image picker: kontroller çok olduğundan kendi tam-genişlik satırına insin ve içinde sarsın.
+:host.selector-picker-host--image {
+  flex-basis: 100%;
+  margin-top: 0.3rem;
+}
+
 .selector-picker {
   align-items: center;
   border: 1px solid #c7d1df;
@@ -30,7 +43,8 @@
 .selector-picker__capture {
   align-items: center;
   display: inline-flex;
-  gap: 0.3rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
   margin-right: 0.35rem;
 }
 

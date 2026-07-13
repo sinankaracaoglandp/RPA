@@ -15,6 +15,7 @@ import {
   imports: [CommonModule, FormsModule, TranslatePipe],
   templateUrl: './selector-picker-button.component.html',
   styleUrls: ['./selector-picker-button.component.scss'],
+  host: { '[class.selector-picker-host--image]': 'isImage' },
 })
 export class SelectorPickerButtonComponent {
   @Input() pickerKind?: SpyKind | null;
