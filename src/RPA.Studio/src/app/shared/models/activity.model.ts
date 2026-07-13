@@ -7,7 +7,7 @@ export interface ActivityPort {
   type: string;
   required?: boolean;
   description?: string;
-  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | null;
+  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | 'image-sequence' | null;
   options?: string[];
 }
 

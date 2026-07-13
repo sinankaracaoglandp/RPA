@@ -68,6 +68,17 @@
     "shift": "Shift",
     "alt": "Alt"
   },
+  "seq": {
+    "empty": "No steps yet. Add steps in order for nested menus.",
+    "addStep": "Add step",
+    "remove": "Remove step",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "clickType": "Click type",
+    "waitMs": "Wait after (ms)",
+    "noImage": "No image selected",
+    "image": "Image"
+  },
   "login": {
     "title": "Sign in to RPA Studio",
     "subtitle": "Enter your credentials to continue",

@@ -361,6 +361,35 @@ Gerekçe: UIA/DOM sunmayan uygulamalar için (eski Win32, custom-render) otomasy
 
 ---
 
+## Kontrat Değişikliği — 2026-07-13 (Menü gezinme: sıralı vision + SAP menü)
+
+Açılır menülerin node'lar arası odak kaybında kapanması sorununa iki çözüm eklendi.
+
+**1) `Vision.ClickSequence` (yeni aktivite, arayüz değişmedi):** Tek node içinde sırayla N
+görüntüye tıklar (iç içe menüler). Her adım `{image, clickType, waitMs}`; adımlar aynı node'da
+art arda çalıştığından node'lar arası odak kaybı olmaz → açılır menü zincir boyunca açık kalır.
+Ortak `confidence`/`timeoutMs`. `IVisionAutomationChannel` **değişmedi** (mevcut `ClickImageAsync`
++ `Task.Delay` ile). Katalog + keyed DI (`Vision.ClickSequence`). Yeni parametre `PickerKind`
+değeri **`"image-sequence"`** — Studio'da özel sıralı adım editörü (`VisionSequenceEditorComponent`)
+render eder; her adım mevcut `image` 🎯 picker'ını kullanır. `ActivityPort.pickerKind` (Studio
+model) `'image-sequence'` değerini de kabul eder (spy türü DEĞİL, yalnız editör ipucu →
+`selector-picker-button`'a null geçilir).
+
+**2) `Sap.Gui.SelectMenu` (yeni aktivite + kontrat genişledi):** Menü çubuğunda **metin yoluyla**
+gezinip öğe seçer (örn. `Sistem/Liste/Yazdır`). Element ID gerekmez, odak/görünürlükten bağımsız
+(COM scripting). **`ISapGuiChannel.SelectMenuAsync(string menuPath)`** eklendi ("/"-ayrık metin
+yolu). İç soyutlama `ISapGuiSession.SelectMenuAsync(IReadOnlyList<string> menuTexts)`;
+`ComSapGuiSession` `wnd[0]/mbar` ağacını `Text` ile yürür (normalize: '&', sondaki '...', boşluk,
+küçük harf), `StubSapGuiSession` `LastSelectedMenu`'ye kaydeder. Katalog + keyed DI.
+
+Etkilenen paketler: Paket F (Vision), SAP GUI (Paket C), Studio activity metadata tüketicileri.
+Gerekçe: `Vision.Click`'i iki ayrı node'a bölmek açılır menülerde çalışmıyordu — menü, node 1
+onu açıp node 2 başlamadan odak kaybıyla kapanıyordu (SAP + genel Win32/Electron uygulamalarında
+doğrulandı). Ayrıca ekran yakalama `CAPTUREBLT` ile layered pencereleri (açık menü/popup) de alır
+hale getirildi (`ScreenCapture` BitBlt).
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

@@ -68,6 +68,17 @@
     "shift": "Shift",
     "alt": "Alt"
   },
+  "seq": {
+    "empty": "Henuz adim yok. Ic ice menuler icin sirayla adim ekleyin.",
+    "addStep": "Adim ekle",
+    "remove": "Adimi sil",
+    "moveUp": "Yukari tasi",
+    "moveDown": "Asagi tasi",
+    "clickType": "Tiklama turu",
+    "waitMs": "Sonraki bekleme (ms)",
+    "noImage": "Goruntu secilmedi",
+    "image": "Goruntu"
+  },
   "login": {
     "title": "RPA Studio'ya Giriş",
     "subtitle": "Devam etmek için kimlik bilgilerinizi girin",

@@ -1,0 +1,66 @@
+<div class="seq" data-testid="vision-sequence-editor">
+  @if (steps.length === 0) {
+    <p class="seq__empty">{{ 'seq.empty' | translate }}</p>
+  }
+
+  @for (step of steps; track $index) {
+    <div class="seq__step" [attr.data-testid]="'seq-step-' + $index">
+      <div class="seq__step-head">
+        <span class="seq__badge">{{ $index + 1 }}</span>
+        <div class="seq__step-actions">
+          <button type="button" class="seq__icon" [disabled]="$index === 0"
+            [title]="'seq.moveUp' | translate" (click)="moveUp($index)">↑</button>
+          <button type="button" class="seq__icon" [disabled]="$index === steps.length - 1"
+            [title]="'seq.moveDown' | translate" (click)="moveDown($index)">↓</button>
+          <button type="button" class="seq__icon seq__icon--danger"
+            [attr.data-testid]="'seq-remove-' + $index"
+            [title]="'seq.remove' | translate" (click)="removeStep($index)">✕</button>
+        </div>
+      </div>
+
+      <div class="seq__step-body">
+        @if (previewOf(step); as preview) {
+          <img class="seq__preview" [src]="'data:image/png;base64,' + preview" alt="Adım görüntüsü" />
+        } @else {
+          <span class="seq__no-image">{{ 'seq.noImage' | translate }}</span>
+        }
+
+        <div class="seq__controls">
+          <app-selector-picker-button
+            [pickerKind]="'image'"
+            (picked)="onPicked($index, $event)"
+          ></app-selector-picker-button>
+
+          <label class="seq__field">
+            <span>{{ 'seq.clickType' | translate }}</span>
+            <select
+              [attr.data-testid]="'seq-clicktype-' + $index"
+              [ngModel]="step.clickType"
+              (ngModelChange)="onClickType($index, $event)"
+            >
+              @for (t of clickTypes; track t) {
+                <option [value]="t">{{ t }}</option>
+              }
+            </select>
+          </label>
+
+          <label class="seq__field">
+            <span>{{ 'seq.waitMs' | translate }}</span>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              [attr.data-testid]="'seq-wait-' + $index"
+              [ngModel]="step.waitMs"
+              (ngModelChange)="onWait($index, $event)"
+            />
+          </label>
+        </div>
+      </div>
+    </div>
+  }
+
+  <button type="button" class="seq__add" data-testid="seq-add" (click)="addStep()">
+    + {{ 'seq.addStep' | translate }}
+  </button>
+</div>

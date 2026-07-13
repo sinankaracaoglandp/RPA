@@ -6,6 +6,7 @@ import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.
 import { WorkflowVariable } from '../../../shared/models/workflow.model';
 import { SpyElement } from '../../../shared/services/spy.service';
 import { SelectorPickerButtonComponent } from './selector-picker-button.component';
+import { VisionSequenceEditorComponent } from './vision-sequence-editor.component';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -24,7 +25,7 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 @Component({
   selector: 'app-generic-property',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent],
+  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent],
   templateUrl: './generic-property.component.html',
   styleUrls: ['./generic-property.component.scss'],
 })
@@ -163,6 +164,22 @@ export class GenericPropertyComponent {
 
   value(port: ActivityPort): unknown {
     return this.properties[port.name] ?? '';
+  }
+
+  /** Vision.ClickSequence gibi sıralı görüntü adımı editörü gerektiren alan mı? */
+  isSequenceField(port: ActivityPort): boolean {
+    return port.pickerKind === 'image-sequence';
+  }
+
+  /** Editöre geçilecek değeri string'e indirger (JSON dizisi). */
+  stringValue(port: ActivityPort): string {
+    const v = this.value(port);
+    return typeof v === 'string' ? v : '';
+  }
+
+  /** selector-picker-button'a geçilecek spy türü ('image-sequence' spy türü değildir → null). */
+  spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | null {
+    return port.pickerKind === 'image-sequence' ? null : port.pickerKind ?? null;
   }
 
   boolValue(port: ActivityPort): boolean {

@@ -39,6 +39,17 @@
               <span class="generic-property__hint">
                 {{ port.name }} · {{ port.type }}
               </span>
+            } @else if (isSequenceField(port)) {
+              <label class="generic-property__label">
+                {{ port.description || port.name }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <app-vision-sequence-editor
+                [attr.data-testid]="'prop-' + port.name + '-sequence'"
+                [value]="stringValue(port)"
+                (valueChange)="onValueChange(port, $event)"
+              ></app-vision-sequence-editor>
+              <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
             } @else {
               <label class="generic-property__label" [attr.for]="'prop-' + port.name">
                 {{ port.description || port.name }}
@@ -145,9 +156,9 @@
                     []
                   </button>
                 }
-                @if (port.pickerKind && inputType(port) !== 'password') {
+                @if (spyPickerKind(port) && inputType(port) !== 'password') {
                   <app-selector-picker-button
-                    [pickerKind]="port.pickerKind"
+                    [pickerKind]="spyPickerKind(port)"
                     (picked)="onPicked(port, $event)"
                   ></app-selector-picker-button>
                 }
