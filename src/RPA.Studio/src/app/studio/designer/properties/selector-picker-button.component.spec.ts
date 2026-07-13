@@ -51,7 +51,35 @@ describe('SelectorPickerButtonComponent', () => {
     fixture.nativeElement.querySelector('[data-testid="selector-picker"]').click();
     await fixture.whenStable();
 
-    expect(spy.pick).toHaveBeenCalledWith('image', { captureMode: 'timer', delaySeconds: 10 });
+    expect(spy.pick).toHaveBeenCalledWith('image', {
+      captureMode: 'timer',
+      delaySeconds: 10,
+      hotKey: 'F2',
+      ctrl: false,
+      shift: false,
+      alt: false,
+    });
+  });
+
+  it('passes a custom freeze hotkey with modifiers to SpyService.pick', async () => {
+    component.pickerKind = 'image';
+    spy.pick.mockResolvedValue({ sessionId: 's1', kind: 'image', elementId: 'image', imageBase64: 'B64' });
+    component.onModeChange('f2');
+    component.onHotKeyChange('F9');
+    component.ctrl.set(true);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="selector-picker"]').click();
+    await fixture.whenStable();
+
+    expect(spy.pick).toHaveBeenCalledWith('image', {
+      captureMode: 'f2',
+      delaySeconds: 5,
+      hotKey: 'F9',
+      ctrl: true,
+      shift: false,
+      alt: false,
+    });
   });
 
   it('shows an error state when picking fails', async () => {

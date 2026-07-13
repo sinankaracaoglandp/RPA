@@ -54,6 +54,14 @@
   font-size: 0.72rem;
 }
 
+.selector-picker__mod {
+  align-items: center;
+  color: #1f2a37;
+  display: inline-flex;
+  font-size: 0.72rem;
+  gap: 0.15rem;
+}
+
 .selector-picker__status {
   color: #526173;
   font-size: 0.75rem;

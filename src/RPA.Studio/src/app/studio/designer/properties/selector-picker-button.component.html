@@ -25,6 +25,35 @@
       />
       <span class="selector-picker__unit">{{ 'picker.seconds' | translate }}</span>
     }
+    @if (captureMode() === 'f2') {
+      <label class="selector-picker__mod" [title]="'picker.ctrl' | translate">
+        <input type="checkbox" data-testid="selector-picker-ctrl"
+          [disabled]="state() === 'picking'"
+          [ngModel]="ctrl()" (ngModelChange)="ctrl.set($event)" />Ctrl
+      </label>
+      <label class="selector-picker__mod" [title]="'picker.shift' | translate">
+        <input type="checkbox" data-testid="selector-picker-shift"
+          [disabled]="state() === 'picking'"
+          [ngModel]="shift()" (ngModelChange)="shift.set($event)" />Shift
+      </label>
+      <label class="selector-picker__mod" [title]="'picker.alt' | translate">
+        <input type="checkbox" data-testid="selector-picker-alt"
+          [disabled]="state() === 'picking'"
+          [ngModel]="alt()" (ngModelChange)="alt.set($event)" />Alt
+      </label>
+      <select
+        class="selector-picker__mode"
+        data-testid="selector-picker-hotkey"
+        [disabled]="state() === 'picking'"
+        [ngModel]="hotKey()"
+        (ngModelChange)="onHotKeyChange($event)"
+        [title]="'picker.freezeKey' | translate"
+      >
+        @for (k of hotKeys; track k) {
+          <option [value]="k">{{ k }}</option>
+        }
+      </select>
+    }
   </span>
 }
 <button

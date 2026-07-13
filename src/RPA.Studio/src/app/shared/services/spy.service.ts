@@ -9,6 +9,11 @@ export type ImageCaptureMode = 'f2' | 'timer';
 export interface ImagePickerOptions {
   captureMode: ImageCaptureMode;
   delaySeconds: number;
+  // Manuel (f2) modda dondurma kısayolu — kullanıcı boş bir tuş seçebilsin (F1–F12 + Ctrl/Shift/Alt).
+  hotKey?: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
 }
 
 export interface SpyElement {

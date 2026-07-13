@@ -59,10 +59,14 @@
     "failed": "Hedef secilemedi",
     "timeout": "Hedef secimi zaman asimina ugradi",
     "captureMode": "Yakalama modu",
-    "modeF2": "F2 ile dondur",
+    "modeF2": "Kisayol ile dondur",
     "modeTimer": "Zamanlayici",
     "delaySeconds": "Dondurma gecikmesi (sn)",
-    "seconds": "sn"
+    "seconds": "sn",
+    "freezeKey": "Dondurma tusu",
+    "ctrl": "Ctrl",
+    "shift": "Shift",
+    "alt": "Alt"
   },
   "login": {
     "title": "RPA Studio'ya Giriş",

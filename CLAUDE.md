@@ -347,10 +347,15 @@ Gerekçe: UIA/DOM sunmayan uygulamalar için (eski Win32, custom-render) otomasy
   - `ISpyCommandConnection.OnStartSpy(Func<Guid,string,string?,Task>)` + `StudioHub.StartSpy(sessionId,
     kind, string? optionsJson)` — **SignalR istemcileri artık StartSpy'ı 3 argümanla çağırmalı**
     (non-image için `null`).
-  - `GdiImageRegionPicker`: iki aşamalı — arm (F2 global hotkey / geri sayım) → ekranı **dondur**
-    (snapshot) → donmuş görüntü üzerinde seçim; kırpma canlı ekrandan değil snapshot'tan yapılır.
-  - Studio: `SpyService.pick(kind, options?)` + picker düğmesinde mod/saniye kontrolleri (yalnız
-    `image`), i18n `picker.captureMode/modeF2/modeTimer/delaySeconds/seconds`.
+  - `GdiImageRegionPicker`: iki aşamalı — arm (yapılandırılabilir global hotkey / geri sayım) →
+    ekranı **dondur** (snapshot) → donmuş görüntü üzerinde seçim; kırpma canlı ekrandan değil
+    snapshot'tan yapılır.
+  - **Dondurma kısayolu yapılandırılabilir:** `ImagePickerOptions` `HotKey` (F1–F12) + `Ctrl/Shift/Alt`
+    alanları; `VirtualKey`/`Modifiers`/`DisplayCombo`. Manuel modda `RegisterHotKey` bu kombinasyonu
+    kullanır (hedef uygulamada boş bir tuş seçilebilsin diye). Varsayılan F2.
+  - Studio: `SpyService.pick(kind, options?)` + picker düğmesinde mod/saniye + tuş/Ctrl/Shift/Alt
+    kontrolleri (yalnız `image`), i18n `picker.captureMode/modeF2/modeTimer/delaySeconds/seconds/
+    freezeKey/ctrl/shift/alt`.
   Etkilenen: Studio spy tüketicileri, Agent UI Spy transport, WebAPI StudioHub. Gerekçe: OCR/görüntü
   ile açılan geçici SAP menüsü/pencere, picker overlay hemen açılınca yakalanamıyordu.
 

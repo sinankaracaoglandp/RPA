@@ -35,17 +35,22 @@ public sealed record ImagePick(string? ImageBase64, string? RegionJson);
 /// <summary>
 /// Image picker'ın "ekran dondurma" (freeze) davranışı. Geçici menü/pencere yakalamak için:
 /// önce hedef UI açılır, sonra ekran dondurulup donmuş görüntü üzerinde seçim yapılır.
-/// <para><see cref="CaptureMode"/>: <c>"f2"</c> = kullanıcı F2'ye basınca dondur (süre sınırsız);
+/// <para><see cref="CaptureMode"/>: <c>"f2"</c> = kullanıcı kısayola basınca dondur (süre sınırsız);
 /// <c>"timer"</c> = <see cref="DelaySeconds"/> saniye geri sayıp otomatik dondur.</para>
+/// <para>Manuel modda dondurma kısayolu node'dan gelir: <see cref="HotKey"/> (F1–F12) +
+/// opsiyonel <see cref="Ctrl"/>/<see cref="Shift"/>/<see cref="Alt"/> — hedef uygulamada boş bir
+/// tuş seçilebilsin diye.</para>
 /// </summary>
-public sealed record ImagePickerOptions(string CaptureMode, int DelaySeconds)
+public sealed record ImagePickerOptions(
+    string CaptureMode, int DelaySeconds, string HotKey, bool Ctrl, bool Shift, bool Alt)
 {
     public const string ModeF2 = "f2";
     public const string ModeTimer = "timer";
+    public const string DefaultHotKey = "F2";
 
-    public static ImagePickerOptions Default { get; } = new(ModeF2, 5);
+    public static ImagePickerOptions Default { get; } = new(ModeF2, 5, DefaultHotKey, false, false, false);
 
-    /// <summary>Studio'dan gelen JSON ({captureMode, delaySeconds}); null/bozuk ise varsayılan (F2).</summary>
+    /// <summary>Studio'dan gelen JSON ({captureMode, delaySeconds, hotKey, ctrl, shift, alt}); null/bozuk ise varsayılan.</summary>
     public static ImagePickerOptions Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -60,11 +65,51 @@ public sealed record ImagePickerOptions(string CaptureMode, int DelaySeconds)
             mode = string.Equals(mode, ModeTimer, StringComparison.OrdinalIgnoreCase) ? ModeTimer : ModeF2;
             var seconds = root.TryGetProperty("delaySeconds", out var s) && s.TryGetInt32(out var v) ? v : 5;
             seconds = Math.Clamp(seconds, 1, 120);
-            return new ImagePickerOptions(mode, seconds);
+            var hotKey = NormalizeHotKey(root.TryGetProperty("hotKey", out var hk) ? hk.GetString() : null);
+            return new ImagePickerOptions(mode, seconds, hotKey, Flag(root, "ctrl"), Flag(root, "shift"), Flag(root, "alt"));
         }
         catch (System.Text.Json.JsonException)
         {
             return Default;
+        }
+    }
+
+    private static bool Flag(System.Text.Json.JsonElement root, string name)
+        => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+
+    /// <summary>F1–F12 dışını (veya null) varsayılana (F2) indirger.</summary>
+    private static string NormalizeHotKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return DefaultHotKey;
+        }
+        key = key.Trim().ToUpperInvariant();
+        if (key.Length >= 2 && key[0] == 'F' && int.TryParse(key.AsSpan(1), out var n) && n is >= 1 and <= 12)
+        {
+            return $"F{n}";
+        }
+        return DefaultHotKey;
+    }
+
+    /// <summary>Windows sanal-tuş kodu (F1=0x70 … F12=0x7B).</summary>
+    public uint VirtualKey => 0x70u + (uint)(FunctionKeyNumber - 1);
+
+    private int FunctionKeyNumber => int.TryParse(HotKey.AsSpan(1), out var n) && n is >= 1 and <= 12 ? n : 2;
+
+    /// <summary>RegisterHotKey fsModifiers: MOD_ALT=1, MOD_CONTROL=2, MOD_SHIFT=4.</summary>
+    public uint Modifiers => (Ctrl ? 2u : 0u) | (Shift ? 4u : 0u) | (Alt ? 1u : 0u);
+
+    /// <summary>Kullanıcıya gösterilecek kombinasyon (örn. "Ctrl+Shift+F3").</summary>
+    public string DisplayCombo
+    {
+        get
+        {
+            var prefix =
+                (Ctrl ? "Ctrl+" : string.Empty) +
+                (Shift ? "Shift+" : string.Empty) +
+                (Alt ? "Alt+" : string.Empty);
+            return prefix + HotKey;
         }
     }
 }

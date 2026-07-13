@@ -40,6 +40,8 @@ public class SpySessionCoordinatorImageTests
     {
         var def = ImagePickerOptions.Parse(null);
         Assert.Equal("f2", def.CaptureMode);
+        Assert.Equal("F2", def.HotKey);
+        Assert.Equal(0x71u, def.VirtualKey); // F2
 
         var bad = ImagePickerOptions.Parse("not-json");
         Assert.Equal("f2", bad.CaptureMode);
@@ -47,5 +49,19 @@ public class SpySessionCoordinatorImageTests
         var timer = ImagePickerOptions.Parse("{\"captureMode\":\"timer\",\"delaySeconds\":200}");
         Assert.Equal("timer", timer.CaptureMode);
         Assert.Equal(120, timer.DelaySeconds); // clamp 1..120
+    }
+
+    [Fact]
+    public void ImagePickerOptions_Parse_HotKeyAndModifiers()
+    {
+        var opt = ImagePickerOptions.Parse("{\"captureMode\":\"f2\",\"hotKey\":\"F9\",\"ctrl\":true,\"shift\":true}");
+        Assert.Equal("F9", opt.HotKey);
+        Assert.Equal(0x78u, opt.VirtualKey);   // F9
+        Assert.Equal(2u | 4u, opt.Modifiers);  // Ctrl(2) + Shift(4)
+        Assert.Equal("Ctrl+Shift+F9", opt.DisplayCombo);
+
+        // Geçersiz tuş → varsayılan F2.
+        var bad = ImagePickerOptions.Parse("{\"hotKey\":\"F42\"}");
+        Assert.Equal("F2", bad.HotKey);
     }
 }

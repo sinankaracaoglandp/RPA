@@ -59,10 +59,14 @@
     "failed": "Target could not be selected",
     "timeout": "Target selection timed out",
     "captureMode": "Capture mode",
-    "modeF2": "Freeze with F2",
+    "modeF2": "Freeze with hotkey",
     "modeTimer": "Timer",
     "delaySeconds": "Freeze delay (s)",
-    "seconds": "s"
+    "seconds": "s",
+    "freezeKey": "Freeze key",
+    "ctrl": "Ctrl",
+    "shift": "Shift",
+    "alt": "Alt"
   },
   "login": {
     "title": "Sign in to RPA Studio",

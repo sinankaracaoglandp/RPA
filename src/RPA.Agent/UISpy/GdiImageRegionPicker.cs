@@ -101,7 +101,6 @@ internal sealed class ArmForm : Form
 {
     private const int WmHotkey = 0x0312;
     private const int HotkeyId = 0xF2A1;
-    private const uint VkF2 = 0x71;
 
     private readonly ImagePickerOptions _options;
     private readonly Label _label = new();
@@ -160,13 +159,14 @@ internal sealed class ArmForm : Form
         }
         else
         {
-            _hotkeyRegistered = RegisterHotKey(Handle, HotkeyId, 0, VkF2);
+            var combo = _options.DisplayCombo;
+            _hotkeyRegistered = RegisterHotKey(Handle, HotkeyId, _options.Modifiers, _options.VirtualKey);
             _label.Text = _hotkeyRegistered
-                ? "Hedef menüyü/pencereyi açın, sonra  F2  ile dondurun."
-                : "Hedef menüyü açın… (F2 kısayolu kaydedilemedi; birazdan otomatik donacak)";
+                ? $"Hedef menüyü/pencereyi açın, sonra  {combo}  ile dondurun."
+                : $"Hedef menüyü açın… ({combo} kısayolu kaydedilemedi; birazdan otomatik donacak)";
             if (!_hotkeyRegistered)
             {
-                // F2 kaydı başarısızsa güvenli geri dönüş: kısa zamanlayıcıya düş.
+                // Kısayol kaydı başarısızsa (başka uygulama tutuyorsa) güvenli geri dönüş: kısa zamanlayıcı.
                 _remaining = Math.Max(3, _options.DelaySeconds);
                 _timer.Start();
             }
