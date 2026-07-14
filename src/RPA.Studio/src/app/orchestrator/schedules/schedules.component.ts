@@ -64,11 +64,17 @@ export class SchedulesComponent implements OnInit {
   }
 
   setActive(t: TriggerDefinition, isActive: boolean): void {
-    this.service.updateTrigger(t.id, { isActive }).subscribe({ next: () => this.load() });
+    this.service.updateTrigger(t.id, { isActive }).subscribe({
+      next: () => this.load(),
+      error: () => this.error.set('Durum güncellenemedi.'),
+    });
   }
 
   runNow(t: TriggerDefinition): void {
-    this.service.fireTrigger(t.id).subscribe({ next: () => this.load() });
+    this.service.fireTrigger(t.id).subscribe({
+      next: () => this.load(),
+      error: () => this.error.set('Çalıştırma başarısız.'),
+    });
   }
 
   private emptyForm(): CreateTriggerRequest {
