@@ -535,3 +535,19 @@ Tüm belgeler `docs/` klasöründe tutulur. Plan uygulanırken spec/plan bölüm
 ---
 
 **Versiyonlu:** 2026-07-04 — Kontrat Paketi sabit, TDD/review kuralları kesin.
+
+---
+
+## Kontrat Değişikliği — 2026-07-14 (Job → Ajan Dispatch)
+
+Studio workflow'larının hangi ajanda koşacağı `Trigger` katmanında tanımlanır hale geldi.
+- **`Trigger`** entity: `TargetRobotTags` (virgülle ayrık tag havuzu) + `Priority` eklendi. Migration `AddTriggerRobotTargeting`.
+- **Yeni arayüz:** `IRobotDispatcher.SelectRobotAsync(trigger, ct)` — Online + kapasitesi müsait +
+  tag'leri kapsayan robotu seçer (en boş kapasite → heartbeat). Impl `RobotDispatcher` (Infrastructure).
+- **`TriggerService`** ctor'a `IRobotDispatcher` aldı; JobRun'a `AssignedRobotId` yazar, aday yoksa `Status="Pending"`.
+- **`ITriggerRepository`**: `ListTriggersAsync(projectId?, environmentId?, isActive?)` + `GetActiveJobCountsByRobotAsync()`.
+- **API:** `GET /api/triggers` (job listesi); `CreateTriggerRequest`/`UpdateTriggerRequest`/`TriggerDto` `TargetRobotTags`+`Priority` içerir.
+- **Studio:** `orchestrator/schedules` ekranı (job oluştur/liste/fire, hedef ajan tag seçimi).
+
+Kapsam dışı: Agent handoff/poll protokolü (JobRun'ın ajana gerçekten teslim edilip çalıştırılması) — ayrı spec.
+Etkilenen paketler yok (yeni özellik; mevcut in-process çalıştırma placeholder'ı korunur).
