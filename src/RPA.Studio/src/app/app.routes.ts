@@ -51,6 +51,12 @@ export const routes: Routes = [
     loadComponent: () => import('./orchestrator/jobs/jobs.component').then((m) => m.JobsComponent),
   },
   {
+    path: 'orchestrator/schedules',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./orchestrator/schedules/schedules.component').then((m) => m.SchedulesComponent),
+  },
+  {
     path: 'orchestrator/robots',
     canActivate: [authGuard],
     loadComponent: () => import('./orchestrator/robots/robots.component').then((m) => m.RobotsComponent),

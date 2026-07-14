@@ -1,0 +1,63 @@
+<app-back-home></app-back-home>
+<section class="schedules">
+  <header class="schedules__head">
+    <h1>Zamanlamalar</h1>
+    <button type="button" (click)="toggleForm()">{{ showForm() ? 'Vazgeç' : 'Yeni Job' }}</button>
+  </header>
+
+  @if (error()) {
+    <p class="schedules__error">{{ error() }}</p>
+  }
+
+  @if (showForm()) {
+    <form class="schedules__form" (ngSubmit)="save()">
+      <label>Workflow Versiyon Id
+        <input name="wv" [(ngModel)]="form.workflowVersionId" required />
+      </label>
+      <label>Proje Id
+        <input name="pid" [(ngModel)]="form.projectId" required />
+      </label>
+      <label>Ortam Id
+        <input name="env" [(ngModel)]="form.environmentId" required />
+      </label>
+      <label>Tetikleme Tipi
+        <select name="type" [(ngModel)]="form.type">
+          @for (t of triggerTypes; track t) { <option [value]="t">{{ t }}</option> }
+        </select>
+      </label>
+      <label>Hedef Robot Tag'leri (virgülle)
+        <input name="tags" [(ngModel)]="form.targetRobotTags" placeholder="prod-vm,sap" />
+      </label>
+      <label>Öncelik
+        <input name="prio" type="number" [(ngModel)]="form.priority" />
+      </label>
+      <button type="submit">Kaydet</button>
+    </form>
+  }
+
+  @if (loading()) {
+    <p>Yükleniyor…</p>
+  } @else {
+    <table class="schedules__table">
+      <thead>
+        <tr><th>Tip</th><th>Hedef Ajanlar</th><th>Öncelik</th><th>Aktif</th><th>İşlem</th></tr>
+      </thead>
+      <tbody>
+        @for (t of triggers(); track t.id) {
+          <tr>
+            <td>{{ t.type }}</td>
+            <td>{{ t.targetRobotTags || '(herhangi)' }}</td>
+            <td>{{ t.priority }}</td>
+            <td>{{ t.isActive ? 'Evet' : 'Hayır' }}</td>
+            <td>
+              <button type="button" (click)="runNow(t)">Şimdi çalıştır</button>
+              <button type="button" (click)="setActive(t, !t.isActive)">
+                {{ t.isActive ? 'Pasifleştir' : 'Aktifleştir' }}
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</section>
