@@ -198,3 +198,23 @@ Paket F: ✅ TÜM TASKLAR TAMAM (7 task, commits 9ac4466..0eb06c2). Final whole-
 - DI override verified: Program.cs AddWorkflowServices (TryAdd Unavailable) before AddAgentCore (AddSingleton real Tesseract channel, Windows-gated) → real wins on Windows, Unavailable keeps non-Windows DI valid.
 - Cross-task ID coherence exact (6 activity IDs ↔ keyed DI ↔ catalog ↔ tests); Onion boundary clean (OpenCvSharp/Tesseract confined to Agent).
 - Post-merge follow-ups (Minors): (1) align confidence metadata "double"→"number"; (2) Exists/TextExists defensive try/return-false on OCR-init/base64-decode; (3) cache TesseractEngine per (path,language) instead of per-poll; (4) Studio imagePreviews reset on node switch + hydrate from stored value; (5) multi-monitor capture; (6) base64 workflow-JSON size note.
+- [x] Task 4: TriggerService dispatcher entegrasyonu, AssignedRobotId/Pending (Sonnet) — complete (commit eaeb631, review clean, TriggerService 10/10; full infra 518/519, 1 pre-existing ilgisiz SAP GUI hatası)
+  - Minor (final triyaj): Queued dalında dispatcher çağrılmadığını doğrulayan test yok.
+- [x] Task 5: WebAPI trigger DTO alanları + GET /api/triggers (Sonnet) — complete (commits c284b7e..69fefe8, review approved + fix; 10/10 test; Important filtre-passthrough bulgusu fix ile kapatıldı)
+- [x] Task 6: Studio orchestrator servis/model trigger metotları (Sonnet) — complete (commit e13cfb4, review clean, 19/19 test; test komutu: ng test --include=)
+  - Minor (final triyaj): updateTrigger test yok; listTriggers projectId/environmentId dalları test edilmedi.
+- [x] Task 7: Studio Zamanlamalar ekranı + route (Sonnet) — complete (commits 7b75b2e..31086f5, review approved + fix; 3 Important bulgu (setActive/runNow hata yönetimi + testler) kapatıldı; spec 4/4, build SUCCESS)
+  - Minor (final triyaj): setActive/runNow error-path testi yok; robots sinyali UI'da kullanılmıyor (targetRobotTags datalist adayı); priority number-input NaN uç durumu.
+- [x] Task 8: CLAUDE.md kontrat notu + tam doğrulama (Sonnet) — complete (commit d9dec90; backend 723/727, Studio 250/250)
+  - Doğrulandı: 4 backend hatası (SapGuiChannel double-connect, Agent HostedService QueueAgentJobSource DI, RobotHub+UiSpy auth token) — hepsi base f2af3e8'de de patlıyor (worktree ile teyit) → REGRESYON DEĞİL, önceden var olan branch hataları.
+
+## Job → Ajan Dispatch: 8/8 TASK COMPLETE. Final whole-branch review (f2af3e8..d9dec90) sırada.
+
+## Job → Ajan Dispatch: ✅ FINAL REVIEW APPROVED (Opus, f2af3e8..a7a614c)
+- Verdict: With fixes → 3 Important düzeltildi (commit a7a614c):
+  1. RobotDispatcher sınıf yorumu düzeltildi (Priority kullanılmıyor + freshest heartbeat).
+  2. Aday-yok JobRun artık TriggerExecutionOutcome.Pending dönüyor (önceden Executed); test asserted.
+  3. Kapasite yarışı + Priority-kullanılmıyor bilinen kısıtlama olarak spec §5.1'e eklendi.
+- Testler: Infrastructure TriggerServiceTests 10/10; full build 0 error. Studio 250/250.
+- Bilinen (regresyon DEĞİL, base f2af3e8'de de fail): SapGuiChannel double-connect, Agent HostedService DI, RobotHub/UiSpy auth.
+- Deferred Minors (post-merge): robots sinyali UI'da kullanılmıyor; priority number-input NaN; updateTrigger/listTriggers param dalları + dispatcher heartbeat-tiebreak/Queued-not-invoked testleri; CLAUDE.md snake_case iddiası (repo geneli PascalCase).
