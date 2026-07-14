@@ -175,4 +175,41 @@ public class TriggersControllerIntegrationTests : IClassFixture<WebApplicationFa
         Assert.Equal("Executed", body!.Outcome);
         Assert.Equal(jobRun.Id, body.JobRunId);
     }
+
+    [Fact]
+    public async Task Create_Then_List_ReturnsRobotTargeting()
+    {
+        var store = new List<Trigger>();
+        var repo = new Mock<ITriggerRepository>();
+        repo.Setup(r => r.AddTriggerAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
+            .Callback<Trigger, CancellationToken>((t, _) => store.Add(t)).Returns(Task.CompletedTask);
+        repo.Setup(r => r.ListTriggersAsync(It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<bool?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => store);
+        var client = CreateClient(repo.Object);
+
+        var create = new
+        {
+            projectId = Guid.NewGuid(),
+            workflowVersionId = Guid.NewGuid(),
+            type = "Manual",
+            environmentId = Guid.NewGuid(),
+            isActive = true,
+            targetRobotTags = "prod-vm,sap",
+            priority = 3,
+        };
+        var createResp = await client.PostAsJsonAsync("/api/triggers", create);
+        createResp.EnsureSuccessStatusCode();
+
+        var listResp = await client.GetAsync("/api/triggers");
+        listResp.EnsureSuccessStatusCode();
+        var list = await listResp.Content.ReadFromJsonAsync<List<TriggerDtoShape>>();
+
+        Assert.Contains(list!, t => t.TargetRobotTags == "prod-vm,sap" && t.Priority == 3);
+    }
+
+    private sealed class TriggerDtoShape
+    {
+        public string TargetRobotTags { get; set; } = "";
+        public int Priority { get; set; }
+    }
 }

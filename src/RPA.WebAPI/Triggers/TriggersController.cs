@@ -46,6 +46,8 @@ public class TriggersController : ControllerBase
             Configuration = request.Configuration ?? "{}",
             EnvironmentId = request.EnvironmentId,
             IsActive = request.IsActive,
+            TargetRobotTags = request.TargetRobotTags ?? "",
+            Priority = request.Priority,
         };
         await _repository.AddTriggerAsync(trigger, ct);
 
@@ -64,6 +66,25 @@ public class TriggersController : ControllerBase
 
         await _repository.SaveChangesAsync(ct);
         return CreatedAtAction(nameof(GetByWorkflowVersion), new { workflowVersionId = trigger.WorkflowVersionId }, TriggerDto.From(trigger, schedule));
+    }
+
+    /// <summary>Tüm job tanımlarını (trigger) opsiyonel filtrelerle listeler (Studio Zamanlamalar ekranı).</summary>
+    [HttpGet("triggers")]
+    [ProducesResponseType(typeof(List<TriggerDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(
+        [FromQuery] Guid? projectId, [FromQuery] Guid? environmentId, [FromQuery] bool? isActive,
+        CancellationToken ct)
+    {
+        var triggers = await _repository.ListTriggersAsync(projectId, environmentId, isActive, ct);
+        var dtos = new List<TriggerDto>();
+        foreach (var trigger in triggers)
+        {
+            var schedule = trigger.Type == TriggerType.Cron
+                ? await _repository.FindScheduleByTriggerIdAsync(trigger.Id, ct)
+                : null;
+            dtos.Add(TriggerDto.From(trigger, schedule));
+        }
+        return Ok(dtos);
     }
 
     /// <summary>Belirtilen workflow versiyonuna ait tüm tetikleyicileri döner.</summary>
@@ -98,6 +119,10 @@ public class TriggersController : ControllerBase
             trigger.IsActive = request.IsActive.Value;
         if (request.Configuration is not null)
             trigger.Configuration = request.Configuration;
+        if (request.TargetRobotTags is not null)
+            trigger.TargetRobotTags = request.TargetRobotTags;
+        if (request.Priority.HasValue)
+            trigger.Priority = request.Priority.Value;
 
         Schedule? schedule = await _repository.FindScheduleByTriggerIdAsync(id, ct);
         if (request.Schedule is not null && schedule is not null)
@@ -141,6 +166,8 @@ public sealed class CreateTriggerRequest
     public string? Configuration { get; set; }
     public Guid EnvironmentId { get; set; }
     public bool IsActive { get; set; } = true;
+    public string TargetRobotTags { get; set; } = "";
+    public int Priority { get; set; }
     public ScheduleRequest? Schedule { get; set; }
 }
 
@@ -148,6 +175,8 @@ public sealed class UpdateTriggerRequest
 {
     public bool? IsActive { get; set; }
     public string? Configuration { get; set; }
+    public string? TargetRobotTags { get; set; }
+    public int? Priority { get; set; }
     public ScheduleRequest? Schedule { get; set; }
 }
 
@@ -165,6 +194,8 @@ public sealed class TriggerDto
     public string Type { get; set; } = "";
     public string Configuration { get; set; } = "{}";
     public bool IsActive { get; set; }
+    public string TargetRobotTags { get; set; } = "";
+    public int Priority { get; set; }
     public ScheduleDto? Schedule { get; set; }
 
     public static TriggerDto From(Trigger t, Schedule? s) => new()
@@ -174,6 +205,8 @@ public sealed class TriggerDto
         Type = t.Type.ToString(),
         Configuration = t.Configuration,
         IsActive = t.IsActive,
+        TargetRobotTags = t.TargetRobotTags,
+        Priority = t.Priority,
         Schedule = s is null ? null : new ScheduleDto
         {
             CronExpression = s.CronExpression,
