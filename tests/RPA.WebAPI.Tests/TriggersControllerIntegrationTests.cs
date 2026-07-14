@@ -207,6 +207,24 @@ public class TriggersControllerIntegrationTests : IClassFixture<WebApplicationFa
         Assert.Contains(list!, t => t.TargetRobotTags == "prod-vm,sap" && t.Priority == 3);
     }
 
+    [Fact]
+    public async Task List_ForwardsQueryParametersExactly()
+    {
+        // Controller'in projectId/environmentId/isActive parametrelerini It.IsAny yerine
+        // gercek degerlerle ListTriggersAsync'e ilettigini dogrular (swap/drop hatalarini yakalar).
+        var projectId = Guid.NewGuid();
+        var environmentId = Guid.NewGuid();
+        var repo = new Mock<ITriggerRepository>();
+        repo.Setup(r => r.ListTriggersAsync(projectId, environmentId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Trigger>());
+        var client = CreateClient(repo.Object);
+
+        var response = await client.GetAsync($"/api/triggers?projectId={projectId}&environmentId={environmentId}&isActive=true");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        repo.Verify(r => r.ListTriggersAsync(projectId, environmentId, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private sealed class TriggerDtoShape
     {
         public string TargetRobotTags { get; set; } = "";
