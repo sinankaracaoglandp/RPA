@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.Tests;
 
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
@@ -13,6 +14,16 @@ using RPA.Infrastructure.Scheduling;
 /// </summary>
 public class TriggerServiceTests
 {
+    private readonly Mock<IRobotDispatcher> _dispatcher = new();
+
+    public TriggerServiceTests()
+    {
+        // Varsayılan: mevcut testlerin beklentileri değişmesin diye her zaman bir robot döner
+        // (Running kalsın). Testler gerektiğinde bunu override eder.
+        _dispatcher.Setup(d => d.SelectRobotAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Robot { Id = Guid.NewGuid(), MachineName = "VM1", Status = RobotStatus.Online, Capacity = 1 });
+    }
+
     private static RpaDbContext Db(string name)
     {
         var options = new DbContextOptionsBuilder<RpaDbContext>()
@@ -75,8 +86,8 @@ public class TriggerServiceTests
         return schedule;
     }
 
-    private static TriggerService Service(RpaDbContext db, FakeWorkflowRunner runner)
-        => new(new EfTriggerRepository(db), runner, new MockLogger<TriggerService>());
+    private TriggerService Service(RpaDbContext db, FakeWorkflowRunner runner)
+        => new(new EfTriggerRepository(db), runner, _dispatcher.Object, new MockLogger<TriggerService>());
 
     [Fact]
     public async Task ExecuteTrigger_UnknownTrigger_ReturnsNotFound()
@@ -231,5 +242,37 @@ public class TriggerServiceTests
         Assert.Equal(TriggerExecutionOutcome.Executed, result.Outcome);
         Assert.Equal(1, runner.CallCount);
         Assert.Equal(2, await db.JobRuns.CountAsync());
+    }
+
+    [Fact]
+    public async Task ExecuteTrigger_AssignsSelectedRobot()
+    {
+        using var db = Db(Guid.NewGuid().ToString());
+        var trigger = await SeedTrigger(db);
+        var runner = new FakeWorkflowRunner();
+
+        var robot = new Robot { Id = Guid.NewGuid(), MachineName = "VM1", Status = RobotStatus.Online, Capacity = 1 };
+        _dispatcher.Setup(d => d.SelectRobotAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(robot);
+
+        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "manual");
+
+        Assert.Equal(robot.Id, result.JobRun!.AssignedRobotId);
+    }
+
+    [Fact]
+    public async Task ExecuteTrigger_NoRobot_JobRunPending()
+    {
+        using var db = Db(Guid.NewGuid().ToString());
+        var trigger = await SeedTrigger(db);
+        var runner = new FakeWorkflowRunner();
+
+        _dispatcher.Setup(d => d.SelectRobotAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync((Robot?)null);
+
+        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "manual");
+
+        Assert.Equal("Pending", result.JobRun!.Status);
+        Assert.Null(result.JobRun.AssignedRobotId);
     }
 }

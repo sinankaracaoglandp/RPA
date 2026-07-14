@@ -10,6 +10,7 @@ public static class SchedulerServiceCollectionExtensions
     public static IServiceCollection AddSchedulerServices(this IServiceCollection services)
     {
         services.AddScoped<ITriggerRepository, Persistence.EfTriggerRepository>();
+        services.AddScoped<IRobotDispatcher, RobotDispatcher>();
         services.AddScoped<ITriggerService, TriggerService>();
         services.AddHostedService<SchedulerHostedService>();
         return services;

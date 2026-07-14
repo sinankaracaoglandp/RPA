@@ -19,12 +19,15 @@ public sealed class TriggerService : ITriggerService
 
     private readonly ITriggerRepository _repository;
     private readonly IWorkflowRunner _workflowRunner;
+    private readonly IRobotDispatcher _dispatcher;
     private readonly ILogger<TriggerService> _logger;
 
-    public TriggerService(ITriggerRepository repository, IWorkflowRunner workflowRunner, ILogger<TriggerService> logger)
+    public TriggerService(ITriggerRepository repository, IWorkflowRunner workflowRunner,
+        IRobotDispatcher dispatcher, ILogger<TriggerService> logger)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _workflowRunner = workflowRunner ?? throw new ArgumentNullException(nameof(workflowRunner));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -71,10 +74,21 @@ public sealed class TriggerService : ITriggerService
             return TriggerExecutionResult.Queued(queued);
         }
 
-        // parallel ya da hiç çalışan yok: hemen başlat.
-        var jobRun = NewJobRun(trigger, triggeredBy, status: "Running");
+        // parallel ya da hiç çalışan yok: uygun ajan seç ve başlat.
+        var robot = await _dispatcher.SelectRobotAsync(trigger, cancellationToken);
+        var status = robot is null ? "Pending" : "Running";
+        var jobRun = NewJobRun(trigger, triggeredBy, status: status);
+        jobRun.AssignedRobotId = robot?.Id;
         await _repository.AddJobRunAsync(jobRun, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
+
+        if (robot is null)
+        {
+            _logger.LogInformation(
+                "Trigger {TriggerId}: uygun ajan yok — JobRun {JobRunId} Pending.", triggerId, jobRun.Id);
+            return TriggerExecutionResult.Executed(jobRun);
+        }
+
         _logger.LogInformation(
             "Trigger {TriggerId} ateşlendi — JobRun {JobRunId} başlatıldı (correlationId={CorrelationId}).",
             triggerId, jobRun.Id, jobRun.ElasticsearchCorrelationId);
