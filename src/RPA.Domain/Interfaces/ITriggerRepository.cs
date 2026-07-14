@@ -30,5 +30,12 @@ public interface ITriggerRepository
 
     Task AddJobRunAsync(JobRun jobRun, CancellationToken cancellationToken = default);
 
+    /// <summary>Tüm trigger'ları (job tanımları) opsiyonel filtrelerle döner (Studio Zamanlamalar ekranı).</summary>
+    Task<IReadOnlyList<Trigger>> ListTriggersAsync(
+        Guid? projectId, Guid? environmentId, bool? isActive, CancellationToken cancellationToken = default);
+
+    /// <summary>Status=="Running" JobRun'ları AssignedRobotId'ye göre sayar (kapasite kontrolü — dispatcher).</summary>
+    Task<IReadOnlyDictionary<Guid, int>> GetActiveJobCountsByRobotAsync(CancellationToken cancellationToken = default);
+
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

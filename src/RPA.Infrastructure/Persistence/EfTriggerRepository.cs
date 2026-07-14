@@ -48,6 +48,26 @@ public sealed class EfTriggerRepository : ITriggerRepository
     public async Task AddJobRunAsync(JobRun jobRun, CancellationToken cancellationToken = default)
         => await _db.JobRuns.AddAsync(jobRun, cancellationToken);
 
+    public async Task<IReadOnlyList<Trigger>> ListTriggersAsync(
+        Guid? projectId, Guid? environmentId, bool? isActive, CancellationToken cancellationToken = default)
+    {
+        var query = _db.Triggers.Where(t => !t.IsDeleted);
+        if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
+        if (environmentId.HasValue) query = query.Where(t => t.EnvironmentId == environmentId.Value);
+        if (isActive.HasValue) query = query.Where(t => t.IsActive == isActive.Value);
+        return await query.OrderByDescending(t => t.CreatedAt).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> GetActiveJobCountsByRobotAsync(CancellationToken cancellationToken = default)
+    {
+        var grouped = await _db.JobRuns
+            .Where(j => j.Status == "Running" && j.AssignedRobotId != null)
+            .GroupBy(j => j.AssignedRobotId!.Value)
+            .Select(g => new { RobotId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        return grouped.ToDictionary(x => x.RobotId, x => x.Count);
+    }
+
     public Task SaveChangesAsync(CancellationToken cancellationToken = default)
         => _db.SaveChangesAsync(cancellationToken);
 }
