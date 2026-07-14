@@ -62,6 +62,12 @@ public static class ActivityRegistry
             .Description("Bir dizi/DataTable üzerinde döner.")
             .Input("items", "string").Input("itemVariable", "string");
 
+        b.Activity("Logic.For").DisplayName("Sayaç Döngüsü").Category(CatLogic)
+            .Description("Başlangıç ve dahil bitiş değeri arasında sayaçla döner.")
+            .Input("start", "int").Input("end", "int")
+            .Input("step", "int", required: false, defaultValue: 1)
+            .Input("indexVariable", "string");
+
         b.Activity("Logic.While").DisplayName("İken Döngü").Category(CatLogic)
             .Description("Koşul doğru olduğu sürece body'yi tekrarlar.")
             .Input("condition", "string");

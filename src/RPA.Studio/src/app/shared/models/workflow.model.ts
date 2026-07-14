@@ -12,6 +12,7 @@ export type WorkflowNodeType =
   | 'assign'
   | 'if'
   | 'forEach'
+  | 'for'
   | 'while'
   | 'tryCatch'
   | 'userPrompt'
@@ -22,7 +23,8 @@ export type WorkflowNodeType =
   | 'componentCall'
   | 'merge';
 
-export type ConnectionPort = 'out' | 'success' | 'failure' | 'true' | 'false';
+export type ConnectionPort = 'out' | 'success' | 'failure' | 'true' | 'false' | 'body' | 'exit';
+export type ConnectionTargetPort = 'in' | 'loop-back';
 
 export interface NodePosition {
   x: number;
@@ -44,6 +46,7 @@ export interface WorkflowNode {
 export interface WorkflowConnection {
   from: string;
   fromPort?: ConnectionPort;
+  toPort?: ConnectionTargetPort;
   to: string;
   label?: string;
 }

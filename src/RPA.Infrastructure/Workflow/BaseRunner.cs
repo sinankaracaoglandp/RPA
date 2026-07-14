@@ -190,7 +190,12 @@ public sealed class BaseRunner : IWorkflowRunner
         string? resumeEntryNodeId = null,
         IReadOnlyDictionary<string, object?>? resumeVariables = null)
     {
-        // Döngü tespiti (bağlantı grafı bir DAG olmalı; forEach/while gövde ID'leriyle çalışır).
+        if (!ValidateLoopGraph(def, out var loopError))
+        {
+            return Fail(new SystemException(loopError), stopwatch);
+        }
+
+        // Döngü tespiti (bağlantı grafı bir DAG olmalı; doğrulanmış loop-back kenarları hariç).
         if (HasCycle(def, out var cyclePath))
         {
             return Fail(
@@ -315,11 +320,15 @@ public sealed class BaseRunner : IWorkflowRunner
 
             case "forEach":
                 await ExecuteForEachAsync(node, state);
-                return NextSequential(node, state);
+                return GetLoopExit(state.Definition, node.Id);
+
+            case "for":
+                await ExecuteForAsync(node, state);
+                return GetLoopExit(state.Definition, node.Id);
 
             case "while":
                 await ExecuteWhileAsync(node, state);
-                return NextSequential(node, state);
+                return GetLoopExit(state.Definition, node.Id);
 
             case "tryCatch":
                 await ExecuteTryCatchAsync(node, state);
@@ -382,7 +391,8 @@ public sealed class BaseRunner : IWorkflowRunner
 
     private async Task ExecuteForEachAsync(WorkflowNode node, ExecutionState state)
     {
-        if (string.IsNullOrEmpty(node.BodyStartNodeId))
+        var (bodyStart, bodyEnd) = ResolveLoopBody(node, state.Definition);
+        if (string.IsNullOrEmpty(bodyStart))
         {
             return;
         }
@@ -394,13 +404,44 @@ public sealed class BaseRunner : IWorkflowRunner
         {
             state.CancellationToken.ThrowIfCancellationRequested();
             state.Scope.SetVariable(itemVar, item);
-            await RunSequenceAsync(node.BodyStartNodeId, node.BodyEndNodeId, state);
+            await RunSequenceAsync(bodyStart, bodyEnd, state);
+        }
+    }
+
+    private async Task ExecuteForAsync(WorkflowNode node, ExecutionState state)
+    {
+        var (bodyStart, bodyEnd) = ResolveLoopBody(node, state.Definition);
+        if (string.IsNullOrEmpty(bodyStart))
+        {
+            return;
+        }
+
+        var start = node.Start ?? 0;
+        var end = node.End ?? 0;
+        var step = node.Step ?? 1;
+        if (step == 0)
+        {
+            throw new SystemException($"for node '{node.Id}' step değeri sıfır olamaz.");
+        }
+
+        var indexVariable = node.IndexVariable ?? "index";
+        var iterations = 0;
+        for (var index = start; step > 0 ? index <= end : index >= end; index += step)
+        {
+            state.CancellationToken.ThrowIfCancellationRequested();
+            if (++iterations > MaxWhileIterations)
+            {
+                throw new SystemException($"for node '{node.Id}' iterasyon sınırını aştı.");
+            }
+            state.Scope.SetVariable(indexVariable, index);
+            await RunSequenceAsync(bodyStart, bodyEnd, state);
         }
     }
 
     private async Task ExecuteWhileAsync(WorkflowNode node, ExecutionState state)
     {
-        if (string.IsNullOrEmpty(node.BodyStartNodeId))
+        var (bodyStart, bodyEnd) = ResolveLoopBody(node, state.Definition);
+        if (string.IsNullOrEmpty(bodyStart))
         {
             return;
         }
@@ -413,8 +454,21 @@ public sealed class BaseRunner : IWorkflowRunner
             {
                 throw new SystemException($"while node '{node.Id}' iterasyon sınırını aştı.");
             }
-            await RunSequenceAsync(node.BodyStartNodeId, node.BodyEndNodeId, state);
+            await RunSequenceAsync(bodyStart, bodyEnd, state);
         }
+    }
+
+    private static (string? Start, string? End) ResolveLoopBody(
+        WorkflowNode node,
+        WorkflowDefinition definition)
+    {
+        var start = definition.Connections.FirstOrDefault(c =>
+            c.From == node.Id && string.Equals(c.FromPort, "body", StringComparison.OrdinalIgnoreCase))?.To
+            ?? node.BodyStartNodeId;
+        var end = definition.Connections.FirstOrDefault(c =>
+            c.To == node.Id && string.Equals(c.ToPort, "loop-back", StringComparison.OrdinalIgnoreCase))?.From
+            ?? node.BodyEndNodeId;
+        return (start, end);
     }
 
     private async Task ExecuteTryCatchAsync(WorkflowNode node, ExecutionState state)
@@ -757,6 +811,22 @@ public sealed class BaseRunner : IWorkflowRunner
     private string? NextSequential(WorkflowNode node, ExecutionState state)
         => GetNext(state.Definition, node.Id, "success", "out");
 
+    private static string? GetLoopExit(WorkflowDefinition definition, string nodeId)
+    {
+        var exit = definition.Connections.FirstOrDefault(connection =>
+            connection.From == nodeId
+            && string.Equals(connection.FromPort, "exit", StringComparison.OrdinalIgnoreCase))?.To;
+        if (exit is not null)
+        {
+            return exit;
+        }
+
+        var usesLoopPorts = definition.Connections.Any(connection =>
+            connection.From == nodeId
+            && string.Equals(connection.FromPort, "body", StringComparison.OrdinalIgnoreCase));
+        return usesLoopPorts ? null : GetNext(definition, nodeId, "success", "out");
+    }
+
     /// <summary>Belirtilen port'lardan ilk eşleşen bağlantının hedefini döndürür; yoksa herhangi bir bağlantı.</summary>
     private static string? GetNext(WorkflowDefinition def, string nodeId, params string[] preferredPorts)
     {
@@ -834,10 +904,91 @@ public sealed class BaseRunner : IWorkflowRunner
 
     // ---- Döngü tespiti (DFS renklendirme) ----
 
+    private static bool ValidateLoopGraph(WorkflowDefinition definition, out string error)
+    {
+        error = "";
+        var loopTypes = new HashSet<string>(new[] { "while", "for", "forEach" }, StringComparer.OrdinalIgnoreCase);
+        var loopBacks = definition.Connections
+            .Where(c => string.Equals(c.ToPort, "loop-back", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var connection in loopBacks)
+        {
+            if (!definition.NodesById.TryGetValue(connection.To, out var owner) || !loopTypes.Contains(owner.Type))
+            {
+                error = $"loop-back hedefi bir loop node olmalıdır: '{connection.To}'.";
+                return false;
+            }
+        }
+
+        foreach (var loop in definition.Nodes.Where(node => loopTypes.Contains(node.Type)))
+        {
+            var body = definition.Connections.Where(c =>
+                c.From == loop.Id && string.Equals(c.FromPort, "body", StringComparison.OrdinalIgnoreCase)).ToList();
+            var exits = definition.Connections.Where(c =>
+                c.From == loop.Id && string.Equals(c.FromPort, "exit", StringComparison.OrdinalIgnoreCase)).ToList();
+            var backs = loopBacks.Where(c => c.To == loop.Id).ToList();
+            var usesPorts = body.Count > 0 || exits.Count > 0 || backs.Count > 0;
+            if (!usesPorts)
+            {
+                continue;
+            }
+            if (body.Count != 1 || backs.Count != 1 || exits.Count > 1)
+            {
+                error = $"loop node '{loop.Id}' tam bir body ve loop-back, en fazla bir exit bağlantısı taşımalıdır.";
+                return false;
+            }
+            if (!AllPathsLeadToTarget(
+                    body[0].To,
+                    backs[0].From,
+                    definition,
+                    loop.Id,
+                    new HashSet<string>(StringComparer.Ordinal),
+                    new Dictionary<string, bool>(StringComparer.Ordinal)))
+            {
+                error = $"loop-back kaynağı '{backs[0].From}', loop '{loop.Id}' body akışına ait değildir.";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool AllPathsLeadToTarget(
+        string current,
+        string target,
+        WorkflowDefinition definition,
+        string loopId,
+        HashSet<string> visiting,
+        Dictionary<string, bool> memo)
+    {
+        if (current == target)
+        {
+            return true;
+        }
+        if (memo.TryGetValue(current, out var cached))
+        {
+            return cached;
+        }
+        if (!visiting.Add(current))
+        {
+            return false;
+        }
+        var outgoing = definition.Connections.Where(c =>
+            c.From == current &&
+            !string.Equals(c.ToPort, "loop-back", StringComparison.OrdinalIgnoreCase) &&
+            c.To != loopId).ToList();
+        var result = outgoing.Count > 0 && outgoing.All(connection =>
+            AllPathsLeadToTarget(connection.To, target, definition, loopId, visiting, memo));
+        visiting.Remove(current);
+        memo[current] = result;
+        return result;
+    }
+
     private static bool HasCycle(WorkflowDefinition def, out string cyclePath)
     {
         cyclePath = "";
         var adjacency = def.Connections
+            .Where(c => !string.Equals(c.ToPort, "loop-back", StringComparison.OrdinalIgnoreCase))
             .GroupBy(c => c.From)
             .ToDictionary(g => g.Key, g => g.Select(c => c.To).ToList());
 
@@ -900,7 +1051,11 @@ public sealed class BaseRunner : IWorkflowRunner
             return null;
         }
 
-        var hasIncoming = new HashSet<string>(def.Connections.Select(c => c.To), StringComparer.Ordinal);
+        var hasIncoming = new HashSet<string>(
+            def.Connections
+                .Where(c => !string.Equals(c.ToPort, "loop-back", StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.To),
+            StringComparer.Ordinal);
         var entry = def.Nodes.FirstOrDefault(n => !hasIncoming.Contains(n.Id));
         return entry?.Id ?? def.Nodes[0].Id;
     }

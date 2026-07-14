@@ -182,6 +182,15 @@ tabanlı sıralı fallback sözleşmede explicit hale getirildi.
 
 ---
 
+## Kontrat Değişikliği — 2026-07-15 (Common Loop Nodes)
+
+Workflow node tiplerine `for` eklendi. `Logic.For`, dahil bitişli sayaç döngüsüdür ve
+`start`, `end`, `step`, `indexVariable` alanlarını kullanır. `step` sıfır olamaz.
+Etkilenen paketler: Domain WorkflowSchema, Infrastructure workflow modeli/runner/katalog,
+Studio workflow modeli/canvas/property paneli.
+Gerekçe: While, For ve ForEach döngülerini ortak designer bağlantı semantiğine taşırken
+sayaç tabanlı döngüyü ayrı bir `Logic.For` node'u olarak sunmak.
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

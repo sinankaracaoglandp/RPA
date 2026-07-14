@@ -307,4 +307,3 @@ C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\refint\RPA.WebAPI.dll
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.pdb
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\RPA.WebAPI.genruntimeconfig.cache
 C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\ref\RPA.WebAPI.dll
-C:\Source\RPA\src\RPA.WebAPI\obj\Debug\net10.0\staticwebassets.upToDateCheck.txt

@@ -100,14 +100,33 @@ describe('NodeComponent', () => {
   });
 
   it('emits connectDrop on pointerup over the card', () => {
-    const emitted: string[] = [];
-    component.connectDrop.subscribe((id) => emitted.push(id));
+    const emitted: Array<{ nodeId: string; port: string }> = [];
+    component.connectDrop.subscribe((event) => emitted.push(event));
     fixture.detectChanges();
 
     const card: HTMLElement =
       fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
     card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
 
-    expect(emitted).toEqual([component.node.id]);
+    expect(emitted).toEqual([{ nodeId: component.node.id, port: 'in' }]);
+  });
+
+  it('renders and emits a distinct loop-back input for loop nodes', () => {
+    fixture.componentRef.setInput('node', {
+      ...view,
+      nodeType: 'while',
+      inputs: [
+        { port: 'in', label: 'In' },
+        { port: 'loop-back', label: 'Repeat' },
+      ],
+    });
+    fixture.detectChanges();
+    const emitted: Array<{ nodeId: string; port: string }> = [];
+    component.connectDrop.subscribe((event) => emitted.push(event));
+
+    const loopBack: HTMLElement = fixture.nativeElement.querySelector('[data-port="loop-back"]');
+    loopBack.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+
+    expect(emitted).toEqual([{ nodeId: component.node.id, port: 'loop-back' }]);
   });
 });

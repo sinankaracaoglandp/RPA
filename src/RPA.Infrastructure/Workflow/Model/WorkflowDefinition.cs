@@ -77,6 +77,7 @@ public sealed class WorkflowDefinition
                     From = (string?)c["from"] ?? "",
                     To = (string?)c["to"] ?? "",
                     FromPort = (string?)c["fromPort"] ?? "out",
+                    ToPort = (string?)c["toPort"] ?? "in",
                     Label = (string?)c["label"],
                 });
             }
@@ -130,5 +131,6 @@ public sealed class WorkflowConnection
     public string From { get; init; } = "";
     public string To { get; init; } = "";
     public string FromPort { get; init; } = "out";
+    public string ToPort { get; init; } = "in";
     public string? Label { get; init; }
 }

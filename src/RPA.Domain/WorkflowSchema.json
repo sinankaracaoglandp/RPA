@@ -76,6 +76,7 @@
               "assign",
               "if",
               "forEach",
+              "for",
               "while",
               "tryCatch",
               "userPrompt",
@@ -95,8 +96,12 @@
           "condition": { "type": "string", "description": "type=if için: boolean expression" },
           "itemVariable": { "type": "string", "description": "type=forEach için: iteration variable adı" },
           "items": { "type": "string", "description": "type=forEach için: iterate edilecek değişken adı (array/DataTable)" },
-          "bodyStartNodeId": { "type": "string", "description": "type=if/forEach/while/tryCatch için: body'nin başlangıç node ID'si" },
-          "bodyEndNodeId": { "type": "string", "description": "type=if/forEach/while/tryCatch için: body'nin bitiş node ID'si" },
+          "start": { "type": "integer", "description": "type=for için: başlangıç değeri" },
+          "end": { "type": "integer", "description": "type=for için: dahil bitiş değeri" },
+          "step": { "type": "integer", "description": "type=for için: sıfır olmayan artış/azalış" },
+          "indexVariable": { "type": "string", "description": "type=for için: sayaç değişkeni" },
+          "bodyStartNodeId": { "type": "string", "description": "type=if/for/forEach/while/tryCatch için: body'nin başlangıç node ID'si" },
+          "bodyEndNodeId": { "type": "string", "description": "type=if/for/forEach/while/tryCatch için: body'nin bitiş node ID'si" },
           "tryNodeId": { "type": "string", "description": "type=tryCatch için: try bloğunun başlangıcı" },
           "catchNodeId": { "type": "string", "description": "type=tryCatch için: catch bloğunun başlangıcı (opsiyonel)" },
           "finallyNodeId": { "type": "string", "description": "type=tryCatch için: finally bloğunun başlangıcı (opsiyonel)" },
@@ -112,7 +117,16 @@
           "componentVersion": { "type": "string", "description": "type=componentCall için: SemVer (örn. '1.2.0') — pinleme" },
           "inputMapping": { "type": "object", "description": "type=componentCall için: {componentInputName: workflowVariableName}" },
           "outputMapping": { "type": "object", "description": "type=componentCall için: {componentOutputName: workflowVariableName}" }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "for" } } },
+            "then": {
+              "required": ["start", "end", "step", "indexVariable"],
+              "properties": { "step": { "not": { "const": 0 } } }
+            }
+          }
+        ]
       }
     },
     "connections": {
@@ -122,7 +136,8 @@
         "required": ["from", "to"],
         "properties": {
           "from": { "type": "string", "description": "Kaynak node ID" },
-          "fromPort": { "type": "string", "enum": ["out", "success", "failure", "true", "false"], "default": "out" },
+          "fromPort": { "type": "string", "enum": ["out", "success", "failure", "true", "false", "body", "exit"], "default": "out" },
+          "toPort": { "type": "string", "enum": ["in", "loop-back"], "default": "in" },
           "to": { "type": "string", "description": "Hedef node ID" },
           "label": { "type": "string", "description": "Bağlantı etiketi (UI gösterimi için)" }
         }
