@@ -23,6 +23,7 @@ import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-
 import { HistoryExtensions, HistoryPlugin, Presets as HistoryPresets } from 'rete-history-plugin';
 import {
   ConnectionPort,
+  ConnectionTargetPort,
   NodePosition,
   WorkflowConnection,
   WorkflowNode,
@@ -38,6 +39,7 @@ const CONTROL_ACTIVITY_TO_NODE: Partial<Record<string, WorkflowNodeType>> = {
   'Logic.Assign': 'assign',
   'Logic.If': 'if',
   'Logic.ForEach': 'forEach',
+  'Logic.For': 'for',
   'Logic.While': 'while',
   'Logic.TryCatch': 'tryCatch',
   'Logic.Delay': 'delay',
@@ -51,6 +53,7 @@ const NODE_TYPE_TO_CONTROL_ACTIVITY: Partial<Record<WorkflowNodeType, string>> =
   assign: 'Logic.Assign',
   if: 'Logic.If',
   forEach: 'Logic.ForEach',
+  for: 'Logic.For',
   while: 'Logic.While',
   tryCatch: 'Logic.TryCatch',
   delay: 'Logic.Delay',
@@ -79,7 +82,9 @@ export class FlowNode extends ClassicPreset.Node {
     this.activityId = activityId;
     this.properties = properties;
     const socket = new ClassicPreset.Socket('flow');
-    this.addInput('in', new ClassicPreset.Input(socket, 'in', true));
+    for (const input of getInputPorts(nodeType)) {
+      this.addInput(input, new ClassicPreset.Input(socket, input, true));
+    }
     for (const output of getOutputPorts(nodeType)) {
       this.addOutput(output.port, new ClassicPreset.Output(socket, output.label, true));
     }
@@ -103,6 +108,13 @@ function getOutputPorts(nodeType: WorkflowNodeType): Array<{
   tone?: 'default' | 'positive' | 'negative' | 'neutral';
 }> {
   switch (nodeType) {
+    case 'while':
+    case 'for':
+    case 'forEach':
+      return [
+        { port: 'body', label: 'Body', tone: 'positive' },
+        { port: 'exit', label: 'Exit', tone: 'negative' },
+      ];
     case 'if':
       return [
         { port: 'true', label: 'True', tone: 'positive' },
@@ -117,6 +129,10 @@ function getOutputPorts(nodeType: WorkflowNodeType): Array<{
     default:
       return [{ port: 'out', label: 'Next', tone: 'default' }];
   }
+}
+
+function getInputPorts(nodeType: WorkflowNodeType): ConnectionTargetPort[] {
+  return ['while', 'for', 'forEach'].includes(nodeType) ? ['in', 'loop-back'] : ['in'];
 }
 /** Shape of the render/mutation signals we intercept on the area pipeline. */
 interface PipeContext {
@@ -408,7 +424,8 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         this.select(event.nodeId, event.additive));
       ref.instance.nodeDelete.subscribe((id: string) => void this.deleteNode(id));
       ref.instance.connectStart.subscribe(({ nodeId, port }) => this.beginConnection(nodeId, port as ConnectionPort));
-      ref.instance.connectDrop.subscribe((id: string) => void this.completeConnection(id));
+      ref.instance.connectDrop.subscribe(({ nodeId, port }) =>
+        void this.completeConnection(nodeId, port as ConnectionTargetPort));
       this.appRef.attachView(ref.hostView);
       ref.changeDetectorRef.detectChanges();
       this.nodeRefs.set(node.id, ref);
@@ -434,6 +451,10 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       nodeType: node.nodeType,
       activityId: node.activityId,
       outputs: getOutputPorts(node.nodeType),
+      inputs: getInputPorts(node.nodeType).map((port) => ({
+        port,
+        label: port === 'loop-back' ? 'Repeat' : 'In',
+      })),
       selected: this.selectedNodeIds.has(node.id),
       breakpoint: this._breakpointNodeIds.has(node.id),
       current: node.id === this._currentNodeId,
@@ -478,7 +499,10 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         conn.source,
         ((conn as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out'),
       );
-      const to = this.socketPosition(conn.target, 'in');
+      const to = this.socketPosition(
+        conn.target,
+        ((conn as unknown as { targetInput?: ConnectionTargetPort }).targetInput ?? 'in'),
+      );
       if (!from || !to) {
         continue;
       }
@@ -618,7 +642,12 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /** Connects two nodes (source out → target in). Returns the connection id. */
-  async connectNodes(fromId: string, toId: string, fromPort: ConnectionPort = 'out'): Promise<string | null> {
+  async connectNodes(
+    fromId: string,
+    toId: string,
+    fromPort: ConnectionPort = 'out',
+    toPort: ConnectionTargetPort = 'in',
+  ): Promise<string | null> {
     this.assertWritable();
     const source = this.editor.getNode(fromId);
     const target = this.editor.getNode(toId);
@@ -628,7 +657,37 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (!(fromPort in source.outputs)) {
       return null;
     }
-    const duplicate = this.editor.getConnections().some(
+    if (!(toPort in target.inputs)) {
+      return null;
+    }
+    const existingConnections = this.editor.getConnections();
+    if (toPort === 'loop-back') {
+      const bodyConnection = existingConnections.find((connection) =>
+        connection.source === toId &&
+        ((connection as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out') === 'body');
+      if (!bodyConnection || !this.allPathsLeadTo(bodyConnection.target, fromId, existingConnections)) {
+        return null;
+      }
+    } else if (this.isReachable(toId, fromId, existingConnections)) {
+      return null;
+    }
+    if (
+      (fromPort === 'body' || fromPort === 'exit') &&
+      existingConnections.some((connection) =>
+        connection.source === fromId &&
+        ((connection as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out') === fromPort)
+    ) {
+      return null;
+    }
+    if (
+      toPort === 'loop-back' &&
+      existingConnections.some((connection) =>
+        connection.target === toId &&
+        ((connection as unknown as { targetInput?: ConnectionTargetPort }).targetInput ?? 'in') === 'loop-back')
+    ) {
+      return null;
+    }
+    const duplicate = existingConnections.some(
       (c) =>
         c.source === fromId &&
         c.target === toId &&
@@ -640,9 +699,49 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     const connection: FlowConnection = new ClassicPreset.Connection<
       ClassicPreset.Node,
       ClassicPreset.Node
-    >(source, fromPort, target, 'in');
+    >(source, fromPort, target, toPort);
     await this.editor.addConnection(connection);
     return connection.id;
+  }
+
+  private isReachable(startId: string, targetId: string, connections: FlowConnection[]): boolean {
+    const pending = [startId];
+    const visited = new Set<string>();
+    while (pending.length) {
+      const current = pending.pop()!;
+      if (current === targetId) {
+        return true;
+      }
+      if (visited.has(current)) {
+        continue;
+      }
+      visited.add(current);
+      for (const connection of connections) {
+        const targetPort = ((connection as unknown as { targetInput?: ConnectionTargetPort }).targetInput ?? 'in');
+        if (connection.source === current && targetPort !== 'loop-back') {
+          pending.push(connection.target);
+        }
+      }
+    }
+    return false;
+  }
+
+  private allPathsLeadTo(startId: string, targetId: string, connections: FlowConnection[]): boolean {
+    const visit = (current: string, visiting: Set<string>, memo: Map<string, boolean>): boolean => {
+      if (current === targetId) return true;
+      if (memo.has(current)) return memo.get(current)!;
+      if (visiting.has(current)) return false;
+      visiting.add(current);
+      const outgoing = connections.filter((connection) => {
+        const targetPort = ((connection as unknown as { targetInput?: ConnectionTargetPort }).targetInput ?? 'in');
+        return connection.source === current && targetPort !== 'loop-back';
+      });
+      const result = outgoing.length > 0 && outgoing.every((connection) => visit(connection.target, visiting, memo));
+      visiting.delete(current);
+      memo.set(current, result);
+      return result;
+    };
+    return visit(startId, new Set<string>(), new Map<string, boolean>());
   }
 
   /** Out soketinden bağlantı sürüklemesi başlatır (geçici kesikli çizgi). */
@@ -667,7 +766,10 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /** Sürüklemeyi hedef node üzerinde tamamlar; kural ihlalinde null döner. */
-  async completeConnection(targetNodeId: string): Promise<string | null> {
+  async completeConnection(
+    targetNodeId: string,
+    targetPort: ConnectionTargetPort = 'in',
+  ): Promise<string | null> {
     if (this.readOnly) {
       this.cancelConnection();
       return null;
@@ -677,7 +779,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (!from) {
       return null;
     }
-    return this.connectNodes(from.nodeId, targetNodeId, from.port);
+    return this.connectNodes(from.nodeId, targetNodeId, from.port, targetPort);
   }
 
   /** Bekleyen bağlantı sürüklemesini iptal eder ve geçici çizgiyi kaldırır. */
@@ -983,6 +1085,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     const connections: WorkflowConnection[] = [];
     for (const conn of this.editor.getConnections()) {
       const fromPort = ((conn as unknown as { sourceOutput?: ConnectionPort }).sourceOutput ?? 'out');
+      const toPort = ((conn as unknown as { targetInput?: ConnectionTargetPort }).targetInput ?? 'in');
       const source = nodesById.get(conn.source);
       if (source?.type === 'tryCatch') {
         if (fromPort === 'success') {
@@ -1002,6 +1105,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         from: conn.source,
         to: conn.target,
         fromPort,
+        ...(toPort !== 'in' ? { toPort } : {}),
       });
     }
     return { ...base, nodes, connections };
@@ -1029,21 +1133,15 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
           await this.area.translate(node.id, wfNode.position);
         }
       }
-      for (const conn of workflow.connections) {
+      const orderedConnections = [...workflow.connections].sort((left, right) =>
+        Number(left.toPort === 'loop-back') - Number(right.toPort === 'loop-back'));
+      for (const conn of orderedConnections) {
         const from = idMap.get(conn.from);
         const to = idMap.get(conn.to);
         if (!from || !to) {
           continue;
         }
-        const source = this.editor.getNode(from);
-        const target = this.editor.getNode(to);
-        if (source && target) {
-          const connection: FlowConnection = new ClassicPreset.Connection<
-            ClassicPreset.Node,
-            ClassicPreset.Node
-          >(source, conn.fromPort ?? 'out', target, 'in');
-          await this.editor.addConnection(connection);
-        }
+        await this.connectNodes(from, to, conn.fromPort ?? 'out', conn.toPort ?? 'in');
       }
       for (const wfNode of workflow.nodes) {
         if (wfNode.type !== 'tryCatch') {
@@ -1138,6 +1236,12 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         writable['items'] = props['items'] as string | undefined;
         writable['itemVariable'] = props['itemVariable'] as string | undefined;
         break;
+      case 'for':
+        writable['start'] = props['start'] as number | undefined;
+        writable['end'] = props['end'] as number | undefined;
+        writable['step'] = props['step'] as number | undefined;
+        writable['indexVariable'] = props['indexVariable'] as string | undefined;
+        break;
       case 'tryCatch':
         writable['exceptionVariable'] = props['exceptionVariable'] as string | undefined;
         break;
@@ -1174,6 +1278,13 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         return {
           ...(typeof node['items'] === 'string' ? { items: node['items'] } : {}),
           ...(typeof node['itemVariable'] === 'string' ? { itemVariable: node['itemVariable'] } : {}),
+        };
+      case 'for':
+        return {
+          ...(node['start'] !== undefined ? { start: node['start'] } : {}),
+          ...(node['end'] !== undefined ? { end: node['end'] } : {}),
+          ...(node['step'] !== undefined ? { step: node['step'] } : {}),
+          ...(typeof node['indexVariable'] === 'string' ? { indexVariable: node['indexVariable'] } : {}),
         };
       case 'tryCatch':
         return typeof node['exceptionVariable'] === 'string'

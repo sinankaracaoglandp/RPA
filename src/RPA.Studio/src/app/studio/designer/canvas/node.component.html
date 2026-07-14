@@ -6,7 +6,7 @@
   [class.canvas-node--branch]="isBranchNode"
   [class.canvas-node--if]="node.nodeType === 'if'"
   [class.canvas-node--try-catch]="node.nodeType === 'tryCatch'"
-  [class.canvas-node--loop]="node.nodeType === 'forEach' || node.nodeType === 'while'"
+  [class.canvas-node--loop]="node.nodeType === 'forEach' || node.nodeType === 'for' || node.nodeType === 'while'"
   role="button"
   tabindex="0"
   [attr.aria-label]="('canvas.node.ariaLabel' | translate) + ': ' + node.label"
@@ -23,12 +23,18 @@
   @if (node.breakpoint) {
     <span class="canvas-node__breakpoint" data-testid="canvas-node-breakpoint" aria-hidden="true"></span>
   }
-  <span
-    class="canvas-node__socket canvas-node__socket--in"
-    data-testid="canvas-node-socket-in"
-    data-port="in"
-    aria-hidden="true"
-  ></span>
+  <div class="canvas-node__inputs" [class.canvas-node__inputs--multiple]="inputSockets.length > 1">
+    @for (socket of inputSockets; track socket.port) {
+      <span
+        class="canvas-node__socket canvas-node__socket--in"
+        data-testid="canvas-node-socket-in"
+        [attr.data-port]="socket.port"
+        [attr.title]="socket.label"
+        aria-hidden="true"
+        (pointerup)="onInputPointerUp($event, socket.port)"
+      ></span>
+    }
+  </div>
 
   <header class="canvas-node__header">
     <span class="canvas-node__icon" aria-hidden="true">{{ node.icon || '▸' }}</span>

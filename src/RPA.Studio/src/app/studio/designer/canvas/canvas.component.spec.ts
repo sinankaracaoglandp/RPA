@@ -162,6 +162,59 @@ describe('CanvasComponent', () => {
     expect(wf.connections[0].fromPort).toBe('out');
   });
 
+  it('uses shared body and exit ports for While, For and ForEach nodes', async () => {
+    await ready();
+    for (const activityId of ['Logic.While', 'Logic.For', 'Logic.ForEach']) {
+      const id = await component.addNode(activityId);
+      const node = component.editor.getNode(id)!;
+      expect(Object.keys(node.outputs)).toEqual(['body', 'exit']);
+      expect(Object.keys(node.inputs)).toEqual(['in', 'loop-back']);
+    }
+  });
+
+  it('serializes the loop-back target port', async () => {
+    await ready();
+    const loop = await component.addNode('Logic.While');
+    const body = await component.addNode('Logic.Assign');
+    await component.connectNodes(loop, body, 'body');
+    await component.connectNodes(body, loop, 'out', 'loop-back');
+
+    const workflow = component.serialize();
+    expect(workflow.connections.find((connection) => connection.from === body)).toEqual({
+      from: body,
+      to: loop,
+      fromPort: 'out',
+      toPort: 'loop-back',
+    });
+  });
+
+  it('allows only one body and one exit connection per loop node', async () => {
+    await ready();
+    const loop = await component.addNode('Logic.While');
+    const firstBody = await component.addNode('Logic.Assign');
+    const secondBody = await component.addNode('Logic.Log');
+
+    expect(await component.connectNodes(loop, firstBody, 'body')).toBeTruthy();
+    expect(await component.connectNodes(loop, secondBody, 'body')).toBeNull();
+  });
+
+  it('loads loop-back connections regardless of connection array order', async () => {
+    await ready();
+    const workflow: WorkflowVersion = {
+      schemaVersion: '1.0', id: 'loop-order', name: 'Loop order', version: '1.0.0',
+      nodes: [
+        { id: 'loop', type: 'while' },
+        { id: 'body', type: 'assign' },
+      ],
+      connections: [
+        { from: 'body', to: 'loop', toPort: 'loop-back' },
+        { from: 'loop', fromPort: 'body', to: 'body' },
+      ],
+    };
+    await component.loadWorkflow(workflow);
+    expect(component.serialize().connections.some((connection) => connection.toPort === 'loop-back')).toBe(true);
+  });
+
   it('loads a workflow and round-trips node/connection ids by position', async () => {
     await ready();
     const wf: WorkflowVersion = {

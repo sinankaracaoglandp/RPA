@@ -29,6 +29,12 @@ public sealed class WorkflowNode
     public string? ItemVariable { get; init; }
     public string? Items { get; init; }
 
+    // for
+    public long? Start { get; init; }
+    public long? End { get; init; }
+    public long? Step { get; init; }
+    public string? IndexVariable { get; init; }
+
     // control-flow body
     public string? BodyStartNodeId { get; init; }
     public string? BodyEndNodeId { get; init; }
@@ -76,6 +82,10 @@ public sealed class WorkflowNode
             Condition = (string?)n["condition"],
             ItemVariable = (string?)n["itemVariable"],
             Items = (string?)n["items"],
+            Start = (long?)n["start"],
+            End = (long?)n["end"],
+            Step = (long?)n["step"],
+            IndexVariable = (string?)n["indexVariable"],
             BodyStartNodeId = (string?)n["bodyStartNodeId"],
             BodyEndNodeId = (string?)n["bodyEndNodeId"],
             TryNodeId = (string?)n["tryNodeId"],

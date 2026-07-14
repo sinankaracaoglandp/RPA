@@ -204,6 +204,138 @@ public class BaseRunnerTests
     }
 
     [Fact]
+    public async Task For_IncludesEndValue_AndPublishesIndexVariable()
+    {
+        var seen = new List<long>();
+        var factory = new MapFactory().Add("Test.RecordIndex",
+            () => new FakeActivity("Test.RecordIndex", ctx =>
+            {
+                seen.Add(ctx.GetVariable<long>("index"));
+                return Task.FromResult(new Dictionary<string, object?>());
+            }));
+
+        var json = """
+        {
+          "schemaVersion": "1.0",
+          "id": "45454545-4545-4545-4545-454545454545",
+          "name": "For",
+          "version": "1.0.0",
+          "nodes": [
+            { "id": "f", "type": "for", "start": 1, "end": 3, "step": 1,
+              "indexVariable": "index", "bodyStartNodeId": "body", "bodyEndNodeId": "body" },
+            { "id": "body", "type": "activity", "activity": "Test.RecordIndex", "properties": {} }
+          ],
+          "connections": []
+        }
+        """;
+
+        var runner = CreateRunner(
+            catalog: new Dictionary<string, ActivityMetadata> { ["Test.RecordIndex"] = Meta("Test.RecordIndex") },
+            factory: factory);
+        var result = await runner.ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.True(result.Success, result.Exception?.Message);
+        Assert.Equal(new long[] { 1, 2, 3 }, seen);
+    }
+
+    [Fact]
+    public async Task For_UsesBodyLoopBackAndExitConnections()
+    {
+        var seen = new List<long>();
+        var exitCount = 0;
+        var factory = new MapFactory()
+            .Add("Test.RecordIndex", () => new FakeActivity("Test.RecordIndex", ctx =>
+            {
+                seen.Add(ctx.GetVariable<long>("index"));
+                return Task.FromResult(new Dictionary<string, object?>());
+            }))
+            .Add("Test.Exit", () => new FakeActivity("Test.Exit", _ =>
+            {
+                exitCount++;
+                return Task.FromResult(new Dictionary<string, object?>());
+            }));
+
+        var json = """
+        {
+          "schemaVersion": "1.0",
+          "id": "46464646-4646-4646-4646-464646464646",
+          "name": "Connected For",
+          "version": "1.0.0",
+          "nodes": [
+            { "id": "f", "type": "for", "start": 1, "end": 2, "step": 1, "indexVariable": "index" },
+            { "id": "body", "type": "activity", "activity": "Test.RecordIndex", "properties": {} },
+            { "id": "after", "type": "activity", "activity": "Test.Exit", "properties": {} }
+          ],
+          "connections": [
+            { "from": "f", "fromPort": "body", "to": "body" },
+            { "from": "body", "to": "f", "toPort": "loop-back" },
+            { "from": "f", "fromPort": "exit", "to": "after" }
+          ]
+        }
+        """;
+
+        var catalog = new Dictionary<string, ActivityMetadata>
+        {
+            ["Test.RecordIndex"] = Meta("Test.RecordIndex"),
+            ["Test.Exit"] = Meta("Test.Exit"),
+        };
+        var result = await CreateRunner(catalog: catalog, factory: factory)
+            .ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.True(result.Success, result.Exception?.Message);
+        Assert.Equal(new long[] { 1, 2 }, seen);
+        Assert.Equal(1, exitCount);
+    }
+
+    [Fact]
+    public async Task ForEach_UsesBodyLoopBackConnections()
+    {
+        var seen = new List<long>();
+        var factory = new MapFactory().Add("Test.Record", () => new FakeActivity("Test.Record", ctx =>
+        {
+            seen.Add(ctx.GetVariable<long>("item"));
+            return Task.FromResult(new Dictionary<string, object?>());
+        }));
+        var json = """
+        {
+          "schemaVersion":"1.0","id":"47474747-4747-4747-4747-474747474747","name":"FE","version":"1.0.0",
+          "variables":[{"name":"items","type":"JSON","default":[1,2]}],
+          "nodes":[
+            {"id":"fe","type":"forEach","items":"items","itemVariable":"item"},
+            {"id":"body","type":"activity","activity":"Test.Record","properties":{}}
+          ],
+          "connections":[
+            {"from":"fe","fromPort":"body","to":"body"},
+            {"from":"body","to":"fe","toPort":"loop-back"}
+          ]
+        }
+        """;
+        var result = await CreateRunner(
+            catalog: new Dictionary<string, ActivityMetadata> { ["Test.Record"] = Meta("Test.Record") },
+            factory: factory).ExecuteAsync(Version(json), new(), Guid.NewGuid());
+        Assert.True(result.Success, result.Exception?.Message);
+        Assert.Equal(new long[] { 1, 2 }, seen);
+    }
+
+    [Fact]
+    public async Task FakeLoopBackCannotHideNormalGraphCycle()
+    {
+        var json = """
+        {
+          "schemaVersion":"1.0","id":"48484848-4848-4848-4848-484848484848","name":"Invalid","version":"1.0.0",
+          "nodes":[{"id":"a","type":"log","message":"a"},{"id":"b","type":"log","message":"b"}],
+          "connections":[
+            {"from":"a","to":"b"},
+            {"from":"b","to":"a","toPort":"loop-back"}
+          ]
+        }
+        """;
+        var result = await CreateRunner().ExecuteAsync(Version(json), new(), Guid.NewGuid());
+        Assert.False(result.Success);
+        Assert.Contains("loop-back", result.Exception?.Message);
+    }
+
+    [Fact]
     public async Task TryCatch_SystemException_RoutesToCatchBranch()
     {
         var factory = new MapFactory().Add("Test.Throw",

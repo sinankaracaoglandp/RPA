@@ -81,6 +81,15 @@
     font-weight: 800;
   }
 
+  &__inputs {
+    position: absolute;
+    top: -6.5px;
+    left: 50%;
+    display: flex;
+    gap: 2.25rem;
+    transform: translateX(-50%);
+  }
+
   &__title {
     flex: 1 1 auto;
     font-size: 0.86rem;
@@ -184,10 +193,7 @@
     }
 
     &--in {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      top: -6.5px;
+      position: relative;
     }
 
     &--out {

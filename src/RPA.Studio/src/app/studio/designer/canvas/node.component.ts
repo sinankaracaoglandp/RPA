@@ -40,6 +40,7 @@ export interface CanvasNodeView {
   /** Execution is currently paused on this node (debug mode). */
   current?: boolean;
   outputs?: CanvasNodeSocketView[];
+  inputs?: CanvasNodeSocketView[];
 }
 
 export interface CanvasNodeSelectEvent {
@@ -65,7 +66,7 @@ export class NodeComponent implements AfterViewInit, OnDestroy {
   @Output() readonly nodeSelect = new EventEmitter<CanvasNodeSelectEvent>();
   @Output() readonly nodeDelete = new EventEmitter<string>();
   @Output() readonly connectStart = new EventEmitter<{ nodeId: string; port: string }>();
-  @Output() readonly connectDrop = new EventEmitter<string>();
+  @Output() readonly connectDrop = new EventEmitter<{ nodeId: string; port: string }>();
 
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly captureSelectPointerDown = (event: PointerEvent): void => {
@@ -134,8 +135,12 @@ export class NodeComponent implements AfterViewInit, OnDestroy {
     return this.node.outputs?.length ? this.node.outputs : [{ port: 'out', label: 'Next', tone: 'default' }];
   }
 
+  get inputSockets(): CanvasNodeSocketView[] {
+    return this.node.inputs?.length ? this.node.inputs : [{ port: 'in', label: 'In' }];
+  }
+
   get isBranchNode(): boolean {
-    return ['if', 'tryCatch', 'forEach', 'while'].includes(this.node.nodeType);
+    return ['if', 'tryCatch', 'forEach', 'for', 'while'].includes(this.node.nodeType);
   }
 
   onOutSocketDown(event: Event, port: string): void {
@@ -146,6 +151,11 @@ export class NodeComponent implements AfterViewInit, OnDestroy {
   }
 
   onPointerUp(): void {
-    this.connectDrop.emit(this.node.id);
+    this.connectDrop.emit({ nodeId: this.node.id, port: 'in' });
+  }
+
+  onInputPointerUp(event: Event, port: string): void {
+    event.stopPropagation();
+    this.connectDrop.emit({ nodeId: this.node.id, port });
   }
 }
