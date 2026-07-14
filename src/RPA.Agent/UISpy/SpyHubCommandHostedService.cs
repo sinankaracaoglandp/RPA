@@ -74,6 +74,7 @@ public sealed class SpyHubCommandHostedService : BackgroundService
 
         _connection.OnStopSpy(sessionId => _coordinator.StopAsync(sessionId, stoppingToken));
 
+        
         await _connection.StartAsync(stoppingToken);
         _logger.LogInformation("UI Spy Hub komut baglantisi baslatildi.");
 

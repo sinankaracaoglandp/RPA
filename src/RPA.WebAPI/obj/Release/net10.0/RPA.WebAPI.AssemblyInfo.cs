@@ -10,10 +10,11 @@
 using System;
 using System.Reflection;
 
+[assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("rpa-webapi-dev-secrets")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("RPA.WebAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5759237040258c17c5e57ae50714664c6510181b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+824178813282725f85c06fc636749dfc2bdceb06")]
 [assembly: System.Reflection.AssemblyProductAttribute("RPA.WebAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RPA.WebAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

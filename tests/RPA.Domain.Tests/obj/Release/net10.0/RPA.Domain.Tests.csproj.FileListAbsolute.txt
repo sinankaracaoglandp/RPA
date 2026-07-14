@@ -98,3 +98,4 @@ C:\Source\RPA\tests\RPA.Domain.Tests\obj\Release\net10.0\refint\RPA.Domain.Tests
 C:\Source\RPA\tests\RPA.Domain.Tests\obj\Release\net10.0\RPA.Domain.Tests.pdb
 C:\Source\RPA\tests\RPA.Domain.Tests\obj\Release\net10.0\RPA.Domain.Tests.genruntimeconfig.cache
 C:\Source\RPA\tests\RPA.Domain.Tests\obj\Release\net10.0\ref\RPA.Domain.Tests.dll
+C:\Source\RPA\tests\RPA.Domain.Tests\obj\Release\net10.0\RPA.Domain.Tests.sourcelink.json

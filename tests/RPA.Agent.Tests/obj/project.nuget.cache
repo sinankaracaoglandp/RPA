@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "26hZgy0WjZw=",
+  "dgSpecHash": "DkgEr7Ah/1o=",
   "success": true,
   "projectFilePath": "C:\\Source\\RPA\\tests\\RPA.Agent.Tests\\RPA.Agent.Tests.csproj",
   "expectedPackageFiles": [
@@ -93,6 +93,9 @@
     "C:\\Users\\sinan\\.nuget\\packages\\njsonschema.annotations\\11.1.0\\njsonschema.annotations.11.1.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\npgsql\\10.0.0\\npgsql.10.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\npgsql.entityframeworkcore.postgresql\\10.0.0\\npgsql.entityframeworkcore.postgresql.10.0.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\opencvsharp4\\4.10.0.20241108\\opencvsharp4.4.10.0.20241108.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\opencvsharp4.extensions\\4.10.0.20241108\\opencvsharp4.extensions.4.10.0.20241108.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\opencvsharp4.runtime.win\\4.10.0.20241108\\opencvsharp4.runtime.win.4.10.0.20241108.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\otp.net\\1.4.0\\otp.net.1.4.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\polly\\8.5.0\\polly.8.5.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\polly.core\\8.5.0\\polly.core.8.5.0.nupkg.sha512",
@@ -122,6 +125,7 @@
     "C:\\Users\\sinan\\.nuget\\packages\\system.security.permissions\\8.0.0\\system.security.permissions.8.0.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\system.serviceprocess.servicecontroller\\10.0.9\\system.serviceprocess.servicecontroller.10.0.9.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\system.windows.extensions\\8.0.0\\system.windows.extensions.8.0.0.nupkg.sha512",
+    "C:\\Users\\sinan\\.nuget\\packages\\tesseract\\5.2.0\\tesseract.5.2.0.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit\\2.9.3\\xunit.2.9.3.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit.abstractions\\2.0.3\\xunit.abstractions.2.0.3.nupkg.sha512",
     "C:\\Users\\sinan\\.nuget\\packages\\xunit.analyzers\\1.18.0\\xunit.analyzers.1.18.0.nupkg.sha512",
