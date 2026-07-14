@@ -27,6 +27,14 @@ public interface IVisionAutomationChannel
     /// <summary>OCR ile metni bulur, merkezine tıklar. matchMode "contains" (vars.) / "exact". Bulunmazsa SystemException.</summary>
     Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs);
 
+    /// <summary>
+    /// OCR ile anchorText'i bulur, kelime kutusunun merkezinden (dx,dy) piksel ofsetle tıklar
+    /// (etiketin yanındaki boş alan gibi kendi başına ayırt edilemeyen hedefler için).
+    /// Çapa bulunamazsa/timeout → SystemException.
+    /// </summary>
+    Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
+        string language, string matchMode, string? clickType, int timeoutMs);
+
     /// <summary>Metin ekranda var mı? Fırlatmaz.</summary>
     Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs);
 }
