@@ -5,8 +5,11 @@ using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
 
 /// <summary>
-/// Tag havuzu tabanlı ajan seçici. Online + kapasitesi boş + Trigger tag'lerini kapsayan robotlar
-/// arasından en boş kapasiteli → en yüksek Trigger.Priority → en eski heartbeat olanı seçer.
+/// Tag havuzu tabanlı ajan seçici. Adaylar: Status=Online, Tags'i Trigger.TargetRobotTags'i
+/// kapsayan ve boş kapasitesi olan robotlar. Sıralama: en boş kapasiteli → en taze heartbeat
+/// (ThenByDescending LastHeartbeat, en yeni haber veren robot önce). <c>Trigger.Priority</c>
+/// bu seçimde KULLANILMAZ — tekil bir alan olduğundan aday robotlar arası sıralamaya uygun
+/// değildir; ileride Pending kuyruğu sıralamasında kullanılmak üzere persist edilir.
 /// </summary>
 public sealed class RobotDispatcher : IRobotDispatcher
 {
@@ -35,7 +38,7 @@ public sealed class RobotDispatcher : IRobotDispatcher
             })
             .Where(x => x.Free > 0)
             .OrderByDescending(x => x.Free)
-            .ThenByDescending(x => x.Robot.LastHeartbeat ?? DateTime.MinValue) // en taze; Priority Trigger'da tekildir
+            .ThenByDescending(x => x.Robot.LastHeartbeat ?? DateTime.MinValue) // en taze heartbeat
             .Select(x => x.Robot)
             .FirstOrDefault();
 

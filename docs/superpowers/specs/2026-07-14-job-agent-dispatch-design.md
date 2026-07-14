@@ -119,6 +119,19 @@ Mevcut `jobs.component` (JobRun geçmişi) korunur; bu yeni sayfa **tanımları*
 - Sabit tek-ajan atama (yalnız tag havuzu).
 - Queue-threshold / email-watcher tetikleyici tiplerinin yeni davranışı (mevcut haliyle kalır).
 
+### 5.1 Bilinen kısıtlamalar
+
+- **Kapasite atama yarışı (race):** `RobotDispatcher.SelectRobotAsync` içinde kapasite okuma
+  (`GetActiveJobCountsByRobotAsync`) ile `TriggerService`'in `AssignedRobotId` yazması ayrı adımlar;
+  aralarında lock/transaction yok. İki eşzamanlı `/fire` çağrısı aynı robotu Capacity'nin üzerinde
+  atayabilir. Kabul edilebilir — gerçek ajan handoff/poll protokolü (bkz. Kapsam dışı) henüz
+  yapılmadığından şu an pratik etkisi yok. Handoff protokolü inşa edilirken transaction/row-lock
+  (örn. `SELECT ... FOR UPDATE` ya da EF Core optimistic concurrency) altında yeniden doğrulanmalı.
+- **`Trigger.Priority` kullanılmıyor:** Alan persist ediliyor ancak `RobotDispatcher` robot
+  seçiminde şu an kullanmıyor (tekil bir Trigger alanı olduğundan aday robotlar arası sıralamaya
+  uygun değil). İleride Pending JobRun kuyruğunun işlenme sırasını belirlemek için kullanılması
+  planlanıyor.
+
 ## 6. Test stratejisi
 
 - **Domain/Application:** `IRobotDispatcher` seçim algoritması unit testleri — tag kapsama, kapasite

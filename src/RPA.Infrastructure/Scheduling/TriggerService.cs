@@ -86,7 +86,7 @@ public sealed class TriggerService : ITriggerService
         {
             _logger.LogInformation(
                 "Trigger {TriggerId}: uygun ajan yok — JobRun {JobRunId} Pending.", triggerId, jobRun.Id);
-            return TriggerExecutionResult.Executed(jobRun);
+            return TriggerExecutionResult.Pending(jobRun);
         }
 
         _logger.LogInformation(

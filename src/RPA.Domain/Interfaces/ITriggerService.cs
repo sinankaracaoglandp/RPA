@@ -35,6 +35,8 @@ public sealed class TriggerExecutionResult
     public static TriggerExecutionResult Queued(JobRun jobRun) => new() { Outcome = TriggerExecutionOutcome.Queued, JobRun = jobRun };
 
     public static TriggerExecutionResult Executed(JobRun jobRun) => new() { Outcome = TriggerExecutionOutcome.Executed, JobRun = jobRun };
+
+    public static TriggerExecutionResult Pending(JobRun jobRun) => new() { Outcome = TriggerExecutionOutcome.Pending, JobRun = jobRun };
 }
 
 public enum TriggerExecutionOutcome
@@ -47,4 +49,6 @@ public enum TriggerExecutionOutcome
     Queued,
     /// <summary>JobRun oluşturuldu ve hemen çalıştırıldı (parallel veya çalışan yoktu).</summary>
     Executed,
+    /// <summary>Uygun ajan bulunamadı — JobRun Pending olarak park edildi, çalıştırılmadı.</summary>
+    Pending,
 }

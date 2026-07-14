@@ -274,5 +274,6 @@ public class TriggerServiceTests
 
         Assert.Equal("Pending", result.JobRun!.Status);
         Assert.Null(result.JobRun.AssignedRobotId);
+        Assert.Equal(TriggerExecutionOutcome.Pending, result.Outcome);
     }
 }
