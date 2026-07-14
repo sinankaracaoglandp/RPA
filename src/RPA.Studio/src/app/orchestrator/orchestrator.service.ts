@@ -5,6 +5,7 @@ import {
   ActionItem,
   AlertRule,
   CreateAlertRuleRequest,
+  CreateTriggerRequest,
   CredentialReference,
   DashboardSummary,
   Environment,
@@ -16,6 +17,9 @@ import {
   QueueSummary,
   Robot,
   StoreCredentialRequest,
+  TriggerDefinition,
+  TriggerListQuery,
+  UpdateTriggerRequest,
   WorkflowVersion,
 } from './orchestrator.models';
 
@@ -176,5 +180,31 @@ export class OrchestratorService {
   /** Credential referansini Vault'tan siler. */
   deleteCredential(key: string): Observable<void> {
     return this.http.delete<void>(`/api/credentials/${encodeURIComponent(key)}`);
+  }
+
+  // --- WP-6.6: Job tanımları (trigger) yönetimi ---
+
+  /** Tüm job tanımları (trigger) — opsiyonel filtrelerle. */
+  listTriggers(query: TriggerListQuery = {}): Observable<TriggerDefinition[]> {
+    let params = new HttpParams();
+    if (query.projectId) params = params.set('projectId', query.projectId);
+    if (query.environmentId) params = params.set('environmentId', query.environmentId);
+    if (query.isActive != null) params = params.set('isActive', String(query.isActive));
+    return this.http.get<TriggerDefinition[]>('/api/triggers', { params });
+  }
+
+  /** Yeni job tanımı oluşturur. */
+  createTrigger(request: CreateTriggerRequest): Observable<TriggerDefinition> {
+    return this.http.post<TriggerDefinition>('/api/triggers', request);
+  }
+
+  /** Job tanımını günceller (aktif/pasif, hedef tag, öncelik, schedule). */
+  updateTrigger(id: string, request: UpdateTriggerRequest): Observable<TriggerDefinition> {
+    return this.http.patch<TriggerDefinition>(`/api/triggers/${encodeURIComponent(id)}`, request);
+  }
+
+  /** Job'ı manuel çalıştırır. */
+  fireTrigger(id: string): Observable<unknown> {
+    return this.http.post(`/api/triggers/${encodeURIComponent(id)}/fire`, {});
   }
 }

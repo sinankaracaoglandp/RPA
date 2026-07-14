@@ -151,4 +151,30 @@ describe('OrchestratorService', () => {
     expect(req.request.method).toBe('POST');
     req.flush({});
   });
+
+  it('listTriggers GET /api/triggers ile filtreleri geçirir', () => {
+    service.listTriggers({ isActive: true }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/triggers');
+    expect(req.request.params.get('isActive')).toBe('true');
+    req.flush([]);
+  });
+
+  it('createTrigger POST /api/triggers ile gövdeyi gönderir', () => {
+    const body = {
+      projectId: 'p', workflowVersionId: 'w', type: 'Manual',
+      environmentId: 'e', isActive: true, targetRobotTags: 'prod-vm', priority: 1,
+    };
+    service.createTrigger(body as any).subscribe();
+    const req = httpMock.expectOne('/api/triggers');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body.targetRobotTags).toBe('prod-vm');
+    req.flush({});
+  });
+
+  it('fireTrigger POST /api/triggers/{id}/fire çağırır', () => {
+    service.fireTrigger('t1').subscribe();
+    const req = httpMock.expectOne('/api/triggers/t1/fire');
+    expect(req.request.method).toBe('POST');
+    req.flush({});
+  });
 });

@@ -133,3 +133,47 @@ export interface StoreCredentialRequest {
   description?: string;
   metadata?: Record<string, string>;
 }
+
+// WP-6.6 — Job tanımları (trigger) yönetimi
+export interface TriggerScheduleDto {
+  cronExpression: string;
+  timeZone: string;
+  overlapPolicy: string;
+}
+
+export interface TriggerDefinition {
+  id: string;
+  workflowVersionId: string;
+  type: string;
+  configuration: string;
+  isActive: boolean;
+  targetRobotTags: string;
+  priority: number;
+  schedule?: TriggerScheduleDto | null;
+}
+
+export interface CreateTriggerRequest {
+  projectId: string;
+  workflowVersionId: string;
+  type: string;
+  configuration?: string;
+  environmentId: string;
+  isActive: boolean;
+  targetRobotTags: string;
+  priority: number;
+  schedule?: TriggerScheduleDto | null;
+}
+
+export interface UpdateTriggerRequest {
+  isActive?: boolean;
+  configuration?: string;
+  targetRobotTags?: string;
+  priority?: number;
+  schedule?: TriggerScheduleDto | null;
+}
+
+export interface TriggerListQuery {
+  projectId?: string;
+  environmentId?: string;
+  isActive?: boolean;
+}
