@@ -2,6 +2,37 @@
   "title": "RPA Workflow Schema v1.0",
   "description": "Workflow JSON yapısı — Studio tarafından oluşturulur, BaseRunner tarafından çalıştırılır. Spec Bölüm 5.1",
   "type": "object",
+  "$defs": {
+    "eInvoiceReadUblProperties": {
+      "description": "EInvoice.ReadUbl activity properties contract. Runtime exact-one-source validation is performed by WorkflowValidator.",
+      "type": "object",
+      "properties": {
+        "filePath": { "type": "string" },
+        "xmlContent": { "type": "string" },
+        "mappings": { "type": "object" },
+        "outputBindings": { "type": "object" }
+      },
+      "oneOf": [
+        { "required": ["filePath"], "not": { "required": ["xmlContent"] } },
+        { "required": ["xmlContent"], "not": { "required": ["filePath"] } }
+      ]
+    },
+    "eInvoiceReadUblBatchProperties": {
+      "description": "EInvoice.ReadUblBatch activity properties contract. Runtime exact-one-source validation is performed by WorkflowValidator.",
+      "type": "object",
+      "properties": {
+        "filePaths": { "type": "array", "items": { "type": "string" } },
+        "xmlContents": { "type": "array", "items": { "type": "string" } },
+        "errorMode": { "type": "string", "enum": ["Continue", "Stop"], "default": "Continue" },
+        "mappings": { "type": "object" },
+        "outputBindings": { "type": "object" }
+      },
+      "oneOf": [
+        { "required": ["filePaths"], "not": { "required": ["xmlContents"] } },
+        { "required": ["xmlContents"], "not": { "required": ["filePaths"] } }
+      ]
+    }
+  },
   "required": ["schemaVersion", "id", "name", "version", "nodes", "connections"],
   "properties": {
     "schemaVersion": {

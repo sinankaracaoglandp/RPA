@@ -88,7 +88,7 @@ public sealed class WorkflowValidator
         null => false,
         { Type: JTokenType.Null or JTokenType.Undefined } => false,
         JValue { Type: JTokenType.String } text => !string.IsNullOrWhiteSpace((string?)text),
-        JArray array => array.Count > 0,
+        JArray array => array.Any(HasSource),
         _ => true
     };
 

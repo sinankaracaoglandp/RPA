@@ -47,6 +47,37 @@ public class WorkflowSchemaValidationTests
         Assert.Contains(result.Errors, error => error.Contains("exactly one source", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [MemberData(nameof(MeaninglessBatchSources))]
+    public void EInvoiceBatch_WithOnlyMeaninglessSourceElements_IsInvalid(Dictionary<string, object?> properties)
+    {
+        var result = new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUblBatch", properties));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("filePaths")]
+    [InlineData("xmlContents")]
+    public void EInvoiceBatch_WithAtLeastOneMeaningfulSourceElement_IsValid(string sourceName)
+    {
+        var properties = new Dictionary<string, object?> { [sourceName] = new object?[] { null, "  ", "invoice.xml" } };
+
+        var result = new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUblBatch", properties));
+
+        Assert.True(result.IsValid, string.Join(Environment.NewLine, result.Errors));
+    }
+
+    public static TheoryData<Dictionary<string, object?>> MeaninglessBatchSources => new()
+    {
+        new Dictionary<string, object?> { ["filePaths"] = Array.Empty<object?>() },
+        new Dictionary<string, object?> { ["filePaths"] = new object?[] { null } },
+        new Dictionary<string, object?> { ["filePaths"] = new object?[] { "   " } },
+        new Dictionary<string, object?> { ["xmlContents"] = Array.Empty<object?>() },
+        new Dictionary<string, object?> { ["xmlContents"] = new object?[] { null } },
+        new Dictionary<string, object?> { ["xmlContents"] = new object?[] { "   " } }
+    };
+
     private static string Workflow(string activity, Dictionary<string, object?> properties) => JsonSerializer.Serialize(new
     {
         schemaVersion = "1.0",
