@@ -1,8 +1,17 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component, EventEmitter, Input, Output, forwardRef, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output, forwardRef, inject } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { TranslatePipe } from '../../../core/translate.pipe';
 import { WorkflowVariable } from '../../../shared/models/workflow.model';
+import { ExpressionFunctionInfo, ExpressionFunctionService } from '../../../shared/services/expression-function.service';
+
+export interface AutocompleteItem {
+  kind: 'variable' | 'function';
+  label: string;
+  detail: string;
+  insert: string;
+  caretOffsetFromEnd: number; // eklenen metnin sonundan imleç kaç karakter geri
+}
 
 /**
  * Reusable text input supporting workflow expressions (e.g. `{{variableName}}`).
@@ -25,8 +34,18 @@ import { WorkflowVariable } from '../../../shared/models/workflow.model';
     },
   ],
 })
-export class ExpressionInputComponent implements ControlValueAccessor {
+export class ExpressionInputComponent implements ControlValueAccessor, OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly fnService = inject(ExpressionFunctionService);
+
+  suggestionsOpen = false;
+  activeIndex = 0;
+  suggestions: AutocompleteItem[] = [];
+  private currentPartial = '';
+
+  ngOnInit(): void {
+    this.fnService.load().subscribe();
+  }
 
   @Input({ required: true }) inputId!: string;
   @Input({ required: true }) label!: string;
@@ -70,6 +89,82 @@ export class ExpressionInputComponent implements ControlValueAccessor {
   handleInput(value: string): void {
     this.applyValue(value);
     this.clearVariableError();
+    this.updateSuggestions(this.currentPartialWord(value));
+  }
+
+  /** İmleç altındaki kısmi kelimeye göre değişken + fonksiyon önerilerini hesaplar. */
+  updateSuggestions(partial: string): void {
+    const q = (partial ?? '').trim();
+    this.currentPartial = q;
+    const vars: AutocompleteItem[] = (this.variables ?? [])
+      .filter((v) => v.name.toLowerCase().startsWith(q.toLowerCase()))
+      .map((v) => ({
+        kind: 'variable',
+        label: v.name,
+        detail: v.type ?? 'değişken',
+        insert: `{{${v.name}}}`,
+        caretOffsetFromEnd: 0,
+      }));
+    const fns: AutocompleteItem[] = this.fnService.filter(q).map((f: ExpressionFunctionInfo) => ({
+      kind: 'function',
+      label: f.name,
+      detail: `${f.category} · ${this.signature(f)}`,
+      insert: `${f.name}()`,
+      caretOffsetFromEnd: 1, // parantez içine konumlan
+    }));
+    this.suggestions = [...vars, ...fns];
+    this.activeIndex = 0;
+    this.suggestionsOpen = this.suggestions.length > 0 && q.length > 0;
+    this.cdr.markForCheck();
+  }
+
+  applySuggestion(item: AutocompleteItem): void {
+    // İmleç sonundaki kısmi kelimeyi (currentPartial) öneriyle değiştir; yoksa sona ekle.
+    const base =
+      this.currentPartial.length > 0 && this.value.endsWith(this.currentPartial)
+        ? this.value.slice(0, this.value.length - this.currentPartial.length)
+        : this.value;
+    this.applyValue(`${base}${item.insert}`);
+    this.suggestionsOpen = false;
+    this.cdr.markForCheck();
+  }
+
+  onKeydown(event: KeyboardEvent): void {
+    if (!this.suggestionsOpen) {
+      return;
+    }
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        this.activeIndex = Math.min(this.activeIndex + 1, this.suggestions.length - 1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.activeIndex = Math.max(this.activeIndex - 1, 0);
+        break;
+      case 'Enter':
+      case 'Tab':
+        if (this.suggestions[this.activeIndex]) {
+          event.preventDefault();
+          this.applySuggestion(this.suggestions[this.activeIndex]);
+        }
+        break;
+      case 'Escape':
+        this.suggestionsOpen = false;
+        break;
+    }
+    this.cdr.markForCheck();
+  }
+
+  private signature(f: ExpressionFunctionInfo): string {
+    const ps = f.parameters.map((p) => (p.optional ? `[${p.name}]` : p.name)).join(', ');
+    return `${f.name}(${ps})`;
+  }
+
+  /** İmleç sonundaki (son) kelime parçasını döndürür — basit v1: son harf öbeği. */
+  private currentPartialWord(value: string): string {
+    const m = /([A-Za-z_ğüşöçıİĞÜŞÖÇ][A-Za-z0-9_ğüşöçıİĞÜŞÖÇ]*)$/.exec(value ?? '');
+    return m ? m[1] : '';
   }
 
   handleBlur(): void {

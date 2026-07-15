@@ -12,6 +12,7 @@
       [attr.data-testid]="inputId + '-input'"
       [value]="value"
       (input)="handleInput($any($event.target).value)"
+      (keydown)="onKeydown($event)"
       (blur)="handleBlur()"
       [placeholder]="placeholder"
       [disabled]="disabled"
@@ -30,6 +31,17 @@
     >
       {{ 'web.insertVariable' | translate }}
     </button>
+    @if (suggestionsOpen) {
+      <ul class="suggestion-list" role="listbox">
+        @for (s of suggestions; track s.label + s.kind; let i = $index) {
+          <li role="option" [class.active]="i === activeIndex" (mousedown)="applySuggestion(s)">
+            <span class="s-label">{{ s.label }}</span>
+            <span class="s-kind" [class.fn]="s.kind === 'function'">{{ s.kind === 'function' ? 'ƒ' : '{}' }}</span>
+            <span class="s-detail">{{ s.detail }}</span>
+          </li>
+        }
+      </ul>
+    }
     @if (variablePickerOpen) {
       <select
         class="expression-input__variable-select"
