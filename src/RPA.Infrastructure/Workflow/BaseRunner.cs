@@ -871,7 +871,18 @@ public sealed class BaseRunner : IWorkflowRunner
             return Enumerable.Empty<object?>();
         }
 
-        if (!state.Scope.TryGetVariable(itemsVariable, out var value) || value is null)
+        object? value;
+        if (itemsVariable.Contains("{{", StringComparison.Ordinal) ||
+            itemsVariable.Contains("${", StringComparison.Ordinal))
+        {
+            value = state.Evaluator.EvaluateValue(itemsVariable);
+        }
+        else if (!state.Scope.TryGetVariable(itemsVariable, out value))
+        {
+            return Enumerable.Empty<object?>();
+        }
+
+        if (value is null)
         {
             return Enumerable.Empty<object?>();
         }

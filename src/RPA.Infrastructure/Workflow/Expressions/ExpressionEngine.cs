@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using Newtonsoft.Json.Linq;
 
 /// <summary>AST değerlendirici. Değişken çözümü VariableScope + JSON yolu; fonksiyonlar FunctionRegistry.
@@ -117,7 +118,9 @@ internal sealed class ExpressionEngine
             {
                 JObject jo => jo[parts[i]],
                 IReadOnlyDictionary<string, object?> dict => dict.TryGetValue(parts[i], out var v) ? v : null,
-                _ => null,
+                _ => current.GetType()
+                    .GetProperty(parts[i], BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase)
+                    ?.GetValue(current),
             };
         }
         return current is JToken token ? VariableScope.JTokenToNative(token) : current;
