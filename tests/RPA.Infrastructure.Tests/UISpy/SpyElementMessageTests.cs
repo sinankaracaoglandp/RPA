@@ -16,4 +16,18 @@ public class SpyElementMessageTests
         Assert.Equal("BASE64PNG", msg.ImageBase64);
         Assert.Equal("{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", msg.Region);
     }
+
+    [Fact]
+    public void FromTextOffset_SetsKindAndFields()
+    {
+        var sid = Guid.NewGuid();
+        var msg = SpyElementMessage.FromTextOffset("Malzeme No", 120, -4, "PNG64", sid);
+
+        Assert.Equal("text-offset", msg.Kind);
+        Assert.Equal(sid, msg.SessionId);
+        Assert.Equal("Malzeme No", msg.AnchorText);
+        Assert.Equal(120, msg.Dx);
+        Assert.Equal(-4, msg.Dy);
+        Assert.Equal("PNG64", msg.ImageBase64);
+    }
 }

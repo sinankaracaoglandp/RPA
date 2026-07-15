@@ -32,6 +32,15 @@ public interface IImageRegionPicker
 /// <summary>Image picker sonucu: base64 PNG (image alanı için) ve/veya {x,y,width,height} JSON (region alanı için).</summary>
 public sealed record ImagePick(string? ImageBase64, string? RegionJson);
 
+/// <summary>🎯 text-offset picker'ı — çapa metnini seç + hedef noktaya tıkla, dx/dy hesapla.</summary>
+public interface ITextOffsetPicker
+{
+    Task<TextOffsetPick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
+}
+
+/// <summary>text-offset picker sonucu: çapa metni, dx/dy ofset ve çapa önizleme (base64 PNG).</summary>
+public sealed record TextOffsetPick(string AnchorText, int Dx, int Dy, string? PreviewBase64);
+
 /// <summary>
 /// Image picker'ın "ekran dondurma" (freeze) davranışı. Geçici menü/pencere yakalamak için:
 /// önce hedef UI açılır, sonra ekran dondurulup donmuş görüntü üzerinde seçim yapılır.
@@ -135,6 +144,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
     private readonly IDesktopSinglePicker? _desktopPicker;
     private readonly IWebSinglePicker? _webPicker;
     private readonly IImageRegionPicker? _imagePicker;
+    private readonly ITextOffsetPicker? _textOffsetPicker;
     private readonly object _gate = new();
     private Guid _activeSessionId;
     private CancellationTokenSource? _activeCts;
@@ -146,7 +156,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         ILogger<SpySessionCoordinator> logger,
         IDesktopSinglePicker? desktopPicker = null,
         IWebSinglePicker? webPicker = null,
-        IImageRegionPicker? imagePicker = null)
+        IImageRegionPicker? imagePicker = null,
+        ITextOffsetPicker? textOffsetPicker = null)
     {
         _sapPicker = sapPicker ?? throw new ArgumentNullException(nameof(sapPicker));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -155,6 +166,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         _desktopPicker = desktopPicker;
         _webPicker = webPicker;
         _imagePicker = imagePicker;
+        _textOffsetPicker = textOffsetPicker;
     }
 
     public async Task StartAsync(Guid sessionId, string kind, string? optionsJson = null, CancellationToken cancellationToken = default)
@@ -168,7 +180,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         var isDesktop = string.Equals(kind, "desktop", StringComparison.OrdinalIgnoreCase);
         var isWeb = string.Equals(kind, "web", StringComparison.OrdinalIgnoreCase);
         var isImage = string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase);
-        if (!isSap && !isDesktop && !isWeb && !isImage)
+        var isTextOffset = string.Equals(kind, "text-offset", StringComparison.OrdinalIgnoreCase);
+        if (!isSap && !isDesktop && !isWeb && !isImage && !isTextOffset)
         {
             throw new InvalidOperationException($"Desteklenmeyen spy tipi: {kind}");
         }
@@ -186,6 +199,11 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         if (isImage && _imagePicker is null)
         {
             throw new InvalidOperationException("Image picker bu ortamda kayıtlı değil (yalnız Windows).");
+        }
+
+        if (isTextOffset && _textOffsetPicker is null)
+        {
+            throw new InvalidOperationException("Metin-ofset picker bu ortamda kayıtlı değil (yalnız Windows).");
         }
 
         CancellationTokenSource linkedCts;
@@ -206,7 +224,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
             // Image picker'da kullanıcı hedef menüyü/pencereyi elle açtığı için (F2/zamanlayıcı ile
             // dondurma) daha uzun süre gerekir; diğer picker'lar için normal timeout uygulanır.
             var timeoutSeconds = Math.Max(1, _options.TimeoutSeconds);
-            if (isImage)
+            if (isImage || isTextOffset)
             {
                 timeoutSeconds = Math.Max(timeoutSeconds, 300);
             }
@@ -228,6 +246,12 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
                 var pickerOptions = ImagePickerOptions.Parse(optionsJson);
                 var pick = await _imagePicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
                 message = pick is null ? null : SpyElementMessage.FromImage(pick.ImageBase64, pick.RegionJson, sessionId);
+            }
+            else if (isTextOffset)
+            {
+                var pickerOptions = ImagePickerOptions.Parse(optionsJson);
+                var pick = await _textOffsetPicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
+                message = pick is null ? null : SpyElementMessage.FromTextOffset(pick.AnchorText, pick.Dx, pick.Dy, pick.PreviewBase64, sessionId);
             }
             else
             {

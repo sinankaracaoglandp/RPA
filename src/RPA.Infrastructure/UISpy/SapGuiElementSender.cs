@@ -47,6 +47,9 @@ public sealed record SpyElementMessage
     public string? ProcessName { get; init; }
     public string? ImageBase64 { get; init; }
     public string? Region { get; init; }
+    public string? AnchorText { get; init; }
+    public int? Dx { get; init; }
+    public int? Dy { get; init; }
 
     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
     public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
@@ -123,6 +126,25 @@ public sealed record SpyElementMessage
             ImageBase64 = imageBase64,
             Region = regionJson,
             Selector = imageBase64 ?? regionJson,
+            Enabled = true,
+            Changeable = true,
+        };
+    }
+
+    /// <summary>🎯 text-offset picker'dan (çapa metni + hedef nokta) mesaj oluşturur.</summary>
+    public static SpyElementMessage FromTextOffset(string anchorText, int dx, int dy, string? previewBase64, Guid sessionId)
+    {
+        return new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "text-offset",
+            ElementId = "text-offset",
+            AnchorText = anchorText,
+            Dx = dx,
+            Dy = dy,
+            ImageBase64 = previewBase64,
+            Text = anchorText,
+            Selector = anchorText,
             Enabled = true,
             Changeable = true,
         };
