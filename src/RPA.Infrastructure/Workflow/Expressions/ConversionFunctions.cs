@@ -31,8 +31,6 @@ internal static class ConversionFunctions
     private static object ToDecimalImpl(IReadOnlyList<object?> a, string fn)
     {
         var culture = Culture(fn, a, 1);
-        // Refresh culture from system cache to ensure NumberFormat is initialized (workaround for new CultureInfo() issue)
-        culture = CultureInfo.GetCultureInfo(culture.Name);
         switch (a[0])
         {
             case decimal m: return m;

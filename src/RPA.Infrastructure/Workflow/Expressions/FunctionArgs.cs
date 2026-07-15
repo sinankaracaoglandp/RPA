@@ -7,7 +7,9 @@ using System.Globalization;
 /// <summary>Fonksiyon gövdelerinde argüman çözme + kültür yardımcıları. Hatalar → Business.</summary>
 internal static class FunctionArgs
 {
-    public static readonly CultureInfo DefaultCulture = new("tr-TR");
+    // Robot makinesinin Windows bölgesel override'larından bağımsız, deterministik tr-TR
+    // (new CultureInfo("tr-TR") kullanıcı override'larını miras alır → makineler arası tutarsız).
+    public static readonly CultureInfo DefaultCulture = CultureInfo.GetCultureInfo("tr-TR");
 
     public static ExpressionFunctionParam P(string name, string type, bool optional = false) => new(name, type, optional);
 
