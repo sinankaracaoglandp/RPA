@@ -156,6 +156,55 @@ public sealed class UblInvoiceParserTests
         Assert.Contains("dangerous", exception.Message);
     }
 
+    [Theory]
+    [InlineData("XPath", "//*[", null, null)]
+    [InlineData("InvoiceNotes", null, "(", null)]
+    [InlineData("InvoiceNotes", null, "(?<value>.+)", "missing")]
+    public void Parse_InvalidMappingSyntaxThrowsSafeNamedParseError(string source, string? xpath, string? regex, string? group)
+    {
+        var rule = new InvoiceMappingRule("brokenRule", source, null, xpath, regex, group);
+
+        var exception = Assert.Throws<InvoiceParseException>(() =>
+            new UblInvoiceParser().Parse(SampleUbl.WithNotes("secret-fragment"), [rule]));
+
+        Assert.Contains("brokenRule", exception.Message);
+        Assert.DoesNotContain("secret-fragment", exception.Message);
+    }
+
+    [Fact]
+    public void Parse_RejectsXmlDeeperThanConfiguredLimit()
+    {
+        var parser = new UblInvoiceParser(new InvoiceParseOptions(MaxDepth: 2));
+
+        var exception = Assert.Throws<InvoiceParseException>(() => parser.Parse("<Invoice><a><b><c /></b></a></Invoice>"));
+
+        Assert.Contains("derin", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Parse_ReadsPromisedPartyTaxDiscountAndLineDetails()
+    {
+        var xml = SampleUbl.Xml
+            .Replace("<basic:IssueDate>2026-07-15</basic:IssueDate>", "<basic:IssueDate>2026-07-15</basic:IssueDate><basic:IssueTime>14:30:45</basic:IssueTime>")
+            .Replace("</aggregate:PartyName>", "</aggregate:PartyName><aggregate:PostalAddress><basic:StreetName>RÄ±htÄ±m Cd.</basic:StreetName><basic:CityName>Ä°stanbul</basic:CityName><basic:PostalZone>34710</basic:PostalZone><aggregate:Country><basic:Name>TR</basic:Name></aggregate:Country></aggregate:PostalAddress><aggregate:Contact><basic:Name>AyÅŸe</basic:Name><basic:Telephone>555</basic:Telephone><basic:ElectronicMail>mail@example.com</basic:ElectronicMail></aggregate:Contact>")
+            .Replace("<aggregate:LegalMonetaryTotal>", "<aggregate:TaxTotal><basic:TaxAmount>20</basic:TaxAmount><aggregate:TaxSubtotal><basic:TaxAmount>20</basic:TaxAmount><basic:Percent>20</basic:Percent><aggregate:TaxCategory><aggregate:TaxScheme><basic:TaxTypeCode>0015</basic:TaxTypeCode><basic:Name>KDV</basic:Name></aggregate:TaxScheme></aggregate:TaxCategory></aggregate:TaxSubtotal></aggregate:TaxTotal><aggregate:WithholdingTaxTotal><basic:TaxAmount>5</basic:TaxAmount><aggregate:TaxSubtotal><basic:TaxAmount>5</basic:TaxAmount><basic:Percent>5</basic:Percent><aggregate:TaxCategory><basic:TaxExemptionReasonCode>301</basic:TaxExemptionReasonCode><basic:TaxExemptionReason>Ä°stisna</basic:TaxExemptionReason><aggregate:TaxScheme><basic:TaxTypeCode>9015</basic:TaxTypeCode></aggregate:TaxScheme></aggregate:TaxCategory></aggregate:TaxSubtotal></aggregate:WithholdingTaxTotal><aggregate:LegalMonetaryTotal><basic:AllowanceTotalAmount>10</basic:AllowanceTotalAmount>")
+            .Replace("<aggregate:Item><basic:Name>", "<aggregate:AllowanceCharge><basic:ChargeIndicator>false</basic:ChargeIndicator><basic:Amount>10</basic:Amount></aggregate:AllowanceCharge><aggregate:TaxTotal><basic:TaxAmount>20</basic:TaxAmount><aggregate:TaxSubtotal><basic:TaxAmount>20</basic:TaxAmount><basic:Percent>20</basic:Percent><aggregate:TaxCategory><aggregate:TaxScheme><basic:TaxTypeCode>0015</basic:TaxTypeCode></aggregate:TaxScheme></aggregate:TaxCategory></aggregate:TaxSubtotal></aggregate:TaxTotal><aggregate:Item><basic:Description>AÃ§Ä±klama</basic:Description><basic:Name>");
+
+        var invoice = new UblInvoiceParser().Parse(xml);
+
+        Assert.Equal(new TimeOnly(14, 30, 45), invoice.IssueTime);
+        Assert.Equal("RÄ±htÄ±m Cd.", invoice.Supplier!.Address!.StreetName);
+        Assert.Equal("mail@example.com", invoice.Supplier.Contact!.Email);
+        Assert.Equal(20m, invoice.TaxAmount);
+        Assert.Equal(10m, invoice.AllowanceTotalAmount);
+        Assert.Equal("0015", Assert.Single(invoice.Taxes).Code);
+        Assert.True(Assert.Single(invoice.WithholdingTaxes).IsWithholding);
+        var line = Assert.Single(invoice.Lines);
+        Assert.Equal("AÃ§Ä±klama", line.Description);
+        Assert.Equal(10m, line.DiscountAmount);
+        Assert.Equal("0015", Assert.Single(line.Taxes).Code);
+    }
+
     [Fact]
     public void Parse_LineNotesCanReturnMultipleConvertedValues()
     {

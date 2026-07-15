@@ -83,6 +83,25 @@ public class WorkflowSchemaValidationTests
         Assert.True(result.IsValid, string.Join(Environment.NewLine, result.Errors));
     }
 
+    [Theory]
+    [InlineData("mappings", "not-an-array")]
+    [InlineData("outputBindings", "not-an-object")]
+    [InlineData("errorMode", "Ignore")]
+    public void EInvoiceSemanticProperties_WithInvalidShape_AreRejected(string property, object value)
+    {
+        var properties = new Dictionary<string, object?> { ["xmlContents"] = new[] { "<Invoice />" }, [property] = value };
+        var result = new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUblBatch", properties));
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void EInvoiceMapping_WithInvalidSourceOrFieldTypes_IsRejected()
+    {
+        var properties = new Dictionary<string, object?> { ["xmlContent"] = "<Invoice />", ["mappings"] = new object[] { new { name = "x", source = "Unknown", type = "money", required = "yes" } } };
+        var result = new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUbl", properties));
+        Assert.False(result.IsValid);
+    }
+
     public static TheoryData<Dictionary<string, object?>> MeaninglessBatchSources => new()
     {
         new Dictionary<string, object?> { ["filePaths"] = Array.Empty<object?>() },

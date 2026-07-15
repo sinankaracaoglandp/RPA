@@ -678,7 +678,8 @@ public sealed class BaseRunner : IWorkflowRunner
         {
             foreach (var p in metadata.Inputs.Concat(metadata.Outputs))
             {
-                if (string.Equals(p.Type, "Credential", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(p.Type, "Credential", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(p.Type, "Sensitive", StringComparison.OrdinalIgnoreCase))
                 {
                     credentialKeys.Add(p.Name);
                 }

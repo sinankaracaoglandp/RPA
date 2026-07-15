@@ -122,6 +122,20 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.rules).toEqual([MAPPING]);
   });
 
+  it('rejects a catastrophic regex before executing it', () => {
+    const component = new EInvoiceMappingEditorComponent(); component.loadSampleXml(SAMPLE_UBL);
+    const result = component.preview({ ...MAPPING, regex: '(a+)+$', valueXPath: '/Invoice/cbc:Note' });
+    expect(result.error).toContain('güvenli değil');
+  });
+
+  it.each(['InvoiceNotes', 'LineNotes'] as const)('accepts %s without valueXPath', source => {
+    const component = fixture.componentInstance; const emitted: string[] = [];
+    component.valueChange.subscribe(value => emitted.push(value));
+    component.draft = { name: 'note', source, type: 'string', required: false, multiple: true };
+    component.saveDraftRule();
+    expect(JSON.parse(emitted[0])[0].source).toBe(source);
+  });
+
   it('clears stale sample state when a replacement XML is malformed', async () => {
     fixture.componentInstance.loadSampleXml(SAMPLE_UBL);
     const file = { text: vi.fn().mockResolvedValue('<Invoice>') } as unknown as File;

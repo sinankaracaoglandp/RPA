@@ -156,13 +156,16 @@ internal static class EInvoiceJson
 
     private static void ValidateBindings(IReadOnlyDictionary<string, string> bindings)
     {
+        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (source, target) in bindings)
         {
             if (!IsSimpleIdentifier(source))
                 throw new InvoiceParseException($"Output binding kaynağı geçersiz: {source}");
-            if (string.IsNullOrWhiteSpace(target)) throw new InvoiceParseException("Output binding hedefi boş olamaz.");
+            if (!IsSimpleIdentifier(target)) throw new InvoiceParseException($"Output binding hedefi geçersiz: {target}");
             if (ReservedOutputNames.Contains(target))
                 throw new InvoiceParseException($"Output binding hedefi ayrılmış bir addır: {target}");
+            if (!targets.Add(target))
+                throw new InvoiceParseException($"Output binding hedefi birden fazla kez kullanılamaz: {target}");
         }
     }
 
@@ -240,8 +243,8 @@ internal static class EInvoiceActivityMetadata
     {
         ActivityId = "EInvoice.ReadUbl", DisplayName = "UBL Fatura Oku", Category = "E-Fatura",
         Inputs = [
-            new() { Name = "filePath", Type = "string", Required = false },
-            new() { Name = "xmlContent", Type = "string", Required = false },
+            new() { Name = "filePath", Type = "Sensitive", Required = false },
+            new() { Name = "xmlContent", Type = "Sensitive", Required = false },
             new() { Name = "mappings", Type = "JSON", Required = false },
             new() { Name = "outputBindings", Type = "JSON", Required = false }
         ],
@@ -252,8 +255,8 @@ internal static class EInvoiceActivityMetadata
     {
         ActivityId = "EInvoice.ReadUblBatch", DisplayName = "UBL Faturaları Toplu Oku", Category = "E-Fatura",
         Inputs = [
-            new() { Name = "filePaths", Type = "JSON", Required = false },
-            new() { Name = "xmlContents", Type = "JSON", Required = false },
+            new() { Name = "filePaths", Type = "Sensitive", Required = false },
+            new() { Name = "xmlContents", Type = "Sensitive", Required = false },
             new() { Name = "errorMode", Type = "string", Required = false, DefaultValue = "Continue", Options = ["Continue", "Stop"] },
             new() { Name = "mappings", Type = "JSON", Required = false },
             new() { Name = "outputBindings", Type = "JSON", Required = false }

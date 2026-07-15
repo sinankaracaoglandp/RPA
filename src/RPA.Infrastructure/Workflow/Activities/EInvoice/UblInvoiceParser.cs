@@ -21,6 +21,7 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
 
         try
         {
+            ValidateDepth(xml);
             using var stringReader = new StringReader(xml);
             using var xmlReader = XmlReader.Create(stringReader, new XmlReaderSettings
             {
@@ -35,6 +36,20 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         {
             throw new InvoiceParseException($"Geçersiz veya güvensiz XML: {exception.Message}");
         }
+    }
+
+    private void ValidateDepth(string xml)
+    {
+        using var input = new StringReader(xml);
+        using var reader = XmlReader.Create(input, new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = _options.MaxCharacters
+        });
+        while (reader.Read())
+            if (reader.Depth > _options.MaxDepth)
+                throw new InvoiceParseException("XML izin verilen derinlik sınırını aşıyor.");
     }
 
     public InvoiceData ParseFile(string filePath, IReadOnlyList<InvoiceMappingRule>? mappings = null)
@@ -56,6 +71,8 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         XNamespace basic = BasicComponentsNamespace;
         XNamespace aggregate = AggregateComponentsNamespace;
         var monetaryTotal = root.Element(aggregate + "LegalMonetaryTotal");
+        var taxes = ReadTaxes(root.Element(aggregate + "TaxTotal"), aggregate, basic, false);
+        var withholdingTaxes = ReadTaxes(root.Element(aggregate + "WithholdingTaxTotal"), aggregate, basic, true);
 
         var notes = root.Elements(basic + "Note").Select(note => note.Value.Trim()).ToList();
         var invoice = new InvoiceData
@@ -63,6 +80,7 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
             InvoiceNumber = Value(root.Element(basic + "ID")),
             Uuid = Value(root.Element(basic + "UUID")),
             IssueDate = ParseDate(Value(root.Element(basic + "IssueDate"))),
+            IssueTime = ParseTime(Value(root.Element(basic + "IssueTime"))),
             InvoiceType = Value(root.Element(basic + "InvoiceTypeCode")),
             ProfileId = Value(root.Element(basic + "ProfileID")),
             Currency = Value(root.Element(basic + "DocumentCurrencyCode")),
@@ -71,7 +89,11 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
             Customer = ReadParty(root.Element(aggregate + "AccountingCustomerParty"), aggregate, basic),
             TaxExclusiveAmount = ParseDecimal(Value(monetaryTotal?.Element(basic + "TaxExclusiveAmount"))),
             TaxInclusiveAmount = ParseDecimal(Value(monetaryTotal?.Element(basic + "TaxInclusiveAmount"))),
+            TaxAmount = ParseDecimal(Value(root.Element(aggregate + "TaxTotal")?.Element(basic + "TaxAmount"))),
+            AllowanceTotalAmount = ParseDecimal(Value(monetaryTotal?.Element(basic + "AllowanceTotalAmount"))),
             PayableAmount = ParseDecimal(Value(monetaryTotal?.Element(basic + "PayableAmount"))),
+            Taxes = taxes,
+            WithholdingTaxes = withholdingTaxes,
             Lines = root.Elements(aggregate + "InvoiceLine").Select(line => ReadLine(line, aggregate, basic)).ToList()
         };
 
@@ -93,7 +115,11 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         }
         foreach (var mapping in mappings)
         {
-            var result = ApplyRule(document, mapping);
+            (object? Value, string? SourceNote) result;
+            try { result = ApplyRule(document, mapping); }
+            catch (InvoiceParseException) { throw; }
+            catch (XPathException) { throw new InvoiceParseException($"Geçersiz XPath eşlemesi: {mapping.Name}"); }
+            catch (ArgumentException) { throw new InvoiceParseException($"Geçersiz regex eşlemesi: {mapping.Name}"); }
             if (result.Value is not null)
             {
                 invoice.CustomFields[mapping.Name] = result.Value;
@@ -135,7 +161,11 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         if (string.IsNullOrWhiteSpace(rule.Regex)) return value;
         try
         {
-            var match = Regex.Match(value, rule.Regex, RegexOptions.CultureInvariant, _options.EffectiveRegexTimeout);
+            var regex = new Regex(rule.Regex, RegexOptions.CultureInvariant, _options.EffectiveRegexTimeout);
+            if (!string.IsNullOrWhiteSpace(rule.Group) &&
+                !regex.GetGroupNames().Contains(rule.Group, StringComparer.Ordinal))
+                throw new InvoiceParseException($"Geçersiz regex grubu: {rule.Name}");
+            var match = regex.Match(value);
             if (!match.Success) return null;
             var group = string.IsNullOrWhiteSpace(rule.Group) ? match.Groups[0] : match.Groups[rule.Group];
             return group.Success ? group.Value : null;
@@ -207,9 +237,42 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
                 .Select(identification => identification.Element(basic + "ID"))
                 .FirstOrDefault(id => id is not null)),
             TaxOffice = Value(party.Element(aggregate + "PartyTaxScheme")
-                ?.Element(aggregate + "TaxScheme")?.Element(basic + "Name"))
+                ?.Element(aggregate + "TaxScheme")?.Element(basic + "Name")),
+            Address = ReadAddress(party.Element(aggregate + "PostalAddress"), aggregate, basic),
+            Contact = ReadContact(party.Element(aggregate + "Contact"), basic)
         };
     }
+
+    private static InvoiceAddressData? ReadAddress(XElement? address, XNamespace aggregate, XNamespace basic) => address is null ? null : new()
+    {
+        StreetName = Value(address.Element(basic + "StreetName")),
+        CitySubdivisionName = Value(address.Element(basic + "CitySubdivisionName")),
+        CityName = Value(address.Element(basic + "CityName")),
+        PostalZone = Value(address.Element(basic + "PostalZone")),
+        CountryName = Value(address.Element(aggregate + "Country")?.Element(basic + "Name"))
+    };
+
+    private static InvoiceContactData? ReadContact(XElement? contact, XNamespace basic) => contact is null ? null : new()
+    {
+        Name = Value(contact.Element(basic + "Name")),
+        Telephone = Value(contact.Element(basic + "Telephone")),
+        Email = Value(contact.Element(basic + "ElectronicMail"))
+    };
+
+    private static List<InvoiceTaxData> ReadTaxes(XElement? total, XNamespace aggregate, XNamespace basic, bool withholding) =>
+        total?.Elements(aggregate + "TaxSubtotal").Select(subtotal =>
+        {
+            var category = subtotal.Element(aggregate + "TaxCategory");
+            var scheme = category?.Element(aggregate + "TaxScheme");
+            return new InvoiceTaxData(
+                Value(scheme?.Element(basic + "TaxTypeCode")),
+                Value(scheme?.Element(basic + "Name")),
+                ParseDecimal(Value(subtotal.Element(basic + "Percent"))),
+                ParseDecimal(Value(subtotal.Element(basic + "TaxAmount"))),
+                Value(category?.Element(basic + "TaxExemptionReasonCode")),
+                Value(category?.Element(basic + "TaxExemptionReason")),
+                withholding);
+        }).ToList() ?? [];
 
     private static InvoiceLineData ReadLine(XElement line, XNamespace aggregate, XNamespace basic)
     {
@@ -220,10 +283,16 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
             Id = Value(line.Element(basic + "ID")),
             ItemCode = Value(item?.Element(aggregate + "SellersItemIdentification")?.Element(basic + "ID")),
             Name = Value(item?.Element(basic + "Name")),
+            Description = Value(item?.Element(basic + "Description")),
             Quantity = ParseDecimal(Value(quantity)),
             UnitCode = quantity?.Attribute("unitCode")?.Value,
             UnitPrice = ParseDecimal(Value(line.Element(aggregate + "Price")?.Element(basic + "PriceAmount"))),
             LineExtensionAmount = ParseDecimal(Value(line.Element(basic + "LineExtensionAmount"))),
+            DiscountAmount = line.Elements(aggregate + "AllowanceCharge")
+                .Where(charge => string.Equals(Value(charge.Element(basic + "ChargeIndicator")), "false", StringComparison.OrdinalIgnoreCase))
+                .Select(charge => ParseDecimal(Value(charge.Element(basic + "Amount"))) ?? 0m).Sum(),
+            Taxes = ReadTaxes(line.Element(aggregate + "TaxTotal"), aggregate, basic, false),
+            WithholdingTaxes = ReadTaxes(line.Element(aggregate + "WithholdingTaxTotal"), aggregate, basic, true),
             Notes = line.Elements(basic + "Note").Select(note => note.Value).ToList()
         };
     }
@@ -233,6 +302,9 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
 
     private static DateOnly? ParseDate(string? value) =>
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
+
+    private static TimeOnly? ParseTime(string? value) =>
+        TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ? time : null;
 
     private static decimal? ParseDecimal(string? value)
     {

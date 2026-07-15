@@ -29,7 +29,8 @@ public class BaseRunnerTests
     private static BaseRunner CreateRunner(
         IReadOnlyDictionary<string, ActivityMetadata>? catalog = null,
         IActivityFactory? factory = null,
-        Func<string, string?, string?>? componentResolver = null)
+        Func<string, string?, string?>? componentResolver = null,
+        IWorkflowExecutionObserver? observer = null)
     {
         var cat = catalog is null ? new ActivityCatalog() : new ActivityCatalog(catalog);
         return new BaseRunner(
@@ -38,7 +39,8 @@ public class BaseRunnerTests
             factory ?? new EmptyActivityFactory(),
             NullLogger<BaseRunner>.Instance,
             vault: null,
-            componentResolver: componentResolver);
+            componentResolver: componentResolver,
+            observer: observer);
     }
 
     private static WorkflowVersion Version(string json) => new() { JsonDefinition = json };
@@ -219,6 +221,28 @@ public class BaseRunnerTests
 
         Assert.True(result.Success, result.Exception?.Message);
         Assert.Equal(new[] { "URUN-1", "URUN-2" }, seen);
+    }
+
+    [Theory]
+    [InlineData("<Invoice xmlns='urn:oasis:names:specification:ubl:schema:xsd:Invoice-2'><ID>SECRET-SUCCESS</ID></Invoice>")]
+    [InlineData("<broken>SECRET-ERROR")]
+    public async Task Runner_EInvoiceObserverNeverReceivesXmlContent(string xml)
+    {
+        var observer = new RecordingObserver();
+        var factory = new MapFactory().Add("EInvoice.ReadUbl", () => new ReadUblActivity(new UblInvoiceParser()));
+        var json = """
+        {"schemaVersion":"1.0","id":"35353535-3535-3535-3535-353535353535","name":"mask","version":"1.0.0",
+         "nodes":[{"id":"read","type":"activity","activity":"EInvoice.ReadUbl","properties":{"xmlContent":"__XML__"}}],"connections":[]}
+        """.Replace("\"__XML__\"", System.Text.Json.JsonSerializer.Serialize(xml));
+
+        await CreateRunner(
+            new Dictionary<string, ActivityMetadata> { ["EInvoice.ReadUbl"] = new ReadUblActivity(new UblInvoiceParser()).GetMetadata() },
+            factory,
+            observer: observer).ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        var completed = Assert.Single(observer.Completed);
+        Assert.Equal("[MASKED]", completed.Inputs!["xmlContent"]);
+        Assert.DoesNotContain("SECRET", string.Join("|", completed.Inputs.Values.Concat(completed.Outputs?.Values ?? []).Append(completed.Error)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -869,5 +893,12 @@ public class BaseRunnerTests
     private sealed class ThrowingValue
     {
         public string Value => throw new InvalidOperationException("sensitive getter detail");
+    }
+
+    private sealed class RecordingObserver : IWorkflowExecutionObserver
+    {
+        public List<NodeExecutionEvent> Completed { get; } = [];
+        public void OnNodeStarted(NodeExecutionEvent evt) { }
+        public void OnNodeCompleted(NodeExecutionEvent evt) => Completed.Add(evt);
     }
 }

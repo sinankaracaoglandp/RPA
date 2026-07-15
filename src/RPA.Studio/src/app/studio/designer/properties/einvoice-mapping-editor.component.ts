@@ -124,10 +124,17 @@ export class EInvoiceMappingEditorComponent {
     this.emit();
   }
   removeRule(index: number): void { this.rules = this.rules.filter((_, current) => current !== index); this.emit(); }
-  private isDraftValid(): boolean { return Boolean(this.draft.name.trim() && this.draft.valueXPath?.trim()); }
+  private isDraftValid(): boolean {
+    const sourceNeedsXPath = this.draft.source === 'XPath';
+    return Boolean(this.draft.name.trim() && (!sourceNeedsXPath || this.draft.valueXPath?.trim()));
+  }
+  private isSafeRegex(pattern: string): boolean {
+    if (pattern.length > 256) return false;
+    return !/(?:\([^)]*[+*][^)]*\)|\[[^\]]+\][+*]|\\[dDsSwW][+*]|\.[+*])[+*{]/.test(pattern);
+  }
 
   regexGroups(): Record<string, string> {
-    if (!this.sampleDocument || !this.draft.regex) return {};
+    if (!this.sampleDocument || !this.draft.regex || !this.isSafeRegex(this.draft.regex)) return {};
     const raw = this.preview({ ...this.draft, regex: null, group: null }).raw;
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (!value) return {};
@@ -154,6 +161,7 @@ export class EInvoiceMappingEditorComponent {
 
   buildXPath(node: XmlTreeNode): string { return buildXPath(node); }
   preview(rule: EInvoiceMappingRule): RulePreview {
+    if (rule.regex && !this.isSafeRegex(rule.regex)) return { raw: null, converted: null, error: 'Regex deseni güvenli değil.' };
     return this.sampleDocument ? previewRule(rule, this.sampleDocument) : { raw: null, converted: null, error: 'Örnek XML yüklenmedi.' };
   }
   addRule(rule: EInvoiceMappingRule): void { this.rules = [...this.rules, { ...rule }]; this.emit(); }

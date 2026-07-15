@@ -77,6 +77,29 @@ public sealed class EInvoiceActivityTests
         await Assert.ThrowsAsync<InvoiceParseException>(() => new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(context));
     }
 
+    [Fact]
+    public async Task Batch_InvalidMapping_ContinueIsolatesItemsAndStopThrows()
+    {
+        InvoiceMappingRule[] mapping = [new("broken", "XPath", null, "//*[", null, null)];
+        var continuing = FakeActivityContext.With(("xmlContents", new[] { SampleXml, SampleXml }), ("mappings", mapping), ("errorMode", "Continue"));
+
+        await new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(continuing);
+
+        Assert.All(Assert.IsType<List<InvoiceBatchItemResult>>(continuing.Variables["results"]), item => Assert.False(item.Success));
+        var stopping = FakeActivityContext.With(("xmlContents", new[] { SampleXml, SampleXml }), ("mappings", mapping), ("errorMode", "Stop"));
+        await Assert.ThrowsAsync<InvoiceParseException>(() => new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(stopping));
+    }
+
+    [Theory]
+    [InlineData("{\"invoiceNumber\":\"bad.name\"}")]
+    [InlineData("{\"invoiceNumber\":\"same\",\"currency\":\"same\"}")]
+    public async Task OutputBindings_RejectInvalidOrDuplicateTargets(string bindings)
+    {
+        var context = FakeActivityContext.With(("xmlContent", SampleXml), ("outputBindings", bindings));
+
+        await Assert.ThrowsAsync<InvoiceParseException>(() => new ReadUblActivity(new UblInvoiceParser()).ExecuteAsync(context));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
