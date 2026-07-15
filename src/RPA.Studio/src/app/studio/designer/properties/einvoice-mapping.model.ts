@@ -64,21 +64,16 @@ function namespaceSafeXPath(xpath: string, namespaces: Map<string, string>): str
   }).join('/');
 }
 
-function valuesFor(rule: EInvoiceMappingRule, document: XMLDocument): string[] {
-  let xpath = rule.valueXPath;
-  if (!xpath && rule.source === 'InvoiceNotes') xpath = '/*[local-name()="Invoice"]/*[local-name()="Note"]';
-  if (!xpath && rule.source === 'LineNotes') xpath = '//*[local-name()="InvoiceLine"]/*[local-name()="Note"]';
-  if (!xpath) return [];
-  const namespaces = namespaceMap(document);
+function evaluateNodes(xpath: string, context: Node, document: XMLDocument, namespaces: Map<string, string>): Node[] {
   let result: XPathResult;
   try {
-    result = document.evaluate(namespaceSafeXPath(xpath, namespaces), document, prefix => namespaces.get(prefix ?? '') ?? null, 7);
+    result = document.evaluate(namespaceSafeXPath(xpath, namespaces), context, prefix => namespaces.get(prefix ?? '') ?? null, 7);
   } catch {
     // jsdom's XPath 1.0 implementation cannot evaluate namespace-uri(); still use
     // document.evaluate for traversal and apply the namespace-aware path ourselves.
-    result = document.evaluate('//*', document, null, 7);
-    const requested = xpath.split('/').filter(Boolean).map(segment => segment.replace(/\[.*$/, ''));
-    const matches: string[] = [];
+    result = document.evaluate('descendant-or-self::*', context, null, 7);
+    const requested = xpath.replace(/^\.\/?/, '').split('/').filter(Boolean).map(segment => segment.replace(/\[.*$/, ''));
+    const matches: Node[] = [];
     for (let i = 0; i < result.snapshotLength; i++) {
       const element = result.snapshotItem(i) as Element | null;
       if (!element) continue;
@@ -92,13 +87,23 @@ function valuesFor(rule: EInvoiceMappingRule, document: XMLDocument): string[] {
         const localName = colon >= 0 ? part.slice(colon + 1) : part;
         return candidate.localName === localName && (!prefix || candidate.namespaceURI === namespaces.get(prefix));
       });
-      if (matchesPath) matches.push(element.textContent?.trim() ?? '');
+      if (matchesPath) matches.push(element);
     }
     return matches;
   }
-  const values: string[] = [];
-  for (let i = 0; i < result.snapshotLength; i++) values.push(result.snapshotItem(i)?.textContent?.trim() ?? '');
-  return values;
+  const nodes: Node[] = [];
+  for (let i = 0; i < result.snapshotLength; i++) { const node = result.snapshotItem(i); if (node) nodes.push(node); }
+  return nodes;
+}
+
+function valuesFor(rule: EInvoiceMappingRule, document: XMLDocument): string[] {
+  let xpath = rule.valueXPath;
+  if (!xpath && rule.source === 'InvoiceNotes') xpath = '/*[local-name()="Invoice"]/*[local-name()="Note"]';
+  if (!xpath && rule.source === 'LineNotes') xpath = '//*[local-name()="InvoiceLine"]/*[local-name()="Note"]';
+  if (!xpath) return [];
+  const namespaces = namespaceMap(document);
+  const scopes = rule.scopeXPath ? evaluateNodes(rule.scopeXPath, document, document, namespaces) : [document];
+  return scopes.flatMap(scope => evaluateNodes(xpath!, scope, document, namespaces)).map(node => node.textContent?.trim() ?? '');
 }
 
 function convert(value: string, type: EInvoiceMappingRule['type']): unknown {
@@ -117,7 +122,10 @@ export function previewRule(rule: EInvoiceMappingRule, document: XMLDocument): R
       values = values.flatMap(value => {
         const match = expression.exec(value);
         if (!match) return [];
-        return [rule.group ? (match.groups?.[rule.group] ?? match[Number(rule.group)] ?? '') : (match[0] ?? '')];
+        if (!rule.group) return [match[0] ?? ''];
+        const selected = /^\d+$/.test(rule.group) ? match[Number(rule.group)] : match.groups?.[rule.group];
+        if (selected === undefined) throw new Error(`Regex group '${rule.group}' bulunamadı.`);
+        return [selected];
       });
     }
     if (!values.length) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu değer bulunamadı.' : undefined };

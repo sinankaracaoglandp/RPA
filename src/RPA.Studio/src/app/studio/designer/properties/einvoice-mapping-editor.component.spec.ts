@@ -3,6 +3,7 @@ import { ibanPreset, kurPreset, previewRule } from './einvoice-mapping.model';
 
 const SAMPLE_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:ID>FTR2026</cbc:ID><cbc:PayableAmount>1234.50</cbc:PayableAmount><cbc:Note>IBAN: TR330006100519786457841326</cbc:Note></Invoice>`;
 const MAPPING = { name: 'invoiceId', source: 'XPath' as const, valueXPath: '/Invoice/cbc:ID', type: 'string' as const, required: true, multiple: false };
+const SCOPED_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:Note>first</cbc:Note></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:Note>second</cbc:Note></cac:InvoiceLine></Invoice>`;
 
 describe('EInvoiceMappingEditorComponent', () => {
   it('builds namespace-aware xpath and named regex groups', () => {
@@ -41,5 +42,19 @@ describe('EInvoiceMappingEditorComponent', () => {
 
   it('rejects malformed XML', () => {
     expect(() => new EInvoiceMappingEditorComponent().loadSampleXml('<Invoice>')).toThrowError('Geçersiz XML örneği.');
+  });
+
+  it('evaluates value xpath relative to each invoice-line scope', () => {
+    const doc = new DOMParser().parseFromString(SCOPED_UBL, 'application/xml');
+    const preview = previewRule({ ...MAPPING, scopeXPath: '/Invoice/cac:InvoiceLine', valueXPath: './/cbc:Note', multiple: true }, doc);
+    expect(preview.error).toBeUndefined();
+    expect(preview.converted).toEqual(['first', 'second']);
+  });
+
+  it.each(['missing', '9'])('reports missing regex group %s instead of converting an empty value', group => {
+    const doc = new DOMParser().parseFromString(SAMPLE_UBL, 'application/xml');
+    const preview = previewRule({ ...MAPPING, regex: 'FTR(?<year>\\d{4})', group }, doc);
+    expect(preview.converted).toBeNull();
+    expect(preview.error).toContain('Regex group');
   });
 });
