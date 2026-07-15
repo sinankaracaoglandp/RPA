@@ -120,4 +120,42 @@ public class VisionActivitiesTests
 
         await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
     }
+
+    [Fact]
+    public async Task ClickTextOffset_EmptyAnchorText_ThrowsBusiness()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickTextOffsetActivity(channel.Object);
+        var ctx = Ctx(new() { ["anchor"] = "{\"anchorText\":\"\",\"dx\":10,\"dy\":0}" });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+    }
+
+    [Fact]
+    public async Task ClickTextOffset_InvalidJson_ThrowsBusiness()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickTextOffsetActivity(channel.Object);
+        var ctx = Ctx(new() { ["anchor"] = "not-json" });
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+    }
+
+    [Fact]
+    public async Task ClickTextOffset_Valid_CallsChannelWithParsedValuesAndDefaults()
+    {
+        var channel = new Mock<IVisionAutomationChannel>();
+        var activity = new VisionClickTextOffsetActivity(channel.Object);
+        var ctx = Ctx(new()
+        {
+            ["anchor"] = "{\"anchorText\":\"Malzeme No\",\"dx\":120,\"dy\":-4}",
+            ["timeoutMs"] = 0,
+        });
+
+        await activity.ExecuteAsync(ctx.Object);
+
+        // language boş → tur+eng; matchMode boş → contains; clickType null → left kanala bırakılır; timeoutMs 0 → 5000
+        channel.Verify(c => c.ClickTextOffsetAsync(
+            "Malzeme No", 120, -4, "tur+eng", "contains", null, 5000), Times.Once);
+    }
 }

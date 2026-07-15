@@ -70,6 +70,7 @@ public static class WorkflowServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionExistsActivity>("Vision.Exists");
         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionGetTextActivity>("Vision.GetText");
         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextActivity>("Vision.ClickText");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextOffsetActivity>("Vision.ClickTextOffset");
         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionTextExistsActivity>("Vision.TextExists");
 
         services.AddSingleton<IActivityFactory>(sp =>

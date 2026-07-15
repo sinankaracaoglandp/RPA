@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RPA.Infrastructure.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d9dec90e788e9eb318e47cf789fe4d98c71b96cb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5e8736619d564bcfdad6d78ab783724e9278f6f2")]
 [assembly: System.Reflection.AssemblyProductAttribute("RPA.Infrastructure.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RPA.Infrastructure.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -469,6 +469,15 @@ public static class ActivityRegistry
             .Input("timeoutMs", "int", required: false, defaultValue: 5000)
             .ExceptionClassification("Timeout", ExceptionType.System);
 
+        b.Activity("Vision.ClickTextOffset").DisplayName("Çapaya Göre Tıkla (OCR)").Category(CatVision).Capability(cap)
+            .Description("OCR metin çapasından piksel ofsetle tıklar (etiket-yanı boş alanlar).")
+            .Input("anchor", "string", pickerKind: "text-offset", description: "Çapa + ofset (JSON): {anchorText, dx, dy}.")
+            .Input("language", "string", required: false, defaultValue: "tur+eng")
+            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
+            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
+            .ExceptionClassification("Timeout", ExceptionType.System);
+
         b.Activity("Vision.TextExists").DisplayName("Metin Var mı? (OCR)").Category(CatVision).Capability(cap)
             .Description("Metin ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
             .Input("text", "string")

@@ -412,6 +412,88 @@ public sealed class VisionTextExistsActivity : IActivity
     }
 }
 
+/// <summary>Ekranda OCR metin çapasını bulur, kelime kutusunun merkezinden (dx,dy) ofsetle tıklar.</summary>
+public sealed class VisionClickTextOffsetActivity : IActivity
+{
+    private readonly IVisionAutomationChannel _channel;
+    public VisionClickTextOffsetActivity(IVisionAutomationChannel channel)
+        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+
+    public ActivityMetadata GetMetadata() => new()
+    {
+        ActivityId = "Vision.ClickTextOffset",
+        DisplayName = "Çapaya Göre Tıkla (OCR)",
+        Category = VisionMeta.Category,
+        Description = "OCR ile bir metin çapasını bulur ve ondan piksel ofsetle tıklar " +
+                      "(etiketin yanındaki boş alan gibi hedefler). 🎯 ile çapa + hedef nokta seçin.",
+        Inputs = new()
+        {
+            new ActivityParameter
+            {
+                Name = "anchor", Type = "string", Required = true,
+                Description = "Çapa + ofset (JSON): {anchorText, dx, dy}. 🎯 ile oluşturun.",
+                PickerKind = "text-offset",
+            },
+            VisionMeta.Language(),
+            VisionMeta.MatchMode(),
+            VisionMeta.ClickType(),
+            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms).", DefaultValue = 5000 },
+        },
+        Outputs = new(),
+        RequiredCapabilities = new() { VisionMeta.Capability },
+        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
+    };
+
+    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
+    {
+        var spec = TextOffsetSpec.Parse(context.GetVariable<string?>("anchor"));
+        var language = VisionMeta.LanguageOrDefault(context);
+        var matchMode = VisionMeta.MatchModeOrDefault(context);
+        var clickType = VisionMeta.ClickTypeOrNull(context);
+        var timeoutMs = context.GetVariable<int>("timeoutMs");
+        if (timeoutMs <= 0)
+        {
+            timeoutMs = 5000;
+        }
+        context.Log($"Çapaya göre tıklanıyor: '{spec.AnchorText}' ofset ({spec.Dx},{spec.Dy}).");
+        await _channel.ClickTextOffsetAsync(spec.AnchorText, spec.Dx, spec.Dy, language, matchMode, clickType, timeoutMs);
+        return new();
+    }
+}
+
+/// <summary>Çapa+ofset spesifikasyonu: OCR ile bulunacak metin ve kelime kutusu merkezinden ofset.</summary>
+internal readonly record struct TextOffsetSpec(string AnchorText, int Dx, int Dy)
+{
+    public static TextOffsetSpec Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new BusinessException("'anchor' parametresi boş olamaz.");
+        }
+        System.Text.Json.JsonDocument doc;
+        try
+        {
+            doc = System.Text.Json.JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new BusinessException($"'anchor' geçerli bir JSON değil: {ex.Message}");
+        }
+        using (doc)
+        {
+            var root = doc.RootElement;
+            var text = root.TryGetProperty("anchorText", out var t) ? t.GetString() : null;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                throw new BusinessException("'anchorText' boş olamaz.");
+            }
+            var dx = root.TryGetProperty("dx", out var x) && x.TryGetInt32(out var xi) ? xi : 0;
+            var dy = root.TryGetProperty("dy", out var y) && y.TryGetInt32(out var yi) ? yi : 0;
+            return new TextOffsetSpec(text, dx, dy);
+        }
+    }
+}
+
 /// <summary>region parametresini {x,y,width,height} JSON'undan çözer; boşsa null bileşenler (tam ekran).</summary>
 internal readonly record struct VisionRegion(int? X, int? Y, int? Width, int? Height)
 {

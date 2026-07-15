@@ -13,6 +13,7 @@ public class VisionCatalogTests
     [InlineData("Vision.Exists")]
     [InlineData("Vision.GetText")]
     [InlineData("Vision.ClickText")]
+    [InlineData("Vision.ClickTextOffset")]
     [InlineData("Vision.TextExists")]
     public void Catalog_ContainsVisionActivity(string activityId)
     {
@@ -25,7 +26,7 @@ public class VisionCatalogTests
     {
         var catalog = ActivityRegistry.BuildCatalog();
         var vision = catalog.Where(a => a.Key.StartsWith("Vision.")).ToList();
-        Assert.Equal(7, vision.Count);
+        Assert.Equal(8, vision.Count);
         Assert.All(vision, a => Assert.Contains("vision", a.Value.RequiredCapabilities));
     }
 }
