@@ -74,6 +74,18 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
     public async Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs)
         => await PollForTextAsync(text, language, matchMode, timeoutMs) is not null;
 
+    public async Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
+        string language, string matchMode, string? clickType, int timeoutMs)
+    {
+        var box = await PollForTextAsync(anchorText, language, matchMode, timeoutMs);
+        if (box is null)
+        {
+            throw new SystemException($"Çapa metni ekranda bulunamadı: '{anchorText}' (timeout).");
+        }
+        var (x, y) = VisionOffset.ClickPoint(box, dx, dy);
+        DoClick(x, y, clickType);
+    }
+
     private async Task<(VisionMatch? Match, double BestScore, string? DumpPath)> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
     {
         using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
@@ -175,25 +187,8 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
     {
         try
         {
-            using var engine = new TesseractEngine(_tessdataPath, language, EngineMode.Default);
-            var bytes = image.ImEncode(".png");
-            using var pix = Pix.LoadFromMemory(bytes);
-            using var page = engine.Process(pix);
-            var full = page.GetText() ?? string.Empty;
-
-            var words = new List<OcrWord>();
-            using var iter = page.GetIterator();
-            iter.Begin();
-            do
-            {
-                if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
-                {
-                    var w = iter.GetText(PageIteratorLevel.Word);
-                    words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
-                }
-            }
-            while (iter.Next(PageIteratorLevel.Word));
-            return (full, words);
+            var (full, words) = OcrEngine.Read(image, _tessdataPath, language);
+            return (full, words.Select(w => new OcrWord(w.Text, w.Box)).ToList());
         }
         catch (Exception ex) when (ex is not RPA.Domain.Exceptions.SystemException)
         {
