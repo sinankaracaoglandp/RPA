@@ -19,7 +19,17 @@
       <form class="generic-property__form">
         @for (port of inputs; track port.name) {
           <div class="generic-property__field">
-            @if (inputType(port) === 'checkbox') {
+            @if (isEInvoiceMapping(port)) {
+              <label class="generic-property__label">
+                {{ port.description || port.name }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <app-einvoice-mapping-editor
+                [value]="stringValue(port)"
+                (valueChange)="onValueChange(port, $event)"
+              ></app-einvoice-mapping-editor>
+              <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            } @else if (inputType(port) === 'checkbox') {
               <div class="generic-property__boolean-row">
                 <span class="generic-property__label">
                   {{ port.description || port.name }}

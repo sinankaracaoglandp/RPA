@@ -1,0 +1,14 @@
+:host { display: block; }
+.einvoice-mapping {
+  display: grid;
+  grid-template-columns: 30% 38% 32%;
+  width: 100%;
+}
+.einvoice-mapping__panel { min-width: 0; padding: 0.75rem; border: 1px solid #d7dde5; }
+.einvoice-mapping__panel input:not([type='checkbox']),
+.einvoice-mapping__panel select { box-sizing: border-box; display: block; margin: 0.25rem 0 0.75rem; width: 100%; }
+.einvoice-mapping__tree { display: flex; flex-direction: column; align-items: stretch; margin-top: 0.75rem; }
+.einvoice-mapping__tree button { text-align: left; }
+.einvoice-mapping__tree-child { padding-left: 1.5rem; }
+.einvoice-mapping__panel pre { overflow: auto; white-space: pre-wrap; }
+@media (max-width: 760px) { .einvoice-mapping { grid-template-columns: 1fr; } }

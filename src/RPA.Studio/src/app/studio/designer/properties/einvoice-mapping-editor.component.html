@@ -1,0 +1,45 @@
+<section class="einvoice-mapping" aria-label="E-fatura eşleme editörü">
+  <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
+    <h4>XML ağacı</h4>
+    <label class="einvoice-mapping__file-label" for="einvoice-sample">Örnek XML seç</label>
+    <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml"
+      (change)="onSampleFileSelected($event)" />
+    @if (sampleError) { <p role="alert">{{ sampleError }}</p> }
+    <div class="einvoice-mapping__tree" role="tree" aria-label="XML elemanları">
+      @for (node of tree; track $index) {
+        <button type="button" role="treeitem" (click)="selectNode(node)">{{ node.name }}</button>
+        @for (child of node.children; track $index) {
+          <button type="button" role="treeitem" class="einvoice-mapping__tree-child"
+            (click)="selectNode(child)">{{ child.name }}</button>
+        }
+      }
+    </div>
+  </div>
+
+  <div class="einvoice-mapping__panel" data-testid="einvoice-rule-panel">
+    <h4>Eşleme kuralı</h4>
+    <label for="einvoice-rule-name">Alan adı</label>
+    <input id="einvoice-rule-name" [value]="draft.name"
+      (input)="updateDraft('name', $any($event.target).value)" />
+    <label for="einvoice-rule-xpath">XPath</label>
+    <input id="einvoice-rule-xpath" [value]="draft.valueXPath"
+      (input)="updateDraft('valueXPath', $any($event.target).value)" />
+    <label for="einvoice-rule-type">Veri tipi</label>
+    <select id="einvoice-rule-type" [value]="draft.type"
+      (change)="updateDraft('type', $any($event.target).value)">
+      <option value="string">Metin</option><option value="integer">Tamsayı</option>
+      <option value="decimal">Ondalık</option><option value="date">Tarih</option>
+      <option value="boolean">Boolean</option>
+    </select>
+    <label><input type="checkbox" [checked]="draft.required"
+      (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
+    <label><input type="checkbox" [checked]="draft.multiple"
+      (change)="updateDraft('multiple', $any($event.target).checked)" /> Çoklu</label>
+    <button type="button" (click)="addDraftRule()">Kural ekle</button>
+  </div>
+
+  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel">
+    <h4>Önizleme</h4>
+    <pre aria-live="polite">{{ previewJson() }}</pre>
+  </div>
+</section>

@@ -1,4 +1,5 @@
 import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.component';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ibanPreset, kurPreset, previewRule } from './einvoice-mapping.model';
 
 const SAMPLE_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:ID>FTR2026</cbc:ID><cbc:PayableAmount>1234.50</cbc:PayableAmount><cbc:Note>IBAN: TR330006100519786457841326</cbc:Note></Invoice>`;
@@ -6,6 +7,36 @@ const MAPPING = { name: 'invoiceId', source: 'XPath' as const, valueXPath: '/Inv
 const SCOPED_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:Note>first</cbc:Note></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:Note>second</cbc:Note></cac:InvoiceLine></Invoice>`;
 
 describe('EInvoiceMappingEditorComponent', () => {
+  let fixture: ComponentFixture<EInvoiceMappingEditorComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [EInvoiceMappingEditorComponent] }).compileComponents();
+    fixture = TestBed.createComponent(EInvoiceMappingEditorComponent);
+    fixture.detectChanges();
+  });
+
+  it('renders accessible tree rule and preview panels with an XML-only file picker', () => {
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="einvoice-rule-panel"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="einvoice-preview-panel"]')).toBeTruthy();
+    const picker = root.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(picker.accept).toBe('.xml,text/xml,application/xml');
+  });
+
+  it('reads the sample with File.text without emitting the file or XML', async () => {
+    const component = fixture.componentInstance;
+    const emitted: string[] = [];
+    component.valueChange.subscribe(value => emitted.push(value));
+    const file = { text: vi.fn().mockResolvedValue(SAMPLE_UBL) } as unknown as File;
+
+    await component.onSampleFileSelected({ target: { files: [file] } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(file.text).toHaveBeenCalledOnce();
+    expect(component.findFirst('cbc:ID')).toBeTruthy();
+    expect(emitted).toEqual([]);
+  });
   it('builds namespace-aware xpath and named regex groups', () => {
     const component = new EInvoiceMappingEditorComponent();
     component.loadSampleXml(SAMPLE_UBL);

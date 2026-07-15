@@ -167,6 +167,22 @@ describe('GenericPropertyComponent', () => {
     expect(emitted.at(-1)).toEqual({ browser: 'edge' });
   });
 
+  it('routes an einvoice mapping picker before generic property branches', () => {
+    component.activityType = 'EInvoice.ReadUbl';
+    component.properties = { mappings: '[]' };
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadUbl').flush({
+      activityId: 'EInvoice.ReadUbl',
+      displayName: 'E-Fatura UBL Oku',
+      inputs: [{ name: 'mappings', type: 'JSON', pickerKind: 'einvoice-mapping' }],
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-einvoice-mapping-editor')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="prop-mappings"]')).toBeFalsy();
+  });
+
   it('shows condition expression examples for Logic.If', () => {
     component.activityType = 'Logic.If';
     component.properties = {};
