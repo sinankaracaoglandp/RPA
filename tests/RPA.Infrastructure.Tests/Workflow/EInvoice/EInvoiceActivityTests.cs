@@ -12,9 +12,10 @@ public sealed class EInvoiceActivityTests
     {
         var context = FakeActivityContext.With(("xmlContent", SampleXml), ("outputBindings", "{\"invoiceNumber\":\"faturaNo\"}"));
 
-        await new ReadUblActivity(new UblInvoiceParser()).ExecuteAsync(context);
+        var outputs = await new ReadUblActivity(new UblInvoiceParser()).ExecuteAsync(context);
 
         Assert.Equal("FTR202600001", context.Variables["faturaNo"]);
+        Assert.Equal("FTR202600001", outputs["faturaNo"]);
         Assert.IsType<InvoiceData>(context.Variables["invoice"]);
         Assert.IsType<List<InvoiceLineData>>(context.Variables["lines"]);
         Assert.IsType<Dictionary<string, object?>>(context.Variables["customFields"]);

@@ -196,15 +196,13 @@ public class BaseRunnerTests
           "name":"UBL satirlarini isle","version":"1.0.0",
           "nodes":[
             {"id":"read","type":"activity","activity":"EInvoice.ReadUbl",
-             "properties":{"xmlContent":"__XML__"}},
-            {"id":"bind","type":"assign","variableName":"invoiceLines","value":"{{lines}}"},
+             "properties":{"xmlContent":"__XML__","outputBindings":{"lines":"invoiceLines"}}},
             {"id":"fe","type":"forEach","items":"{{invoiceLines}}","itemVariable":"line"},
             {"id":"record","type":"activity","activity":"Test.RecordProductCode",
              "properties":{"productCode":"{{line.itemCode}}"}}
           ],
           "connections":[
-            {"from":"read","to":"bind"},
-            {"from":"bind","to":"fe"},
+            {"from":"read","to":"fe"},
             {"from":"fe","fromPort":"body","to":"record"},
             {"from":"record","to":"fe","toPort":"loop-back"}
           ]
@@ -738,6 +736,43 @@ public class BaseRunnerTests
         Assert.Equal(10L, eval.EvaluateValue("{{a}}"));
     }
 
+    [Theory]
+    [InlineData("${items}")]
+    [InlineData("{{items}}")]
+    public void ExpressionEvaluator_SingleVariableSyntaxPreservesEnumerableType(string expression)
+    {
+        var items = new List<long> { 1, 2 };
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("items", items);
+
+        var result = new ExpressionEvaluator(scope).EvaluateValue(expression);
+
+        Assert.Same(items, result);
+    }
+
+    [Fact]
+    public void ExpressionEvaluator_TypedDtoPathIsCaseInsensitiveAndMissingPropertyReturnsNull()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("line", new InvoiceLineData { ItemCode = "URUN-1" });
+        var evaluator = new ExpressionEvaluator(scope);
+
+        Assert.Equal("URUN-1", evaluator.EvaluateValue("{{line.itemcode}}"));
+        Assert.Null(evaluator.EvaluateValue("{{line.missing}}"));
+    }
+
+    [Fact]
+    public void ExpressionEvaluator_DoesNotLeakRawReflectionErrorsForUnsafeProperties()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("indexed", new IndexedValue());
+        scope.SetGlobalVariable("throwing", new ThrowingValue());
+        var evaluator = new ExpressionEvaluator(scope);
+
+        Assert.Null(evaluator.EvaluateValue("{{indexed.item}}"));
+        Assert.Throws<BusinessException>(() => evaluator.EvaluateValue("{{throwing.value}}"));
+    }
+
     [Fact]
     public void ExpressionEvaluator_MixedOperators_RespectsPrecedence()
     {
@@ -824,5 +859,15 @@ public class BaseRunnerTests
         Assert.True(result2.Success);
         // If checkpoint state was properly imported despite empty dict, counter should still be 5
         Assert.Equal(5L, Convert.ToInt64(result2.Outputs["next"]));
+    }
+
+    private sealed class IndexedValue
+    {
+        public string this[int index] => index.ToString();
+    }
+
+    private sealed class ThrowingValue
+    {
+        public string Value => throw new InvalidOperationException("sensitive getter detail");
     }
 }

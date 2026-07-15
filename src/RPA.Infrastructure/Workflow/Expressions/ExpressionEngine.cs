@@ -118,12 +118,28 @@ internal sealed class ExpressionEngine
             {
                 JObject jo => jo[parts[i]],
                 IReadOnlyDictionary<string, object?> dict => dict.TryGetValue(parts[i], out var v) ? v : null,
-                _ => current.GetType()
-                    .GetProperty(parts[i], BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase)
-                    ?.GetValue(current),
+                _ => ReadPublicProperty(current, parts[i]),
             };
         }
         return current is JToken token ? VariableScope.JTokenToNative(token) : current;
+    }
+
+    private static object? ReadPublicProperty(object target, string propertyName)
+    {
+        var property = target.GetType().GetProperty(
+            propertyName,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+        if (property is null || property.GetIndexParameters().Length != 0)
+            return null;
+
+        try
+        {
+            return property.GetValue(target);
+        }
+        catch (TargetInvocationException)
+        {
+            throw ExpressionErrors.Business($"Özellik değeri okunamadı: '{propertyName}'.");
+        }
     }
 
     private static bool Compare(object? left, object? right, string op)

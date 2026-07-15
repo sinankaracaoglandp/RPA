@@ -19,14 +19,15 @@ public sealed class ReadUblActivity(UblInvoiceParser parser) : IActivity
         context.SetVariable("invoice", invoice);
         context.SetVariable("lines", invoice.Lines);
         context.SetVariable("customFields", invoice.CustomFields);
-        EInvoiceJson.ApplyOutputBindings(context, invoice, context.GetVariable<object?>("outputBindings"));
-
-        return Task.FromResult(new Dictionary<string, object?>
+        var boundOutputs = EInvoiceJson.ApplyOutputBindings(context, invoice, context.GetVariable<object?>("outputBindings"));
+        var outputs = new Dictionary<string, object?>
         {
             ["invoice"] = invoice,
             ["lines"] = invoice.Lines,
             ["customFields"] = invoice.CustomFields
-        });
+        };
+        foreach (var (name, value) in boundOutputs) outputs[name] = value;
+        return Task.FromResult(outputs);
     }
 }
 
@@ -107,11 +108,12 @@ internal static class EInvoiceJson
         _ => throw new InvoiceParseException("Batch kaynağı bir string koleksiyonu olmalıdır.")
     };
 
-    public static void ApplyOutputBindings(IActivityExecutionContext context, InvoiceData invoice, object? value)
+    public static Dictionary<string, object?> ApplyOutputBindings(IActivityExecutionContext context, InvoiceData invoice, object? value)
     {
         var resolved = ResolveBindings(invoice, ReadBindings(value));
         foreach (var (target, output) in resolved)
             context.SetVariable(target, output);
+        return resolved;
     }
 
     public static void ValidateOutputBindings(object? value) => ValidateBindings(ReadBindings(value));
@@ -214,6 +216,8 @@ internal static class EInvoiceJson
         null => new Dictionary<string, string>(),
         IReadOnlyDictionary<string, string> bindings => bindings,
         JsonElement element => DeserializeBindings(element.GetRawText()),
+        Newtonsoft.Json.Linq.JObject jsonObject => DeserializeBindings(
+            jsonObject.ToString(Newtonsoft.Json.Formatting.None)),
         string json when string.IsNullOrWhiteSpace(json) => new Dictionary<string, string>(),
         string json => DeserializeBindings(json),
         _ => throw new InvoiceParseException("outputBindings geçerli bir JSON nesnesi olmalıdır.")
