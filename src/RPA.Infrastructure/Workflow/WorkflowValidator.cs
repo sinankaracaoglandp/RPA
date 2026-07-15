@@ -31,9 +31,11 @@ public sealed class WorkflowValidator
         }
 
         ICollection<ValidationError> errors;
+        JObject workflow;
         try
         {
-            errors = _schema.Value.Validate(workflowJson);
+            workflow = JObject.Parse(workflowJson);
+            errors = _schema.Value.Validate(workflow.ToString(Newtonsoft.Json.Formatting.None));
         }
         catch (Exception ex)
         {
@@ -42,15 +44,53 @@ public sealed class WorkflowValidator
                 new[] { $"JSON ayrıştırılamadı: {ex.Message}" });
         }
 
-        if (errors.Count == 0)
+        var messages = new List<string>();
+        Flatten(errors, messages);
+        ValidateEInvoiceSources(workflow, messages);
+
+        if (messages.Count == 0)
         {
             return WorkflowValidationResult.Success();
         }
 
-        var messages = new List<string>();
-        Flatten(errors, messages);
         return WorkflowValidationResult.Failure(messages);
     }
+
+    private static void ValidateEInvoiceSources(JObject workflow, List<string> messages)
+    {
+        if (workflow["nodes"] is not JArray nodes) return;
+
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            if (nodes[index] is not JObject node || (string?)node["type"] != "activity") continue;
+
+            var activity = (string?)node["activity"];
+            var sourceNames = activity switch
+            {
+                "EInvoice.ReadUbl" => ("filePath", "xmlContent"),
+                "EInvoice.ReadUblBatch" => ("filePaths", "xmlContents"),
+                _ => default
+            };
+            if (sourceNames == default) continue;
+
+            var properties = node["properties"] as JObject;
+            var sourceCount = (HasSource(properties?[sourceNames.Item1]) ? 1 : 0)
+                            + (HasSource(properties?[sourceNames.Item2]) ? 1 : 0);
+            if (sourceCount != 1)
+            {
+                messages.Add($"nodes[{index}].properties: exactly one source ({sourceNames.Item1} or {sourceNames.Item2}) is required.");
+            }
+        }
+    }
+
+    private static bool HasSource(JToken? value) => value switch
+    {
+        null => false,
+        { Type: JTokenType.Null or JTokenType.Undefined } => false,
+        JValue { Type: JTokenType.String } text => !string.IsNullOrWhiteSpace((string?)text),
+        JArray array => array.Count > 0,
+        _ => true
+    };
 
     /// <summary>
     /// NJsonSchema hata ağacını (child schema / item hataları dahil) düz listeye çevirir.

@@ -8,6 +8,7 @@ using RPA.Infrastructure.Idempotency;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Workflow.Activities.Api;
 using RPA.Infrastructure.Workflow.Activities.Email;
+using RPA.Infrastructure.Workflow.Activities.EInvoice;
 using RPA.Infrastructure.Workflow.Activities.Web;
 
 public static class WorkflowServiceCollectionExtensions
@@ -28,6 +29,9 @@ public static class WorkflowServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, EmailSendActivity>("Email.Send");
         services.AddKeyedTransient<IActivity, EmailReadInboxActivity>("Email.ReadInbox");
         services.AddKeyedTransient<IActivity, AttachmentDownloadActivity>("Email.DownloadAttachment");
+        services.AddSingleton<UblInvoiceParser>();
+        services.AddKeyedTransient<IActivity, ReadUblActivity>("EInvoice.ReadUbl");
+        services.AddKeyedTransient<IActivity, ReadUblBatchActivity>("EInvoice.ReadUblBatch");
 
         // WP-5.6 Web aktiviteleri: Studio katalogundan calistirilan Web.* node'lari.
         services.AddSingleton<IWebAutomationSessionManager, PlaywrightWebAutomationSessionManager>();
