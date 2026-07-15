@@ -28,7 +28,7 @@ internal static class DateFunctions
             a => AsDate("AddMinutes", a[0]).AddMinutes(AsInt("AddMinutes", a[1]))),
         Fn("Format", "string", new() { P("tarih", "date"), P("desen", "string"), P("kültür", "string", true) },
             "Tarihi verilen desene göre biçimler.", "Format(Now(), \"dd.MM.yyyy\")",
-            a => AsDate("Format", a[0]).ToString(AsString(a[1]), Culture("Format", a, 2))),
+            a => FormatDate(a)),
         Fn("ToDate", "date", new() { P("metin", "string"), P("desen", "string", true), P("kültür", "string", true) },
             "Metni tarihe çevirir.", "ToDate(\"15.01.2026\", \"dd.MM.yyyy\")",
             a => ParseDate(a)),
@@ -40,6 +40,19 @@ internal static class DateFunctions
         Fn("DateDiffDays", "int", new() { P("a", "date"), P("b", "date") }, "İki tarih arası gün farkı (a-b).", "DateDiffDays(a, b)",
             a => (long)Math.Round((AsDate("DateDiffDays", a[0]) - AsDate("DateDiffDays", a[1])).TotalDays)),
     };
+
+    private static object FormatDate(IReadOnlyList<object?> a)
+    {
+        var pattern = AsString(a[1]);
+        try
+        {
+            return AsDate("Format", a[0]).ToString(pattern, Culture("Format", a, 2));
+        }
+        catch (FormatException ex)
+        {
+            throw ExpressionErrors.Business($"Format: geçersiz desen '{pattern}' ({ex.Message})");
+        }
+    }
 
     private static object ParseDate(IReadOnlyList<object?> a)
     {

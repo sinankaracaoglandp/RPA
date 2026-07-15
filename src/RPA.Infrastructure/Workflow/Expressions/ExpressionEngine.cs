@@ -15,7 +15,18 @@ internal sealed class ExpressionEngine
     public ExpressionEngine(VariableScope scope)
         => _scope = scope ?? throw new ArgumentNullException(nameof(scope));
 
-    public object? Evaluate(string rawExpression) => Evaluate(ExpressionParser.Parse(rawExpression));
+    public object? Evaluate(string rawExpression)
+    {
+        // Geriye uyum: tüm token içeriği birebir mevcut bir değişken adıysa (identifier olmayan
+        // adlar — "my-var", boşluklu, ya da "true"/sayı gölgeleyen — dahil) doğrudan çöz; parser'a
+        // sokma. Saf identifier/noktalı-yol zaten aynı sonucu verir, ama bu isimler regresyona uğrardı.
+        var trimmed = rawExpression?.Trim() ?? string.Empty;
+        if (trimmed.Length > 0 && _scope.TryGetVariable(trimmed, out var direct))
+        {
+            return direct is JToken t ? VariableScope.JTokenToNative(t) : direct;
+        }
+        return Evaluate(ExpressionParser.Parse(rawExpression));
+    }
 
     public object? Evaluate(ExprNode node) => node switch
     {

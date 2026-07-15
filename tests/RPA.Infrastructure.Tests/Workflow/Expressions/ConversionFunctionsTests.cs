@@ -20,6 +20,7 @@ public class ConversionFunctionsTests
     [Fact] public void ToDecimal_TrCulture() => Assert.Equal(3.5m, Eval("ToDecimal(\"3,5\")"));
     [Fact] public void ToDecimal_ExplicitCulture() => Assert.Equal(3.5m, Eval("ToDecimal(\"3.5\", \"en-US\")"));
     [Fact] public void ToDouble_TrCulture() => Assert.Equal(2.5d, Eval("ToDouble(\"2,5\")"));
+    [Fact] public void ToDecimal_DoubleOverflow_ThrowsBusiness() => Assert.Throws<BusinessException>(() => Eval("ToDecimal(x)", ("x", 1e30)));
     [Fact] public void ToStr_Number() => Assert.Equal("42", Eval("ToStr(42)"));
     [Fact] public void ToStr_WithFormatAndCulture() => Assert.Equal("3,50", Eval("ToStr(3.5, \"N2\", \"tr-TR\")"));
     [Fact] public void ToBool_True() => Assert.Equal(true, Eval("ToBool(\"true\")"));

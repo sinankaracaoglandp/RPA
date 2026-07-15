@@ -34,7 +34,9 @@ internal static class ConversionFunctions
         switch (a[0])
         {
             case decimal m: return m;
-            case double d: return (decimal)d;
+            case double d:
+                try { return (decimal)d; }
+                catch (OverflowException) { throw ExpressionErrors.Business($"{fn}: '{d}' ondalık aralığı dışında."); }
             case long l: return (decimal)l;
             case int i: return (decimal)i;
             case string s when decimal.TryParse(s, NumberStyles.Any, culture, out var p): return p;

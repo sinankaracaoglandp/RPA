@@ -41,4 +41,23 @@ public class ExpressionEngineTests
     [Fact]
     public void Arithmetic_Subtraction_LeftAssociative()
         => Assert.Equal(5L, Engine().Evaluate("10 - 3 - 2"));
+
+    [Fact]
+    public void Variable_NonIdentifierName_ResolvesViaWholeTokenFastPath()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("my-var", "x");
+        scope.SetGlobalVariable("true", "shadowed");
+        var engine = new ExpressionEngine(scope);
+        Assert.Equal("x", engine.Evaluate("my-var"));
+        Assert.Equal("shadowed", engine.Evaluate("true"));
+    }
+
+    [Fact]
+    public void Variable_DottedPath_StillResolvesAfterFastPath()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("data", Newtonsoft.Json.Linq.JObject.Parse("{\"alan\":\"v\"}"));
+        Assert.Equal("v", new ExpressionEngine(scope).Evaluate("data.alan"));
+    }
 }

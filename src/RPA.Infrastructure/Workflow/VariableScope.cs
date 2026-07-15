@@ -1,5 +1,6 @@
 namespace RPA.Infrastructure.Workflow;
 
+using System;
 using Newtonsoft.Json.Linq;
 
 /// <summary>
@@ -100,17 +101,14 @@ public sealed class VariableScope
 
     internal static object? JTokenToNative(JToken token)
     {
-        return token.Type switch
-        {
-            JTokenType.Null or JTokenType.Undefined => null,
-            JTokenType.Integer => (long)token,
-            JTokenType.Float => (double)token,
-            JTokenType.Boolean => (bool)token,
-            JTokenType.String or JTokenType.Guid or JTokenType.Uri => (string?)token,
-            JTokenType.Date => (DateTime)token,
-            // Diziler/nesneler tip bilgisini korumak için JToken olarak bırakılır.
-            _ => token,
-        };
+        if (token.Type == JTokenType.Null || token.Type == JTokenType.Undefined) { return null; }
+        if (token.Type == JTokenType.Integer) { return (long)token; }
+        if (token.Type == JTokenType.Float) { return (double)token; }
+        if (token.Type == JTokenType.Boolean) { return (bool)token; }
+        if (token.Type is JTokenType.String or JTokenType.Guid or JTokenType.Uri) { string? s = (string?)token; return s; }
+        if (token.Type == JTokenType.Date) { return (DateTime)token; }
+        // Diziler/nesneler tip bilgisini korumak için JToken olarak bırakılır.
+        return token;
     }
 
     private static T ConvertValue<T>(object? value)

@@ -28,6 +28,11 @@ public class DateFunctionsTests
         => Assert.Equal("22.01.2026", Eval("Format(AddDays(d, 7), \"dd.MM.yyyy\")", ("d", new DateTime(2026, 1, 15))));
 
     [Fact]
+    public void Format_MalformedPattern_ThrowsBusiness()
+        => Assert.Throws<BusinessException>(
+            () => Eval("Format(d, \"'\")", ("d", new DateTime(2026, 1, 15))));
+
+    [Fact]
     public void ToDate_ParsesTrFormat()
         => Assert.Equal(new DateTime(2026, 1, 15), Eval("ToDate(\"15.01.2026\", \"dd.MM.yyyy\")"));
 
