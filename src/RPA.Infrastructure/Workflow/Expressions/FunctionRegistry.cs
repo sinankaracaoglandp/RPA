@@ -14,8 +14,9 @@ public sealed record ExpressionFunctionParam(string Name, string Type, bool Opti
 /// <summary>Çalıştırılabilir fonksiyon = metadata + invoker (değerlendirilmiş argümanlar).</summary>
 internal sealed record ExpressionFunction(ExpressionFunctionInfo Info, Func<IReadOnlyList<object?>, object?> Invoke);
 
-/// <summary>Tüm ifade fonksiyonlarının kayıt defteri (case-insensitive ad). Kategori modülleri doldurur.</summary>
-internal static class FunctionRegistry
+/// <summary>Tüm ifade fonksiyonlarının kayıt defteri (case-insensitive ad). Kategori modülleri doldurur.
+/// Public — WebAPI ExpressionController Catalog'u doğrudan tüketir (Task 6).</summary>
+public static class FunctionRegistry
 {
     private static readonly Dictionary<string, ExpressionFunction> Map = BuildMap();
 
@@ -29,7 +30,7 @@ internal static class FunctionRegistry
         return all.ToDictionary(f => f.Info.Name, f => f, StringComparer.OrdinalIgnoreCase);
     }
 
-    public static bool TryGet(string name, out ExpressionFunction fn) => Map.TryGetValue(name, out fn!);
+    internal static bool TryGet(string name, out ExpressionFunction fn) => Map.TryGetValue(name, out fn!);
 
     /// <summary>Studio autocomplete kataloğu (ada göre sıralı, invoker'sız metadata).</summary>
     public static IReadOnlyList<ExpressionFunctionInfo> Catalog =>
