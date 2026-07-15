@@ -76,6 +76,59 @@ public sealed class EInvoiceActivityTests
         await Assert.ThrowsAsync<InvoiceParseException>(() => new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(context));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Batch_MissingOrBlankErrorMode_DefaultsToContinue(string? errorMode)
+    {
+        var context = FakeActivityContext.With(("xmlContents", new[] { SampleXml, "<broken" }), ("errorMode", errorMode));
+
+        await new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(context);
+
+        var results = Assert.IsType<List<InvoiceBatchItemResult>>(context.Variables["results"]);
+        Assert.True(results[0].Success);
+        Assert.False(results[1].Success);
+    }
+
+    [Fact]
+    public async Task Batch_OutputBindings_PublishOrderedListsWithNullForFailures()
+    {
+        var context = FakeActivityContext.With(
+            ("xmlContents", new[] { SampleXml, "<broken", SampleXml.Replace("FTR202600001", "FTR202600003") }),
+            ("outputBindings", "{\"invoiceNumber\":\"invoiceNumbers\"}"));
+
+        await new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(context);
+
+        var values = Assert.IsType<List<object?>>(context.Variables["invoiceNumbers"]);
+        Assert.Equal(new object?[] { "FTR202600001", null, "FTR202600003" }, values);
+    }
+
+    [Fact]
+    public void Metadata_DeclaresAllActivityInputsOutputsAndContinueDefault()
+    {
+        var single = new ReadUblActivity(new UblInvoiceParser()).GetMetadata();
+        var batch = new ReadUblBatchActivity(new UblInvoiceParser()).GetMetadata();
+
+        Assert.Equal(new[] { "filePath", "xmlContent", "mappings", "outputBindings" }, single.Inputs.Select(input => input.Name));
+        Assert.Equal(new[] { "invoice", "lines", "customFields" }, single.Outputs.Select(output => output.Name));
+        Assert.Equal(new[] { "filePaths", "xmlContents", "errorMode", "mappings", "outputBindings" }, batch.Inputs.Select(input => input.Name));
+        Assert.Equal("Continue", batch.Inputs.Single(input => input.Name == "errorMode").DefaultValue);
+        Assert.Equal("results", Assert.Single(batch.Outputs).Name);
+    }
+
+    [Theory]
+    [InlineData("invoice")]
+    [InlineData("LINES")]
+    [InlineData("CustomFields")]
+    [InlineData("ReSuLtS")]
+    public async Task OutputBindings_RejectReservedTargetsCaseInsensitively(string target)
+    {
+        var context = FakeActivityContext.With(("xmlContent", SampleXml), ("outputBindings", $"{{\"invoiceNumber\":\"{target}\"}}"));
+
+        await Assert.ThrowsAsync<InvoiceParseException>(() => new ReadUblActivity(new UblInvoiceParser()).ExecuteAsync(context));
+    }
+
     [Fact]
     public async Task Batch_RequiresExactlyOneSourceCollection()
     {

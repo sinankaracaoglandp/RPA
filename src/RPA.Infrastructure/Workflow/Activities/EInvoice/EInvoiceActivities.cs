@@ -65,13 +65,17 @@ public sealed class ReadUblBatchActivity(UblInvoiceParser parser) : IActivity
         }
 
         context.SetVariable("results", results);
-        return Task.FromResult(new Dictionary<string, object?> { ["results"] = results });
+        var boundOutputs = EInvoiceJson.ApplyBatchOutputBindings(context, results, context.GetVariable<object?>("outputBindings"));
+        var outputs = new Dictionary<string, object?> { ["results"] = results };
+        foreach (var (name, value) in boundOutputs) outputs[name] = value;
+        return Task.FromResult(outputs);
     }
 
     private static bool ReadStopOnError(string? errorMode) => errorMode?.Trim() switch
     {
-        null or "" or "Stop" => true,
+        null or "" => false,
         "Continue" => false,
+        "Stop" => true,
         _ => throw new InvoiceParseException("errorMode yalnızca Stop veya Continue olabilir.")
     };
 }
@@ -103,14 +107,59 @@ internal static class EInvoiceJson
 
     public static void ApplyOutputBindings(IActivityExecutionContext context, InvoiceData invoice, object? value)
     {
-        foreach (var (source, target) in ReadBindings(value))
+        var resolved = ResolveBindings(invoice, ReadBindings(value));
+        foreach (var (target, output) in resolved)
+            context.SetVariable(target, output);
+    }
+
+    public static Dictionary<string, object?> ApplyBatchOutputBindings(
+        IActivityExecutionContext context,
+        IReadOnlyList<InvoiceBatchItemResult> results,
+        object? value)
+    {
+        var bindings = ReadBindings(value);
+        ValidateBindings(bindings);
+        var outputs = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (source, target) in bindings)
         {
-            if (string.IsNullOrWhiteSpace(target)) throw new InvoiceParseException("Output binding hedefi boş olamaz.");
+            var values = new List<object?>(results.Count);
+            foreach (var result in results)
+            {
+                if (!result.Success || result.Invoice is null) values.Add(null);
+                else if (TryReadBindableValue(result.Invoice, source, out var output)) values.Add(output);
+                else throw new InvoiceParseException($"Output binding alanına izin verilmiyor: {source}");
+            }
+            context.SetVariable(target, values);
+            outputs[target] = values;
+        }
+        return outputs;
+    }
+
+    private static Dictionary<string, object?> ResolveBindings(InvoiceData invoice, IReadOnlyDictionary<string, string> bindings)
+    {
+        ValidateBindings(bindings);
+        var resolved = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (source, target) in bindings)
+        {
             if (!TryReadBindableValue(invoice, source, out var output))
                 throw new InvoiceParseException($"Output binding alanına izin verilmiyor: {source}");
-            context.SetVariable(target, output);
+            resolved[target] = output;
+        }
+        return resolved;
+    }
+
+    private static void ValidateBindings(IReadOnlyDictionary<string, string> bindings)
+    {
+        foreach (var target in bindings.Values)
+        {
+            if (string.IsNullOrWhiteSpace(target)) throw new InvoiceParseException("Output binding hedefi boş olamaz.");
+            if (ReservedOutputNames.Contains(target))
+                throw new InvoiceParseException($"Output binding hedefi ayrılmış bir addır: {target}");
         }
     }
+
+    private static readonly HashSet<string> ReservedOutputNames = new(StringComparer.OrdinalIgnoreCase)
+        { "invoice", "lines", "customFields", "results" };
 
     private static bool TryReadBindableValue(InvoiceData invoice, string source, out object? value)
     {
@@ -172,14 +221,25 @@ internal static class EInvoiceActivityMetadata
     public static ActivityMetadata ReadUbl() => new()
     {
         ActivityId = "EInvoice.ReadUbl", DisplayName = "UBL Fatura Oku", Category = "E-Fatura",
-        Inputs = [new() { Name = "filePath", Type = "string", Required = false }, new() { Name = "xmlContent", Type = "string", Required = false }],
+        Inputs = [
+            new() { Name = "filePath", Type = "string", Required = false },
+            new() { Name = "xmlContent", Type = "string", Required = false },
+            new() { Name = "mappings", Type = "JSON", Required = false },
+            new() { Name = "outputBindings", Type = "JSON", Required = false }
+        ],
         Outputs = [new() { Name = "invoice", Type = "JSON" }, new() { Name = "lines", Type = "JSON" }, new() { Name = "customFields", Type = "JSON" }]
     };
 
     public static ActivityMetadata ReadUblBatch() => new()
     {
         ActivityId = "EInvoice.ReadUblBatch", DisplayName = "UBL Faturaları Toplu Oku", Category = "E-Fatura",
-        Inputs = [new() { Name = "filePaths", Type = "JSON", Required = false }, new() { Name = "xmlContents", Type = "JSON", Required = false }],
+        Inputs = [
+            new() { Name = "filePaths", Type = "JSON", Required = false },
+            new() { Name = "xmlContents", Type = "JSON", Required = false },
+            new() { Name = "errorMode", Type = "string", Required = false, DefaultValue = "Continue", Options = ["Continue", "Stop"] },
+            new() { Name = "mappings", Type = "JSON", Required = false },
+            new() { Name = "outputBindings", Type = "JSON", Required = false }
+        ],
         Outputs = [new() { Name = "results", Type = "JSON" }]
     };
 }
