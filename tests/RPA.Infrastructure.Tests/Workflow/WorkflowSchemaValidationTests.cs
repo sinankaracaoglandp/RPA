@@ -6,6 +6,21 @@ using Xunit;
 
 public class WorkflowSchemaValidationTests
 {
+    [Fact]
+    public void EInvoiceMappingDefinitions_DocumentMappingsAsArrays()
+    {
+        using var stream = typeof(WorkflowValidator).Assembly
+            .GetManifestResourceStream("RPA.Infrastructure.Workflow.WorkflowSchema.json");
+        Assert.NotNull(stream);
+        using var schema = JsonDocument.Parse(stream!);
+        var definitions = schema.RootElement.GetProperty("$defs");
+
+        Assert.Equal("array", definitions.GetProperty("eInvoiceReadUblProperties")
+            .GetProperty("properties").GetProperty("mappings").GetProperty("type").GetString());
+        Assert.Equal("array", definitions.GetProperty("eInvoiceReadUblBatchProperties")
+            .GetProperty("properties").GetProperty("mappings").GetProperty("type").GetString());
+    }
+
     [Theory]
     [InlineData("EInvoice.ReadUbl", "filePath", "invoice.xml")]
     [InlineData("EInvoice.ReadUblBatch", "filePaths", "invoice.xml")]

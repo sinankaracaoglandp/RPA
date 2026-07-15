@@ -9,7 +9,24 @@
       "properties": {
         "filePath": { "type": "string" },
         "xmlContent": { "type": "string" },
-        "mappings": { "type": "object" },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "source"],
+            "properties": {
+              "name": { "type": "string" },
+              "source": { "type": "string" },
+              "scopeXPath": { "type": ["string", "null"] },
+              "valueXPath": { "type": ["string", "null"] },
+              "regex": { "type": ["string", "null"] },
+              "group": { "type": ["string", "null"] },
+              "type": { "type": "string", "enum": ["string", "decimal", "integer", "date", "boolean"], "default": "string" },
+              "required": { "type": "boolean", "default": false },
+              "multiple": { "type": "boolean", "default": false }
+            }
+          }
+        },
         "outputBindings": { "type": "object" }
       },
       "oneOf": [
@@ -24,7 +41,24 @@
         "filePaths": { "type": "array", "items": { "type": "string" } },
         "xmlContents": { "type": "array", "items": { "type": "string" } },
         "errorMode": { "type": "string", "enum": ["Continue", "Stop"], "default": "Continue" },
-        "mappings": { "type": "object" },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "source"],
+            "properties": {
+              "name": { "type": "string" },
+              "source": { "type": "string" },
+              "scopeXPath": { "type": ["string", "null"] },
+              "valueXPath": { "type": ["string", "null"] },
+              "regex": { "type": ["string", "null"] },
+              "group": { "type": ["string", "null"] },
+              "type": { "type": "string", "enum": ["string", "decimal", "integer", "date", "boolean"], "default": "string" },
+              "required": { "type": "boolean", "default": false },
+              "multiple": { "type": "boolean", "default": false }
+            }
+          }
+        },
         "outputBindings": { "type": "object" }
       },
       "oneOf": [
