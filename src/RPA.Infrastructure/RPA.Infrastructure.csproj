@@ -41,4 +41,8 @@
     <ProjectReference Include="..\RPA.Application\RPA.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="RPA.Infrastructure.Tests" />
+  </ItemGroup>
+
 </Project>
