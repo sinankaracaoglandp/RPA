@@ -70,7 +70,44 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
     const preview = fixture.nativeElement.querySelector('[data-testid="einvoice-draft-preview"]') as HTMLElement;
     expect(preview.textContent).toContain('TR330006100519786457841326');
+    expect(preview.textContent).toContain('"source": "InvoiceNotes"');
+    expect(preview.textContent).toContain('"iban": "TR330006100519786457841326"');
     expect(fixture.componentInstance.rules).toEqual([]);
+  });
+
+  it('provides an editable common invoice-note starter preset', () => {
+    const button = fixture.nativeElement.querySelector('[data-testid="einvoice-preset-note"]') as HTMLButtonElement;
+    button.click(); fixture.detectChanges();
+    expect(fixture.componentInstance.draft.source).toBe('InvoiceNotes');
+    expect(fixture.componentInstance.draft.valueXPath).toContain('cbc:Note');
+    expect((fixture.nativeElement.querySelector('#einvoice-rule-name') as HTMLInputElement).value).toBe('note');
+  });
+
+  it('toggles branch disclosure by pointer and keeps aria-expanded in sync', () => {
+    fixture.componentInstance.loadSampleXml(DEEP_UBL); fixture.detectChanges();
+    const toggle = fixture.nativeElement.querySelector('[data-toggle-name="Lines"]') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    toggle.click(); fixture.detectChanges();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(fixture.nativeElement.querySelector('[data-node-name="Code"]')).toBeFalsy();
+  });
+
+  it('counts repeated nodes by equivalent path rather than global tag name', () => {
+    fixture.componentInstance.loadSampleXml('<Root><A><Code>1</Code><Code>2</Code></A><B><Code>3</Code></B></Root>');
+    const codes = fixture.componentInstance.flatTree().filter(item => item.node.name === 'Code');
+    expect(fixture.componentInstance.repeatedCount(codes[0].node)).toBe(2);
+    expect(fixture.componentInstance.repeatedCount(codes[2].node)).toBe(1);
+  });
+
+  it('edits and removes persisted rules after reopening and emits mapping JSON only', () => {
+    const component = fixture.componentInstance;
+    component.value = JSON.stringify([MAPPING]);
+    const emitted: string[] = []; component.valueChange.subscribe(value => emitted.push(value));
+    component.editRule(0); component.updateDraft('name', 'updated'); component.saveDraftRule();
+    expect(JSON.parse(emitted.at(-1)!)[0].name).toBe('updated');
+    component.removeRule(0);
+    expect(JSON.parse(emitted.at(-1)!)).toEqual([]);
+    expect(emitted.join('')).not.toContain('<Invoice');
   });
 
   it('clears stale sample state when a replacement XML is malformed', async () => {

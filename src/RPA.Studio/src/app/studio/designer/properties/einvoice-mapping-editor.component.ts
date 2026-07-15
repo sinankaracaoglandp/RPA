@@ -15,6 +15,7 @@ export class EInvoiceMappingEditorComponent {
   rules: EInvoiceMappingRule[] = [];
   sampleError = '';
   private readonly expanded = new Set<XmlTreeNode>();
+  editingIndex: number | null = null;
   draft: EInvoiceMappingRule = {
     name: '', source: 'XPath', valueXPath: '', type: 'string', required: false, multiple: false,
   };
@@ -54,8 +55,15 @@ export class EInvoiceMappingEditorComponent {
   }
 
   nodeSample(node: XmlTreeNode): string { return node.children.length ? '' : (node.element.textContent?.trim() ?? ''); }
-  repeatedCount(node: XmlTreeNode): number { return this.allTree().filter(item => item.node.name === node.name).length; }
+  repeatedCount(node: XmlTreeNode): number {
+    const path = this.buildXPath(node);
+    return this.allTree().filter(item => this.buildXPath(item.node) === path).length;
+  }
   isExpanded(node: XmlTreeNode): boolean { return this.expanded.has(node); }
+  toggleNode(node: XmlTreeNode): void {
+    if (this.expanded.has(node)) this.expanded.delete(node); else this.expanded.add(node);
+    this.cdr?.markForCheck();
+  }
 
   onTreeKeydown(event: KeyboardEvent, node: XmlTreeNode): void {
     const buttons = Array.from((event.currentTarget as HTMLElement).closest('.einvoice-mapping__tree')!
@@ -95,7 +103,11 @@ export class EInvoiceMappingEditorComponent {
     this.draft = { ...this.draft, [field]: value };
   }
 
-  applyPreset(kind: 'kur' | 'iban'): void { this.draft = { ...(kind === 'kur' ? kurPreset() : ibanPreset()) }; }
+  applyPreset(kind: 'kur' | 'iban' | 'note'): void {
+    this.draft = kind === 'note'
+      ? { name: 'note', source: 'InvoiceNotes', valueXPath: '/Invoice/cbc:Note', type: 'string', required: false, multiple: true }
+      : { ...(kind === 'kur' ? kurPreset() : ibanPreset()) };
+  }
 
   addDraftRule(): void {
     if (!this.draft.name.trim() || !this.draft.valueXPath?.trim()) return;
@@ -103,8 +115,31 @@ export class EInvoiceMappingEditorComponent {
     this.draft = { ...this.draft, name: '' };
   }
 
+  editRule(index: number): void { this.editingIndex = index; this.draft = { ...this.rules[index] }; }
+  saveDraftRule(): void {
+    if (this.editingIndex === null) { this.addDraftRule(); return; }
+    this.rules = this.rules.map((rule, index) => index === this.editingIndex ? { ...this.draft } : rule);
+    this.editingIndex = null;
+    this.emit();
+  }
+  removeRule(index: number): void { this.rules = this.rules.filter((_, current) => current !== index); this.emit(); }
+
+  regexGroups(): Record<string, string> {
+    if (!this.sampleDocument || !this.draft.regex) return {};
+    const raw = this.preview({ ...this.draft, regex: null, group: null }).raw;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (!value) return {};
+    try {
+      const match = new RegExp(this.draft.regex).exec(value);
+      if (!match) return {};
+      const groups: Record<string, string> = { ...(match.groups ?? {}) };
+      match.slice(1).forEach((group, index) => { if (group !== undefined) groups[String(index + 1)] = group; });
+      return groups;
+    } catch { return {}; }
+  }
+
   previewJson(): string {
-    return JSON.stringify({ draft: this.preview(this.draft), rules: this.rules.map(rule => ({ rule: rule.name, ...this.preview(rule) })) }, null, 2);
+    return JSON.stringify({ mapping: { ...this.draft }, groups: this.regexGroups(), preview: this.preview(this.draft), rules: this.rules.map(rule => ({ mapping: rule, preview: this.preview(rule) })) }, null, 2);
   }
 
   findFirst(name: string): XmlTreeNode | undefined {
