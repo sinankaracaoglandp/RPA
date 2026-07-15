@@ -562,7 +562,9 @@ boş input gibi hedefler). Yeni aktivite `Vision.ClickTextOffset` (kategori "Gö
 `vision`). Yeni picker kind `text-offset` (iki aşamalı: çapa metni seç + hedef nokta tıkla → dx/dy
 otomatik). `SpyElementMessage`'a `Kind="text-offset"`, `AnchorText`, `Dx`, `Dy` + `FromTextOffset`;
 `StudioHub.SupportedKinds`'e `text-offset`. Referans: çapanın OCR tight kelime kutusu **merkezi**
-(picker-zamanı ve runtime aynı) → çözünürlük farkında ofset kaymaz.
+(picker-zamanı ve runtime aynı basis) → çapa çalışma anında yeniden konumlanır. Kısıt: `dx/dy`
+sabit piksel ofsetidir; picker ile runtime **aynı çözünürlük/DPI**'da eşleşir, farklıysa ofset
+ölçeklenmez (UiPath CV ile aynı kısıt). Picker OCR dili tasarım-zamanında sabit `tur+eng`.
 
 Etkilenen paketler: Paket F (Vision), Studio picker metadata tüketicileri, Agent UI Spy transport.
 Gerekçe: erişilebilirlik ağacı olmayan ekranlarda etiket-yanı boş alanlara tıklama (UiPath CV
