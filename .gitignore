@@ -877,3 +877,6 @@ appsettings.*.Local.json
 *.secrets.json
 .env
 .env.local
+
+# Local isolated feature worktrees
+.worktrees/
