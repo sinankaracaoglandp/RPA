@@ -2,7 +2,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { AuthService } from '../../auth/auth.service';
 
-export type SpyKind = 'sap' | 'web' | 'desktop' | 'image';
+export type SpyKind = 'sap' | 'web' | 'desktop' | 'image' | 'text-offset';
 
 // Paket F: image picker "ekran dondurma" seçenekleri (geçici menü/pencere yakalama).
 export type ImageCaptureMode = 'f2' | 'timer';
@@ -29,6 +29,10 @@ export interface SpyElement {
   // Paket F: image picker sonucu (kind === 'image') — base64 PNG + secilen bolge.
   imageBase64?: string;
   region?: { x: number; y: number; width: number; height: number };
+  // text-offset picker sonucu (kind === 'text-offset').
+  anchorText?: string;
+  dx?: number;
+  dy?: number;
 }
 
 export interface SpyHubConnection {
@@ -92,9 +96,10 @@ export class SpyService {
     const connection = await this.ensureConnection();
     const sessionId = this.sessionIdFactory();
 
-    // Image picker'da kullanıcı hedef menüyü elle açıp F2/zamanlayıcı ile dondurduğu için
-    // daha uzun süre gerekir; diğer picker'lar normal timeout kullanır.
-    const timeoutMs = kind === 'image' ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
+    // Image/text-offset picker'da kullanıcı hedef menüyü elle açıp F2/zamanlayıcı ile dondurduğu
+    // için daha uzun süre gerekir; diğer picker'lar normal timeout kullanır.
+    const needsFreeze = kind === 'image' || kind === 'text-offset';
+    const timeoutMs = needsFreeze ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
 
     const result = new Promise<SpyElement>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -104,7 +109,7 @@ export class SpyService {
       this.pending = { sessionId, resolve, reject, timeoutId };
     });
 
-    const optionsJson = kind === 'image' && options ? JSON.stringify(options) : null;
+    const optionsJson = needsFreeze && options ? JSON.stringify(options) : null;
 
     try {
       await connection.invoke('StartSpy', sessionId, kind, optionsJson);

@@ -1,0 +1,13 @@
+.text-offset-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .pick-btn { align-self: flex-start; cursor: pointer; }
+  .hint { font-size: 12px; opacity: 0.8; }
+  .error { color: #c0392b; font-size: 12px; }
+  .offset-row { display: flex; gap: 8px; }
+  label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
+  input[type='number'] { width: 80px; }
+  .preview { max-width: 240px; border: 1px solid #ccc; margin-top: 4px; }
+}

@@ -66,7 +66,12 @@
     "freezeKey": "Freeze key",
     "ctrl": "Ctrl",
     "shift": "Shift",
-    "alt": "Alt"
+    "alt": "Alt",
+    "pickAnchorTarget": "Pick anchor and target",
+    "picking": "Waiting for selection…",
+    "anchorText": "Anchor text",
+    "offsetX": "Offset X (px)",
+    "offsetY": "Offset Y (px)"
   },
   "seq": {
     "empty": "No steps yet. Add steps in order for nested menus.",

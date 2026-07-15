@@ -1,0 +1,20 @@
+<div class="text-offset-editor">
+  <button type="button" class="pick-btn" (click)="pick()" [disabled]="picking">
+    🎯 {{ 'picker.pickAnchorTarget' | translate }}
+  </button>
+  <span *ngIf="picking" class="hint">{{ 'picker.picking' | translate }}</span>
+  <span *ngIf="error" class="error">{{ error }}</span>
+
+  <label>{{ 'picker.anchorText' | translate }}
+    <input type="text" [(ngModel)]="anchorText" (ngModelChange)="emit()" />
+  </label>
+  <div class="offset-row">
+    <label>{{ 'picker.offsetX' | translate }}
+      <input type="number" [(ngModel)]="dx" (ngModelChange)="emit()" />
+    </label>
+    <label>{{ 'picker.offsetY' | translate }}
+      <input type="number" [(ngModel)]="dy" (ngModelChange)="emit()" />
+    </label>
+  </div>
+  <img *ngIf="preview" class="preview" [src]="'data:image/png;base64,' + preview" alt="çapa" />
+</div>
