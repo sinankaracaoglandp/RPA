@@ -191,6 +191,19 @@ Studio workflow modeli/canvas/property paneli.
 Gerekçe: While, For ve ForEach döngülerini ortak designer bağlantı semantiğine taşırken
 sayaç tabanlı döngüyü ayrı bir `Logic.For` node'u olarak sunmak.
 
+## Kontrat Değişikliği — 2026-07-15 (E-Invoice UBL Activities)
+
+Workflow aktivite kontratına `EInvoice.ReadUbl` ve `EInvoice.ReadUblBatch` kimlikleri eklenmiştir.
+`EInvoice.ReadUbl` girdileri `filePath`, `xmlContent`, `mappings`, `outputBindings`; çıktıları
+`invoice`, `lines`, `customFields` olarak tanımlanmıştır. `EInvoice.ReadUblBatch` girdileri
+`filePaths`, `xmlContents`, `errorMode`, `mappings`, `outputBindings`; çıktısı `results` olarak
+tanımlanmıştır. Tekli ve batch kaynak çiftleri karşılıklı dışlayıcıdır.
+
+Etkilenen paketler: Domain `WorkflowSchema.json`, Infrastructure UBL parser/aktiviteleri/katalog/DI,
+Studio aktivite modeli, mapping editörü ve property paneli.
+Gerekçe: UBL-TR e-faturalarının tekli veya batch olarak güvenli biçimde okunması, özel XPath/regex
+eşlemelerinin tasarlanması ve kararlı çıktıların workflow değişkenlerine bağlanması.
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:
