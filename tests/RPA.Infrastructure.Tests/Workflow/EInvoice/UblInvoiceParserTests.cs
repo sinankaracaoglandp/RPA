@@ -42,6 +42,41 @@ public sealed class UblInvoiceParserTests
     }
 
     [Fact]
+    public void ParseFile_ReadsSmallXmlFile()
+    {
+        var filePath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(filePath, SampleUbl.Xml);
+
+            var invoice = new UblInvoiceParser().ParseFile(filePath);
+
+            Assert.Equal("FTR202600001", invoice.InvoiceNumber);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public void ParseFile_RejectsFileExceedingCharacterLimit()
+    {
+        var filePath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(filePath, new string('x', 21));
+            var parser = new UblInvoiceParser(new InvoiceParseOptions(MaxCharacters: 20));
+
+            Assert.Throws<InvoiceParseException>(() => parser.ParseFile(filePath));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Fact]
     public void Models_ExposeStableWorkflowShape()
     {
         var invoice = new InvoiceData

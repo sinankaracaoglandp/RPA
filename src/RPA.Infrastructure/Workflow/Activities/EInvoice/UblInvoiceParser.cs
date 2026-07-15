@@ -35,15 +35,25 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         }
     }
 
-    public InvoiceData ParseFile(string filePath, IReadOnlyList<InvoiceMappingRule>? mappings = null) =>
-        Parse(File.ReadAllText(filePath), mappings);
+    public InvoiceData ParseFile(string filePath, IReadOnlyList<InvoiceMappingRule>? mappings = null)
+    {
+        using var reader = new StreamReader(filePath);
+        var buffer = new char[checked(_options.MaxCharacters + 1)];
+        var charactersRead = reader.ReadBlock(buffer, 0, buffer.Length);
+        if (charactersRead > _options.MaxCharacters)
+        {
+            throw new InvoiceParseException("XML boş veya izin verilen boyutu aşıyor.");
+        }
+
+        return Parse(new string(buffer, 0, charactersRead), mappings);
+    }
 
     private static InvoiceData ReadStandardFields(XDocument document, IReadOnlyList<InvoiceMappingRule> mappings)
     {
         _ = mappings;
         var root = document.Root ?? throw new InvoiceParseException("XML belge kökü içermiyor.");
-        var basic = ResolveNamespace(root, BasicComponentsNamespace);
-        var aggregate = ResolveNamespace(root, AggregateComponentsNamespace);
+        XNamespace basic = BasicComponentsNamespace;
+        XNamespace aggregate = AggregateComponentsNamespace;
         var monetaryTotal = root.Element(aggregate + "LegalMonetaryTotal");
 
         return new InvoiceData
@@ -61,13 +71,6 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
             PayableAmount = ParseDecimal(Value(monetaryTotal?.Element(basic + "PayableAmount"))),
             Lines = root.Elements(aggregate + "InvoiceLine").Select(line => ReadLine(line, aggregate, basic)).ToList()
         };
-    }
-
-    private static XNamespace ResolveNamespace(XElement root, string namespaceUri)
-    {
-        var declaration = root.Attributes().FirstOrDefault(attribute =>
-            attribute.IsNamespaceDeclaration && attribute.Value == namespaceUri);
-        return declaration?.Value ?? namespaceUri;
     }
 
     private static InvoicePartyData? ReadParty(XElement? partyContainer, XNamespace aggregate, XNamespace basic)
