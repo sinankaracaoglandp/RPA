@@ -110,19 +110,21 @@ export class EInvoiceMappingEditorComponent {
   }
 
   addDraftRule(): void {
-    if (!this.draft.name.trim() || !this.draft.valueXPath?.trim()) return;
+    if (!this.isDraftValid()) return;
     this.addRule(this.draft);
     this.draft = { ...this.draft, name: '' };
   }
 
   editRule(index: number): void { this.editingIndex = index; this.draft = { ...this.rules[index] }; }
   saveDraftRule(): void {
+    if (!this.isDraftValid()) return;
     if (this.editingIndex === null) { this.addDraftRule(); return; }
     this.rules = this.rules.map((rule, index) => index === this.editingIndex ? { ...this.draft } : rule);
     this.editingIndex = null;
     this.emit();
   }
   removeRule(index: number): void { this.rules = this.rules.filter((_, current) => current !== index); this.emit(); }
+  private isDraftValid(): boolean { return Boolean(this.draft.name.trim() && this.draft.valueXPath?.trim()); }
 
   regexGroups(): Record<string, string> {
     if (!this.sampleDocument || !this.draft.regex) return {};

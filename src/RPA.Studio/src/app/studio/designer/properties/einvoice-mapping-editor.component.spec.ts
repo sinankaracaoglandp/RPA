@@ -110,6 +110,18 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(emitted.join('')).not.toContain('<Invoice');
   });
 
+  it.each([
+    { field: 'name' as const, value: '' },
+    { field: 'valueXPath' as const, value: '   ' },
+  ])('does not emit an edited rule with blank $field', ({ field, value }) => {
+    const component = fixture.componentInstance;
+    component.value = JSON.stringify([MAPPING]);
+    const emitted: string[] = []; component.valueChange.subscribe(item => emitted.push(item));
+    component.editRule(0); component.updateDraft(field, value); component.saveDraftRule();
+    expect(emitted).toEqual([]);
+    expect(component.rules).toEqual([MAPPING]);
+  });
+
   it('clears stale sample state when a replacement XML is malformed', async () => {
     fixture.componentInstance.loadSampleXml(SAMPLE_UBL);
     const file = { text: vi.fn().mockResolvedValue('<Invoice>') } as unknown as File;
