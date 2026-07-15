@@ -27,4 +27,10 @@ public class StringFunctionsTests
     [Fact] public void PadLeft() => Assert.Equal("007", Eval("PadLeft(\"7\", 3, \"0\")"));
     [Fact] public void PadRight() => Assert.Equal("7..", Eval("PadRight(\"7\", 3, \".\")"));
     [Fact] public void Concat_Variadic() => Assert.Equal("abc", Eval("Concat(\"a\", \"b\", \"c\")"));
+
+    [Fact] public void PadLeft_NegativeLength_ThrowsBusiness()
+        => Assert.Throws<RPA.Domain.Exceptions.BusinessException>(() => Eval("PadLeft(\"7\", -1, \"0\")"));
+
+    [Fact] public void PadRight_NegativeLength_ThrowsBusiness()
+        => Assert.Throws<RPA.Domain.Exceptions.BusinessException>(() => Eval("PadRight(\"7\", -1, \".\")"));
 }

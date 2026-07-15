@@ -35,9 +35,9 @@ internal static class StringFunctions
         Fn("IndexOf", "int", new() { P("metin", "string"), P("alt", "string") }, "İlk konum (yoksa -1).", "IndexOf(ad, \"x\")",
             a => (long)AsString(a[0]).IndexOf(AsString(a[1]), StringComparison.Ordinal)),
         Fn("PadLeft", "string", new() { P("metin", "string"), P("uzunluk", "int"), P("karakter", "string", true) },
-            "Sola doldurur.", "PadLeft(no, 5, \"0\")", a => AsString(a[0]).PadLeft(AsInt("PadLeft", a[1]), PadChar(a, 2))),
+            "Sola doldurur.", "PadLeft(no, 5, \"0\")", a => AsString(a[0]).PadLeft(PadLength("PadLeft", a[1]), PadChar(a, 2))),
         Fn("PadRight", "string", new() { P("metin", "string"), P("uzunluk", "int"), P("karakter", "string", true) },
-            "Sağa doldurur.", "PadRight(no, 5, \".\")", a => AsString(a[0]).PadRight(AsInt("PadRight", a[1]), PadChar(a, 2))),
+            "Sağa doldurur.", "PadRight(no, 5, \".\")", a => AsString(a[0]).PadRight(PadLength("PadRight", a[1]), PadChar(a, 2))),
         Fn("Concat", "string", new() { P("...", "any") }, "Tüm argümanları birleştirir.", "Concat(a, \"-\", b)",
             a => string.Concat(a.Select(AsString))),
     };
@@ -54,6 +54,13 @@ internal static class StringFunctions
             return s.Substring(start, len);
         }
         return s.Substring(start);
+    }
+
+    private static int PadLength(string fn, object? v)
+    {
+        var len = AsInt(fn, v);
+        if (len < 0) { throw ExpressionErrors.Business($"{fn}: uzunluk {len} negatif olamaz."); }
+        return len;
     }
 
     private static char PadChar(IReadOnlyList<object?> a, int index)
