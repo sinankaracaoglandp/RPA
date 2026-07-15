@@ -218,6 +218,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
     [InlineData("web")]
     [InlineData("desktop")]
     [InlineData("image")]
+    [InlineData("text-offset")]
     public async Task StudioHub_StartSpy_AcceptsSupportedKind(string kind)
     {
         var connection = CreateHubConnection(GenerateToken());
