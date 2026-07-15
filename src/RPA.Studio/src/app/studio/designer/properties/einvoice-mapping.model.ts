@@ -111,7 +111,15 @@ function convert(value: string, type: EInvoiceMappingRule['type']): unknown {
   if (type === 'decimal') { const parsed = Number(value.replace(',', '.')); if (!Number.isFinite(parsed)) throw new Error('decimal dönüşümü başarısız.'); return parsed; }
   if (type === 'integer') { if (!/^[+-]?\d+$/.test(value)) throw new Error('integer dönüşümü başarısız.'); return Number.parseInt(value, 10); }
   if (type === 'boolean') { if (/^(true|1)$/i.test(value)) return true; if (/^(false|0)$/i.test(value)) return false; throw new Error('boolean dönüşümü başarısız.'); }
-  const date = new Date(value); if (Number.isNaN(date.getTime())) throw new Error('date dönüşümü başarısız.'); return date.toISOString();
+  const match = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/.exec(value);
+  if (!match) throw new Error('date dönüşümü başarısız.');
+  const year = Number(match.groups!['year']);
+  const month = Number(match.groups!['month']);
+  const day = Number(match.groups!['day']);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year === 0 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) throw new Error('date dönüşümü başarısız.');
+  return value;
 }
 
 export function previewRule(rule: EInvoiceMappingRule, document: XMLDocument): RulePreview {

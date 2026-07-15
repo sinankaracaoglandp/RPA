@@ -57,4 +57,21 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(preview.converted).toBeNull();
     expect(preview.error).toContain('Regex group');
   });
+
+  it('keeps an exact valid yyyy-MM-dd preview as a date-only string', () => {
+    const doc = new DOMParser().parseFromString(SAMPLE_UBL.replace('FTR2026', '2026-07-15'), 'application/xml');
+    const preview = previewRule({ ...MAPPING, type: 'date' }, doc);
+    expect(preview.error).toBeUndefined();
+    expect(preview.converted).toBe('2026-07-15');
+  });
+
+  it.each(['2026-02-30', '07/15/2026', '2026-07-15T00:00:00Z'])(
+    'rejects non-DateOnly value %s',
+    value => {
+      const doc = new DOMParser().parseFromString(SAMPLE_UBL.replace('FTR2026', value), 'application/xml');
+      const preview = previewRule({ ...MAPPING, type: 'date' }, doc);
+      expect(preview.converted).toBeNull();
+      expect(preview.error).toContain('date');
+    },
+  );
 });
