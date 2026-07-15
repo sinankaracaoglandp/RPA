@@ -236,7 +236,7 @@ public class BaseRunnerTests
         """.Replace("\"__XML__\"", System.Text.Json.JsonSerializer.Serialize(xml));
 
         await CreateRunner(
-            new Dictionary<string, ActivityMetadata> { ["EInvoice.ReadUbl"] = new ReadUblActivity(new UblInvoiceParser()).GetMetadata() },
+            ActivityRegistry.BuildCatalog(),
             factory,
             observer: observer).ExecuteAsync(Version(json), new(), Guid.NewGuid());
 

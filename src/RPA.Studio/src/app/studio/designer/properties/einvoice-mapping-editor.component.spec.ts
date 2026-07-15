@@ -6,11 +6,28 @@ const SAMPLE_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd
 const MAPPING = { name: 'invoiceId', source: 'XPath' as const, valueXPath: '/Invoice/cbc:ID', type: 'string' as const, required: true, multiple: false };
 const SCOPED_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:Note>first</cbc:Note></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:Note>second</cbc:Note></cac:InvoiceLine></Invoice>`;
 const DEEP_UBL = `<Invoice><Lines><Line><Details><Code>ABC</Code></Details></Line><Line><Details><Code>DEF</Code></Details></Line></Lines></Invoice>`;
+let workerHangs = false;
+const workers: FakeWorker[] = [];
+class FakeWorker {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  terminated = false;
+  constructor(..._args: unknown[]) { workers.push(this); }
+  postMessage(data: { pattern: string; group?: string; raw: string | string[] }): void {
+    if (workerHangs) return;
+    const values = Array.isArray(data.raw) ? data.raw : [data.raw];
+    const selected: string[] = []; let groups: Record<string, string> = {};
+    for (const value of values) { const match = new RegExp(data.pattern).exec(value); if (!match) continue; groups = { ...(match.groups ?? {}) }; match.slice(1).forEach((v, i) => { if (v) groups[String(i + 1)] = v; }); selected.push(data.group ? (/^\d+$/.test(data.group) ? match[Number(data.group)] : match.groups?.[data.group])! : match[0]); }
+    this.onmessage?.({ data: { selected, groups } } as MessageEvent);
+  }
+  terminate(): void { this.terminated = true; }
+}
 
 describe('EInvoiceMappingEditorComponent', () => {
   let fixture: ComponentFixture<EInvoiceMappingEditorComponent>;
 
   beforeEach(async () => {
+    workerHangs = false; workers.length = 0;
+    vi.stubGlobal('Worker', FakeWorker);
     await TestBed.configureTestingModule({ imports: [EInvoiceMappingEditorComponent] }).compileComponents();
     fixture = TestBed.createComponent(EInvoiceMappingEditorComponent);
     fixture.detectChanges();
@@ -122,10 +139,14 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.rules).toEqual([MAPPING]);
   });
 
-  it('rejects a catastrophic regex before executing it', () => {
+  it('times out and terminates a catastrophic regex worker without main-thread execution', () => {
+    vi.useFakeTimers(); workerHangs = true;
     const component = new EInvoiceMappingEditorComponent(); component.loadSampleXml(SAMPLE_UBL);
-    const result = component.preview({ ...MAPPING, regex: '(a+)+$', valueXPath: '/Invoice/cbc:Note' });
-    expect(result.error).toContain('güvenli değil');
+    expect(component.preview({ ...MAPPING, regex: '(a+)+$', valueXPath: '/Invoice/cbc:Note' }).error).toContain('bekleniyor');
+    vi.advanceTimersByTime(76);
+    expect(component.preview({ ...MAPPING, regex: '(a+)+$', valueXPath: '/Invoice/cbc:Note' }).error).toContain('zaman aşımına');
+    expect(workers[0].terminated).toBe(true);
+    vi.useRealTimers();
   });
 
   it.each(['InvoiceNotes', 'LineNotes'] as const)('accepts %s without valueXPath', source => {

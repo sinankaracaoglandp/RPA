@@ -116,7 +116,7 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         foreach (var mapping in mappings)
         {
             (object? Value, string? SourceNote) result;
-            try { result = ApplyRule(document, mapping); }
+            try { result = ApplyRule(document, invoice, mapping); }
             catch (InvoiceParseException) { throw; }
             catch (XPathException) { throw new InvoiceParseException($"Geçersiz XPath eşlemesi: {mapping.Name}"); }
             catch (ArgumentException) { throw new InvoiceParseException($"Geçersiz regex eşlemesi: {mapping.Name}"); }
@@ -129,11 +129,12 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         return invoice;
     }
 
-    private (object? Value, string? SourceNote) ApplyRule(XDocument document, InvoiceMappingRule rule)
+    private (object? Value, string? SourceNote) ApplyRule(XDocument document, InvoiceData invoice, InvoiceMappingRule rule)
     {
         var ns = CreateNamespaceManager(document);
         IEnumerable<string> sourceValues = rule.Source switch
         {
+            "Standard" => ReadStandardValues(invoice, rule.ValueXPath ?? rule.Name),
             "InvoiceNotes" => document.Root?.Elements(XName.Get("Note", BasicComponentsNamespace)).Select(note => note.Value) ?? [],
             "LineNotes" => document.Descendants(XName.Get("InvoiceLine", AggregateComponentsNamespace)).SelectMany(line => line.Elements(XName.Get("Note", BasicComponentsNamespace))).Select(note => note.Value),
             "XPath" => ReadXPathValues(document, rule, ns),
@@ -144,6 +145,43 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         if (values.Count == 0 && rule.Required) throw new InvoiceParseException($"Zorunlu eşleme bulunamadı: {rule.Name}");
         var sourceNote = rule.Source is "InvoiceNotes" or "LineNotes" ? values.FirstOrDefault().Source : null;
         return (rule.Multiple ? values.Select(item => item.Value).ToList() : values.FirstOrDefault().Value, sourceNote);
+    }
+
+    private static IEnumerable<string> ReadStandardValues(InvoiceData invoice, string field)
+    {
+        object? value = field.Trim().ToLowerInvariant() switch
+        {
+            "uuid" => invoice.Uuid,
+            "id" or "invoicenumber" or "invoice.number" => invoice.InvoiceNumber,
+            "issuedate" or "invoice.date" => invoice.IssueDate,
+            "issuetime" or "invoice.time" => invoice.IssueTime,
+            "invoicetype" or "type" => invoice.InvoiceType,
+            "profileid" or "scenario" => invoice.ProfileId,
+            "currency" or "documentcurrencycode" => invoice.Currency,
+            "suppliername" or "supplier.name" => invoice.Supplier?.Name,
+            "suppliertaxid" or "supplier.taxid" => invoice.Supplier?.TaxId,
+            "customername" or "customer.name" => invoice.Customer?.Name,
+            "customertaxid" or "customer.taxid" => invoice.Customer?.TaxId,
+            "taxexclusiveamount" => invoice.TaxExclusiveAmount,
+            "taxamount" => invoice.TaxAmount,
+            "allowancetotalamount" or "discounttotal" => invoice.AllowanceTotalAmount,
+            "taxinclusiveamount" => invoice.TaxInclusiveAmount,
+            "payableamount" => invoice.PayableAmount,
+            "exchangerate" => invoice.ExchangeRate,
+            "paymentaccounts" or "ibans" => invoice.PaymentAccounts,
+            _ => null
+        };
+
+        if (value is IEnumerable<string> values) return values;
+        var formatted = value switch
+        {
+            null => null,
+            DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            TimeOnly time => time.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString()
+        };
+        return formatted is null ? [] : [formatted];
     }
 
     private static IEnumerable<string> ReadXPathValues(XDocument document, InvoiceMappingRule rule, XmlNamespaceManager ns)

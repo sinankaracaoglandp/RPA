@@ -206,6 +206,35 @@ public sealed class UblInvoiceParserTests
     }
 
     [Fact]
+    public void Parse_StandardMappingsResolveAliasesTypesAndOptionalFields()
+    {
+        InvoiceMappingRule[] rules =
+        [
+            new("numberCopy", "Standard", null, "invoiceNumber", null, null),
+            new("scenarioCopy", "Standard", null, "scenario", null, null),
+            new("payableCopy", "Standard", null, "payableAmount", null, null, "decimal"),
+            new("unknownOptional", "Standard", null, "unknown", null, null)
+        ];
+
+        var invoice = new UblInvoiceParser().Parse(SampleUbl.Xml, rules);
+
+        Assert.Equal("FTR202600001", invoice.CustomFields["numberCopy"]);
+        Assert.Equal("TEMELFATURA", invoice.CustomFields["scenarioCopy"]);
+        Assert.Equal(120m, invoice.CustomFields["payableCopy"]);
+        Assert.DoesNotContain("unknownOptional", invoice.CustomFields);
+    }
+
+    [Fact]
+    public void Parse_RequiredUnknownStandardFieldThrowsNamedError()
+    {
+        var rule = new InvoiceMappingRule("requiredStandard", "Standard", null, "unknown", null, null, Required: true);
+
+        var exception = Assert.Throws<InvoiceParseException>(() => new UblInvoiceParser().Parse(SampleUbl.Xml, [rule]));
+
+        Assert.Contains("requiredStandard", exception.Message);
+    }
+
+    [Fact]
     public void Parse_LineNotesCanReturnMultipleConvertedValues()
     {
         var xml = SampleUbl.Xml.Replace("<basic:ID>1</basic:ID>", "<basic:ID>1</basic:ID><basic:Note>10</basic:Note><basic:Note>20</basic:Note>");

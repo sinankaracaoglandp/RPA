@@ -116,7 +116,8 @@ internal static class EInvoiceJson
         return resolved;
     }
 
-    public static void ValidateOutputBindings(object? value) => ValidateBindings(ReadBindings(value));
+    public static void ValidateOutputBindings(object? value, IEnumerable<string>? customFields = null) =>
+        ValidateBindings(ReadBindings(value), customFields);
 
     public static Dictionary<string, object?> ApplyBatchOutputBindings(
         IActivityExecutionContext context,
@@ -154,13 +155,16 @@ internal static class EInvoiceJson
         return resolved;
     }
 
-    private static void ValidateBindings(IReadOnlyDictionary<string, string> bindings)
+    private static void ValidateBindings(IReadOnlyDictionary<string, string> bindings, IEnumerable<string>? customFields = null)
     {
         var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var custom = customFields is null ? null : new HashSet<string>(customFields, StringComparer.OrdinalIgnoreCase);
         foreach (var (source, target) in bindings)
         {
             if (!IsSimpleIdentifier(source))
                 throw new InvoiceParseException($"Output binding kaynağı geçersiz: {source}");
+            if (custom is not null && !BindableProperties.Contains(source) && !custom.Contains(source))
+                throw new InvoiceParseException($"Output binding alanına izin verilmiyor: {source}");
             if (!IsSimpleIdentifier(target)) throw new InvoiceParseException($"Output binding hedefi geçersiz: {target}");
             if (ReservedOutputNames.Contains(target))
                 throw new InvoiceParseException($"Output binding hedefi ayrılmış bir addır: {target}");
@@ -188,6 +192,7 @@ internal static class EInvoiceJson
             "uuid" => invoice.Uuid,
             "invoicenumber" => invoice.InvoiceNumber,
             "issuedate" => invoice.IssueDate,
+            "issuetime" => invoice.IssueTime,
             "invoicetype" => invoice.InvoiceType,
             "profileid" => invoice.ProfileId,
             "currency" => invoice.Currency,
@@ -199,6 +204,10 @@ internal static class EInvoiceJson
             "paymentaccounts" => invoice.PaymentAccounts,
             "taxexclusiveamount" => invoice.TaxExclusiveAmount,
             "taxinclusiveamount" => invoice.TaxInclusiveAmount,
+            "taxamount" => invoice.TaxAmount,
+            "allowancetotalamount" => invoice.AllowanceTotalAmount,
+            "taxes" => invoice.Taxes,
+            "withholdingtaxes" => invoice.WithholdingTaxes,
             "payableamount" => invoice.PayableAmount,
             "customfields" => invoice.CustomFields,
             "extractionsources" => invoice.ExtractionSources,
@@ -209,9 +218,9 @@ internal static class EInvoiceJson
 
     private static readonly HashSet<string> BindableProperties = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Uuid", "InvoiceNumber", "IssueDate", "InvoiceType", "ProfileId", "Currency", "Supplier", "Customer",
+        "Uuid", "InvoiceNumber", "IssueDate", "IssueTime", "InvoiceType", "ProfileId", "Currency", "Supplier", "Customer",
         "Lines", "Notes", "ExchangeRate", "PaymentAccounts", "TaxExclusiveAmount", "TaxInclusiveAmount",
-        "PayableAmount", "CustomFields", "ExtractionSources"
+        "TaxAmount", "AllowanceTotalAmount", "Taxes", "WithholdingTaxes", "PayableAmount", "CustomFields", "ExtractionSources"
     };
 
     private static IReadOnlyDictionary<string, string> ReadBindings(object? value) => value switch

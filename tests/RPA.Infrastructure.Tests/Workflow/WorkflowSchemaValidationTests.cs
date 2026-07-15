@@ -84,6 +84,48 @@ public class WorkflowSchemaValidationTests
     }
 
     [Theory]
+    [InlineData("invoiceNumber", 42)]
+    [InlineData("unknownSource", "target")]
+    [InlineData("invoiceNumber", "bad.target")]
+    [InlineData("invoiceNumber", "lines")]
+    public void EInvoiceOutputBinding_WithInvalidSourceOrTarget_IsRejected(string source, object target)
+    {
+        var properties = new Dictionary<string, object?>
+        {
+            ["xmlContent"] = "<Invoice />",
+            ["outputBindings"] = new Dictionary<string, object?> { [source] = target }
+        };
+
+        Assert.False(new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUbl", properties)).IsValid);
+    }
+
+    [Fact]
+    public void EInvoiceOutputBinding_DuplicateTargetsCaseInsensitively_IsRejected()
+    {
+        var properties = new Dictionary<string, object?>
+        {
+            ["xmlContent"] = "<Invoice />",
+            ["outputBindings"] = new Dictionary<string, object?> { ["invoiceNumber"] = "value", ["currency"] = "VALUE" }
+        };
+
+        Assert.False(new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUbl", properties)).IsValid);
+    }
+
+    [Fact]
+    public void EInvoiceOutputBinding_AllowsDeclaredCustomMappingName()
+    {
+        var properties = new Dictionary<string, object?>
+        {
+            ["xmlContent"] = "<Invoice />",
+            ["mappings"] = new object[] { new { name = "orderNumber", source = "InvoiceNotes", type = "string" } },
+            ["outputBindings"] = new Dictionary<string, object?> { ["orderNumber"] = "orderNo" }
+        };
+
+        var result = new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadUbl", properties));
+        Assert.True(result.IsValid, string.Join(Environment.NewLine, result.Errors));
+    }
+
+    [Theory]
     [InlineData("mappings", "not-an-array")]
     [InlineData("outputBindings", "not-an-object")]
     [InlineData("errorMode", "Ignore")]

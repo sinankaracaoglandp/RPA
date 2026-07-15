@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, Output } from '@angular/core';
 import { EInvoiceMappingRule, RulePreview, XmlTreeNode, buildXPath, ibanPreset, kurPreset, parseSampleXml, previewRule } from './einvoice-mapping.model';
 
 @Component({
@@ -7,7 +7,7 @@ import { EInvoiceMappingRule, RulePreview, XmlTreeNode, buildXPath, ibanPreset, 
   templateUrl: './einvoice-mapping-editor.component.html',
   styleUrls: ['./einvoice-mapping-editor.component.scss'],
 })
-export class EInvoiceMappingEditorComponent {
+export class EInvoiceMappingEditorComponent implements OnDestroy {
   constructor(private readonly cdr: ChangeDetectorRef = null!) {}
 
   private sampleDocument?: XMLDocument;
@@ -16,6 +16,11 @@ export class EInvoiceMappingEditorComponent {
   sampleError = '';
   private readonly expanded = new Set<XmlTreeNode>();
   editingIndex: number | null = null;
+  private regexWorker?: Worker;
+  private regexTimer?: ReturnType<typeof setTimeout>;
+  private regexSignature = '';
+  private regexResult: RulePreview = { raw: null, converted: null };
+  regexGroupsValue: Record<string, string> = {};
   draft: EInvoiceMappingRule = {
     name: '', source: 'XPath', valueXPath: '', type: 'string', required: false, multiple: false,
   };
@@ -101,6 +106,7 @@ export class EInvoiceMappingEditorComponent {
 
   updateDraft(field: keyof EInvoiceMappingRule, value: unknown): void {
     this.draft = { ...this.draft, [field]: value };
+    this.cancelRegexPreview();
   }
 
   applyPreset(kind: 'kur' | 'iban' | 'note'): void {
@@ -128,23 +134,8 @@ export class EInvoiceMappingEditorComponent {
     const sourceNeedsXPath = this.draft.source === 'XPath';
     return Boolean(this.draft.name.trim() && (!sourceNeedsXPath || this.draft.valueXPath?.trim()));
   }
-  private isSafeRegex(pattern: string): boolean {
-    if (pattern.length > 256) return false;
-    return !/(?:\([^)]*[+*][^)]*\)|\[[^\]]+\][+*]|\\[dDsSwW][+*]|\.[+*])[+*{]/.test(pattern);
-  }
-
   regexGroups(): Record<string, string> {
-    if (!this.sampleDocument || !this.draft.regex || !this.isSafeRegex(this.draft.regex)) return {};
-    const raw = this.preview({ ...this.draft, regex: null, group: null }).raw;
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    if (!value) return {};
-    try {
-      const match = new RegExp(this.draft.regex).exec(value);
-      if (!match) return {};
-      const groups: Record<string, string> = { ...(match.groups ?? {}) };
-      match.slice(1).forEach((group, index) => { if (group !== undefined) groups[String(index + 1)] = group; });
-      return groups;
-    } catch { return {}; }
+    return this.regexGroupsValue;
   }
 
   previewJson(): string {
@@ -161,9 +152,33 @@ export class EInvoiceMappingEditorComponent {
 
   buildXPath(node: XmlTreeNode): string { return buildXPath(node); }
   preview(rule: EInvoiceMappingRule): RulePreview {
-    if (rule.regex && !this.isSafeRegex(rule.regex)) return { raw: null, converted: null, error: 'Regex deseni güvenli değil.' };
-    return this.sampleDocument ? previewRule(rule, this.sampleDocument) : { raw: null, converted: null, error: 'Örnek XML yüklenmedi.' };
+    if (!this.sampleDocument) return { raw: null, converted: null, error: 'Örnek XML yüklenmedi.' };
+    if (!rule.regex) return previewRule(rule, this.sampleDocument);
+    const base = previewRule({ ...rule, regex: null, group: null, type: 'string' }, this.sampleDocument);
+    const signature = JSON.stringify([rule.regex, rule.group, rule.type, rule.multiple, base.raw]);
+    if (signature !== this.regexSignature) this.startRegexPreview(signature, rule, base.raw);
+    return this.regexResult;
   }
+  private startRegexPreview(signature: string, rule: EInvoiceMappingRule, raw: RulePreview['raw']): void {
+    this.cancelRegexPreview(); this.regexSignature = signature; this.regexResult = { raw: null, converted: null, error: 'Regex önizlemesi bekleniyor.' };
+    if (typeof Worker === 'undefined') { this.regexResult = { raw: null, converted: null, error: 'Regex önizlemesi bu ortamda kullanılamıyor.' }; return; }
+    this.regexWorker = new Worker(new URL('./einvoice-regex.worker', import.meta.url), { type: 'module' });
+    this.regexWorker.onmessage = ({ data }) => {
+      this.regexGroupsValue = data.groups ?? {};
+      this.regexResult = data.error ? { raw: null, converted: null, error: data.error } : this.convertRegexResult(data.selected, rule);
+      this.cancelWorkerOnly(); this.cdr?.markForCheck();
+    };
+    this.regexTimer = setTimeout(() => { this.regexResult = { raw: null, converted: null, error: 'Regex önizlemesi zaman aşımına uğradı.' }; this.cancelWorkerOnly(); this.cdr?.markForCheck(); }, 75);
+    this.regexWorker.postMessage({ pattern: rule.regex, group: rule.group, raw });
+  }
+  private convertRegexResult(values: string[], rule: EInvoiceMappingRule): RulePreview {
+    if (!values.length) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu değer bulunamadı.' : undefined };
+    const doc = new DOMParser().parseFromString(`<v>${values.map(value => `<x>${value.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</x>`).join('')}</v>`, 'application/xml');
+    return previewRule({ ...rule, regex: null, group: null, valueXPath: '/v/x' }, doc);
+  }
+  private cancelWorkerOnly(): void { this.regexWorker?.terminate(); this.regexWorker = undefined; if (this.regexTimer) clearTimeout(this.regexTimer); this.regexTimer = undefined; }
+  private cancelRegexPreview(): void { this.cancelWorkerOnly(); this.regexSignature = ''; this.regexGroupsValue = {}; }
+  ngOnDestroy(): void { this.cancelRegexPreview(); }
   addRule(rule: EInvoiceMappingRule): void { this.rules = [...this.rules, { ...rule }]; this.emit(); }
   serializedValue(): EInvoiceMappingRule[] { return this.rules.map(rule => ({ ...rule })); }
   private emit(): void { this.valueChange.emit(JSON.stringify(this.serializedValue())); }

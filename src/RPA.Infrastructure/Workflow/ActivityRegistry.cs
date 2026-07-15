@@ -52,13 +52,13 @@ public static class ActivityRegistry
     private static void RegisterEInvoice(ActivityCatalogBuilder b)
     {
         b.Activity("EInvoice.ReadUbl").DisplayName("E-Fatura UBL Oku").Category(CatEInvoice)
-            .Input("filePath", "string", required: false).Input("xmlContent", "string", required: false)
+            .Input("filePath", "Sensitive", required: false).Input("xmlContent", "Sensitive", required: false)
             .Input("mappings", "JSON", required: false, pickerKind: "einvoice-mapping")
             .Input("outputBindings", "JSON", required: false)
             .Output("invoice", "JSON").Output("lines", "List<JSON>").Output("customFields", "JSON");
 
         b.Activity("EInvoice.ReadUblBatch").DisplayName("E-Fatura UBL Toplu Oku").Category(CatEInvoice)
-            .Input("filePaths", "JSON", required: false).Input("xmlContents", "JSON", required: false)
+            .Input("filePaths", "Sensitive", required: false).Input("xmlContents", "Sensitive", required: false)
             .Input("errorMode", "string", required: false, defaultValue: "Continue", options: new[] { "Continue", "Stop" })
             .Input("mappings", "JSON", required: false, pickerKind: "einvoice-mapping")
             .Input("outputBindings", "JSON", required: false).Output("results", "JSON");

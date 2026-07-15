@@ -47,7 +47,7 @@ public class ActivityRegistryCoverageTests
     private static readonly HashSet<string> SupportedInputTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "string", "int", "number", "decimal", "bool", "boolean",
-        "JSON", "DataTable", "Credential",
+        "JSON", "DataTable", "Credential", "Sensitive",
     };
 
     /// <summary>Bilinçli olarak input'suz aktiviteler (parametre gerektirmez).</summary>
