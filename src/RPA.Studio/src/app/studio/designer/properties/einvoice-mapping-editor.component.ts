@@ -1,5 +1,5 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { EInvoiceMappingRule, RulePreview, XmlTreeNode, buildXPath, parseSampleXml, previewRule } from './einvoice-mapping.model';
+import { ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
+import { EInvoiceMappingRule, RulePreview, XmlTreeNode, buildXPath, ibanPreset, kurPreset, parseSampleXml, previewRule } from './einvoice-mapping.model';
 
 @Component({
   selector: 'app-einvoice-mapping-editor',
@@ -8,10 +8,13 @@ import { EInvoiceMappingRule, RulePreview, XmlTreeNode, buildXPath, parseSampleX
   styleUrls: ['./einvoice-mapping-editor.component.scss'],
 })
 export class EInvoiceMappingEditorComponent {
+  constructor(private readonly cdr: ChangeDetectorRef = null!) {}
+
   private sampleDocument?: XMLDocument;
   tree: XmlTreeNode[] = [];
   rules: EInvoiceMappingRule[] = [];
   sampleError = '';
+  private readonly expanded = new Set<XmlTreeNode>();
   draft: EInvoiceMappingRule = {
     name: '', source: 'XPath', valueXPath: '', type: 'string', required: false, multiple: false,
   };
@@ -23,9 +26,53 @@ export class EInvoiceMappingEditorComponent {
   @Output() readonly valueChange = new EventEmitter<string>();
 
   loadSampleXml(xml: string): void {
+    this.sampleDocument = undefined;
+    this.tree = [];
     const parsed = parseSampleXml(xml);
     this.sampleDocument = parsed.document;
     this.tree = parsed.tree;
+    this.expanded.clear();
+    this.allTree().filter(item => item.node.children.length > 0).forEach(item => this.expanded.add(item.node));
+    this.cdr?.markForCheck();
+  }
+
+  flatTree(): Array<{ node: XmlTreeNode; depth: number }> {
+    const result: Array<{ node: XmlTreeNode; depth: number }> = [];
+    const visit = (nodes: XmlTreeNode[], depth: number): void => nodes.forEach(node => {
+      result.push({ node, depth });
+      if (this.expanded.has(node)) visit(node.children, depth + 1);
+    });
+    visit(this.tree, 0);
+    return result;
+  }
+
+  private allTree(): Array<{ node: XmlTreeNode; depth: number }> {
+    const result: Array<{ node: XmlTreeNode; depth: number }> = [];
+    const visit = (nodes: XmlTreeNode[], depth: number): void => nodes.forEach(node => { result.push({ node, depth }); visit(node.children, depth + 1); });
+    visit(this.tree, 0);
+    return result;
+  }
+
+  nodeSample(node: XmlTreeNode): string { return node.children.length ? '' : (node.element.textContent?.trim() ?? ''); }
+  repeatedCount(node: XmlTreeNode): number { return this.allTree().filter(item => item.node.name === node.name).length; }
+  isExpanded(node: XmlTreeNode): boolean { return this.expanded.has(node); }
+
+  onTreeKeydown(event: KeyboardEvent, node: XmlTreeNode): void {
+    const buttons = Array.from((event.currentTarget as HTMLElement).closest('.einvoice-mapping__tree')!
+      .querySelectorAll<HTMLButtonElement>('[data-testid="einvoice-tree-node"]'));
+    const index = buttons.indexOf(event.currentTarget as HTMLButtonElement);
+    if (event.key === 'ArrowDown' && buttons[index + 1]) buttons[index + 1].focus();
+    else if (event.key === 'ArrowUp' && buttons[index - 1]) buttons[index - 1].focus();
+    else if (event.key === 'ArrowLeft' && node.children.length && this.expanded.has(node)) {
+      this.expanded.delete(node);
+    } else if (event.key === 'ArrowLeft' && node.parent) {
+      const parentIndex = this.flatTree().findIndex(item => item.node === node.parent);
+      buttons[parentIndex]?.focus();
+    } else if (event.key === 'ArrowRight' && node.children.length && !this.expanded.has(node)) {
+      this.expanded.add(node);
+    } else if (event.key === 'ArrowRight' && node.children.length) buttons[index + 1]?.focus();
+    else return;
+    event.preventDefault();
   }
 
   async onSampleFileSelected(event: Event): Promise<void> {
@@ -35,6 +82,7 @@ export class EInvoiceMappingEditorComponent {
       this.loadSampleXml(await file.text());
       this.sampleError = '';
     } catch (error) {
+      this.cdr?.markForCheck();
       this.sampleError = error instanceof Error ? error.message : 'XML okunamadı.';
     }
   }
@@ -47,6 +95,8 @@ export class EInvoiceMappingEditorComponent {
     this.draft = { ...this.draft, [field]: value };
   }
 
+  applyPreset(kind: 'kur' | 'iban'): void { this.draft = { ...(kind === 'kur' ? kurPreset() : ibanPreset()) }; }
+
   addDraftRule(): void {
     if (!this.draft.name.trim() || !this.draft.valueXPath?.trim()) return;
     this.addRule(this.draft);
@@ -54,7 +104,7 @@ export class EInvoiceMappingEditorComponent {
   }
 
   previewJson(): string {
-    return JSON.stringify(this.rules.map(rule => ({ rule: rule.name, ...this.preview(rule) })), null, 2);
+    return JSON.stringify({ draft: this.preview(this.draft), rules: this.rules.map(rule => ({ rule: rule.name, ...this.preview(rule) })) }, null, 2);
   }
 
   findFirst(name: string): XmlTreeNode | undefined {

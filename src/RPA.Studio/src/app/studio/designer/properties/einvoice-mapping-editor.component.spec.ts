@@ -5,6 +5,7 @@ import { ibanPreset, kurPreset, previewRule } from './einvoice-mapping.model';
 const SAMPLE_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:ID>FTR2026</cbc:ID><cbc:PayableAmount>1234.50</cbc:PayableAmount><cbc:Note>IBAN: TR330006100519786457841326</cbc:Note></Invoice>`;
 const MAPPING = { name: 'invoiceId', source: 'XPath' as const, valueXPath: '/Invoice/cbc:ID', type: 'string' as const, required: true, multiple: false };
 const SCOPED_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:Note>first</cbc:Note></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:Note>second</cbc:Note></cac:InvoiceLine></Invoice>`;
+const DEEP_UBL = `<Invoice><Lines><Line><Details><Code>ABC</Code></Details></Line><Line><Details><Code>DEF</Code></Details></Line></Lines></Invoice>`;
 
 describe('EInvoiceMappingEditorComponent', () => {
   let fixture: ComponentFixture<EInvoiceMappingEditorComponent>;
@@ -36,6 +37,62 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(file.text).toHaveBeenCalledOnce();
     expect(component.findFirst('cbc:ID')).toBeTruthy();
     expect(emitted).toEqual([]);
+  });
+
+  it('renders and selects nodes at unlimited depth with sample and repeated count', () => {
+    fixture.componentInstance.loadSampleXml(DEEP_UBL);
+    expect(fixture.componentInstance.tree.length).toBe(1);
+    expect(fixture.componentInstance.flatTree().some(item => item.node.name === 'Code')).toBe(true);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.tree.length).toBe(1);
+    const code = fixture.nativeElement.querySelector('[data-node-name="Code"]') as HTMLButtonElement;
+    expect(code.textContent).toContain('ABC');
+    expect(code.textContent).toContain('2');
+    code.click();
+    expect(fixture.componentInstance.draft.valueXPath).toBe('/Invoice/Lines/Line/Details/Code');
+  });
+
+  it('offers every rule field and editable kur and IBAN presets', () => {
+    const root = fixture.nativeElement as HTMLElement;
+    for (const id of ['source', 'scope', 'xpath', 'regex', 'group', 'type'])
+      expect(root.querySelector(`#einvoice-rule-${id}`)).toBeTruthy();
+    (root.querySelector('[data-testid="einvoice-preset-iban"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.draft).toEqual(ibanPreset());
+    expect((root.querySelector('#einvoice-rule-name') as HTMLInputElement).value).toBe('iban');
+  });
+
+  it('previews the current draft including raw group and conversion before add', () => {
+    fixture.componentInstance.loadSampleXml(SAMPLE_UBL);
+    expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
+    fixture.componentInstance.draft = ibanPreset();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
+    const preview = fixture.nativeElement.querySelector('[data-testid="einvoice-draft-preview"]') as HTMLElement;
+    expect(preview.textContent).toContain('TR330006100519786457841326');
+    expect(fixture.componentInstance.rules).toEqual([]);
+  });
+
+  it('clears stale sample state when a replacement XML is malformed', async () => {
+    fixture.componentInstance.loadSampleXml(SAMPLE_UBL);
+    const file = { text: vi.fn().mockResolvedValue('<Invoice>') } as unknown as File;
+    await fixture.componentInstance.onSampleFileSelected({ target: { files: [file] } } as unknown as Event);
+    expect(fixture.componentInstance.tree).toEqual([]);
+    expect(fixture.componentInstance.preview(fixture.componentInstance.draft).error).toContain('yüklenmedi');
+  });
+
+  it('moves tree focus with arrows and collapses or expands branches', () => {
+    fixture.componentInstance.loadSampleXml(DEEP_UBL);
+    fixture.detectChanges();
+    const buttons = fixture.nativeElement.querySelectorAll('[data-testid="einvoice-tree-node"]');
+    (buttons[0] as HTMLButtonElement).focus();
+    (buttons[0] as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[1]);
+    (buttons[1] as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(fixture.componentInstance.isExpanded(fixture.componentInstance.findFirst('Lines')!)).toBe(false);
+    (buttons[1] as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(document.activeElement).toBe(buttons[0]);
   });
   it('builds namespace-aware xpath and named regex groups', () => {
     const component = new EInvoiceMappingEditorComponent();

@@ -1,45 +1,41 @@
 <section class="einvoice-mapping" aria-label="E-fatura eşleme editörü">
   <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
     <h4>XML ağacı</h4>
-    <label class="einvoice-mapping__file-label" for="einvoice-sample">Örnek XML seç</label>
-    <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml"
-      (change)="onSampleFileSelected($event)" />
+    <label for="einvoice-sample">Örnek XML seç</label>
+    <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml" (change)="onSampleFileSelected($event)" />
     @if (sampleError) { <p role="alert">{{ sampleError }}</p> }
-    <div class="einvoice-mapping__tree" role="tree" aria-label="XML elemanları">
-      @for (node of tree; track $index) {
-        <button type="button" role="treeitem" (click)="selectNode(node)">{{ node.name }}</button>
-        @for (child of node.children; track $index) {
-          <button type="button" role="treeitem" class="einvoice-mapping__tree-child"
-            (click)="selectNode(child)">{{ child.name }}</button>
-        }
+    <ul class="einvoice-mapping__tree" aria-label="XML elemanları">
+      @for (item of flatTree(); track item.node.element) {
+        <li [style.padding-left.rem]="item.depth">
+          <button type="button" data-testid="einvoice-tree-node" [attr.data-node-name]="item.node.name"
+            [attr.aria-expanded]="item.node.children.length ? isExpanded(item.node) : null"
+            (click)="selectNode(item.node)" (keydown)="onTreeKeydown($event, item.node)">
+            {{ item.node.name }} @if (nodeSample(item.node)) { <span>{{ nodeSample(item.node) }}</span> }
+            @if (repeatedCount(item.node) > 1) { <span>×{{ repeatedCount(item.node) }}</span> }
+          </button>
+        </li>
       }
-    </div>
+    </ul>
   </div>
 
   <div class="einvoice-mapping__panel" data-testid="einvoice-rule-panel">
     <h4>Eşleme kuralı</h4>
-    <label for="einvoice-rule-name">Alan adı</label>
-    <input id="einvoice-rule-name" [value]="draft.name"
-      (input)="updateDraft('name', $any($event.target).value)" />
-    <label for="einvoice-rule-xpath">XPath</label>
-    <input id="einvoice-rule-xpath" [value]="draft.valueXPath"
-      (input)="updateDraft('valueXPath', $any($event.target).value)" />
-    <label for="einvoice-rule-type">Veri tipi</label>
-    <select id="einvoice-rule-type" [value]="draft.type"
-      (change)="updateDraft('type', $any($event.target).value)">
-      <option value="string">Metin</option><option value="integer">Tamsayı</option>
-      <option value="decimal">Ondalık</option><option value="date">Tarih</option>
-      <option value="boolean">Boolean</option>
-    </select>
-    <label><input type="checkbox" [checked]="draft.required"
-      (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
-    <label><input type="checkbox" [checked]="draft.multiple"
-      (change)="updateDraft('multiple', $any($event.target).checked)" /> Çoklu</label>
+    <div><button type="button" data-testid="einvoice-preset-kur" (click)="applyPreset('kur')">Kur preset</button>
+      <button type="button" data-testid="einvoice-preset-iban" (click)="applyPreset('iban')">IBAN preset</button></div>
+    <label for="einvoice-rule-name">Alan adı</label><input id="einvoice-rule-name" [value]="draft.name" (input)="updateDraft('name', $any($event.target).value)" />
+    <label for="einvoice-rule-source">Kaynak</label><select id="einvoice-rule-source" [value]="draft.source" (change)="updateDraft('source', $any($event.target).value)">
+      <option>Standard</option><option>XPath</option><option>InvoiceNotes</option><option>LineNotes</option></select>
+    <label for="einvoice-rule-scope">Scope XPath</label><input id="einvoice-rule-scope" [value]="draft.scopeXPath ?? ''" (input)="updateDraft('scopeXPath', $any($event.target).value)" />
+    <label for="einvoice-rule-xpath">Value XPath</label><input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''" (input)="updateDraft('valueXPath', $any($event.target).value)" />
+    <label for="einvoice-rule-regex">Regex</label><input id="einvoice-rule-regex" [value]="draft.regex ?? ''" (input)="updateDraft('regex', $any($event.target).value)" />
+    <label for="einvoice-rule-group">Group</label><input id="einvoice-rule-group" [value]="draft.group ?? ''" (input)="updateDraft('group', $any($event.target).value)" />
+    <label for="einvoice-rule-type">Veri tipi</label><select id="einvoice-rule-type" [value]="draft.type" (change)="updateDraft('type', $any($event.target).value)">
+      <option value="string">Metin</option><option value="integer">Tamsayı</option><option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option></select>
+    <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
+    <label><input type="checkbox" [checked]="draft.multiple" (change)="updateDraft('multiple', $any($event.target).checked)" /> Çoklu</label>
     <button type="button" (click)="addDraftRule()">Kural ekle</button>
   </div>
 
-  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel">
-    <h4>Önizleme</h4>
-    <pre aria-live="polite">{{ previewJson() }}</pre>
-  </div>
+  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel"><h4>Önizleme</h4>
+    <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre></div>
 </section>
