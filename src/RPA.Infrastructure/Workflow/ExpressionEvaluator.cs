@@ -2,7 +2,6 @@ namespace RPA.Infrastructure.Workflow;
 
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json.Linq;
 
 /// <summary>
 /// MVP ifade değerlendiricisi (Spec Bölüm 5.2 — tam ifade dili S2'ye ertelendi).
@@ -27,10 +26,12 @@ public sealed class ExpressionEvaluator
     private static readonly string[] Operators = { "==", "!=", ">=", "<=", ">", "<" };
 
     private readonly VariableScope _scope;
+    private readonly Expressions.ExpressionEngine _engine;
 
     public ExpressionEvaluator(VariableScope scope)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        _engine = new Expressions.ExpressionEngine(scope);
     }
 
     /// <summary>
@@ -49,7 +50,7 @@ public sealed class ExpressionEvaluator
         var single = SingleTokenPattern.Match(expression);
         if (single.Success)
         {
-            return ResolvePath(single.Groups[1].Value.Trim());
+            return _engine.Evaluate(single.Groups[1].Value.Trim());
         }
 
         if (!TokenPattern.IsMatch(expression))
@@ -73,7 +74,7 @@ public sealed class ExpressionEvaluator
 
         return TokenPattern.Replace(expression, m =>
         {
-            var value = ResolvePath(m.Groups[1].Value.Trim());
+            var value = _engine.Evaluate(m.Groups[1].Value.Trim());
             return value?.ToString() ?? "";
         });
     }
@@ -149,7 +150,7 @@ public sealed class ExpressionEvaluator
         var single = SingleTokenPattern.Match(raw);
         if (single.Success)
         {
-            return ResolvePath(single.Groups[1].Value.Trim());
+            return _engine.Evaluate(single.Groups[1].Value.Trim());
         }
 
         if (TokenPattern.IsMatch(raw))
@@ -206,34 +207,6 @@ public sealed class ExpressionEvaluator
         }
 
         return raw;
-    }
-
-    /// <summary>Nokta ile ayrılmış yolu çözer: değişken + iç içe JSON alanları.</summary>
-    private object? ResolvePath(string path)
-    {
-        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-        {
-            return null;
-        }
-
-        if (!_scope.TryGetVariable(parts[0], out var current))
-        {
-            return null;
-        }
-
-        for (var i = 1; i < parts.Length && current is not null; i++)
-        {
-            current = current switch
-            {
-                JObject jo => jo[parts[i]],
-                IReadOnlyDictionary<string, object?> dict =>
-                    dict.TryGetValue(parts[i], out var v) ? v : null,
-                _ => null,
-            };
-        }
-
-        return current is JToken token ? VariableScope.JTokenToNative(token) : current;
     }
 
     private static bool Compare(object? left, object? right, string op)
