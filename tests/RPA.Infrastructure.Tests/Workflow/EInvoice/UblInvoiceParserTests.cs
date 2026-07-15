@@ -167,6 +167,46 @@ public sealed class UblInvoiceParserTests
         Assert.Equal(new object?[] { 10L, 20L }, Assert.IsType<List<object?>>(invoice.CustomFields["lineValues"]));
     }
 
+    [Theory]
+    [InlineData("1234,56", "1234.56")]
+    [InlineData("1.234,56", "1234.56")]
+    [InlineData("1234.56", "1234.56")]
+    [InlineData("1,234.56", "1234.56")]
+    public void Parse_ConvertsLocalizedDecimalsDeterministically(string text, string expected)
+    {
+        var rule = new InvoiceMappingRule("amount", "InvoiceNotes", null, null, null, null, "decimal");
+
+        var invoice = new UblInvoiceParser().Parse(SampleUbl.WithNotes(text), [rule]);
+
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), invoice.CustomFields["amount"]);
+    }
+
+    [Fact]
+    public void Parse_OnlyReadsStandardAccountUnderPaymentMeans()
+    {
+        var xml = SampleUbl.WithNotes("IBAN: TR12 0006 2000 1234 5678 9012 34")
+            .Replace("<aggregate:LegalMonetaryTotal>", "<aggregate:PayeeFinancialAccount><basic:ID>TR330006100519786457841326</basic:ID></aggregate:PayeeFinancialAccount><aggregate:LegalMonetaryTotal>");
+
+        var invoice = new UblInvoiceParser().Parse(xml);
+
+        Assert.Equal("TR120006200012345678901234", Assert.Single(invoice.PaymentAccounts));
+    }
+
+    [Fact]
+    public void Parse_PreservesExactSourceNotesForFallbacksAndCustomFields()
+    {
+        const string orderNote = "Sipariş No: S-42";
+        const string exchangeNote = "1 USD = 32,4567 TL";
+        const string ibanNote = "IBAN: TR12 0006 2000 1234 5678 9012 34";
+        var rule = new InvoiceMappingRule("orderNumber", "InvoiceNotes", null, null, @"Sipariş No:\s*(?<value>\S+)", "value");
+
+        var invoice = new UblInvoiceParser().Parse(SampleUbl.WithNotes(orderNote, exchangeNote, ibanNote), [rule]);
+
+        Assert.Equal(orderNote, invoice.ExtractionSources["orderNumber"]);
+        Assert.Equal(exchangeNote, invoice.ExtractionSources["exchangeRate"]);
+        Assert.Equal(ibanNote, invoice.ExtractionSources["paymentAccounts"]);
+    }
+
     private static class SampleUbl
     {
         public static string WithNotes(params string[] notes) => Xml.Replace(

@@ -18,6 +18,7 @@ public sealed class InvoiceData
     public decimal? TaxInclusiveAmount { get; init; }
     public decimal? PayableAmount { get; init; }
     public Dictionary<string, object?> CustomFields { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> ExtractionSources { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class InvoicePartyData

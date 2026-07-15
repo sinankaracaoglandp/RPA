@@ -75,18 +75,35 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
             Lines = root.Elements(aggregate + "InvoiceLine").Select(line => ReadLine(line, aggregate, basic)).ToList()
         };
 
-        invoice.ExchangeRate = ParseDecimal(Value(root.Element(aggregate + "PricingExchangeRate")?.Element(basic + "CalculationRate"))) ?? FindExchangeRate(notes);
-        var accounts = root.Descendants(aggregate + "PayeeFinancialAccount").Select(account => Value(account.Element(basic + "ID"))).Where(value => value is not null).Cast<string>().ToList();
-        invoice.PaymentAccounts.AddRange(accounts.Count > 0 ? accounts : FindIbans(notes));
+        invoice.ExchangeRate = ParseDecimal(Value(root.Element(aggregate + "PricingExchangeRate")?.Element(basic + "CalculationRate")));
+        if (invoice.ExchangeRate is null)
+        {
+            var fallback = FindExchangeRate(notes);
+            invoice.ExchangeRate = fallback.Value;
+            if (fallback.Source is not null) invoice.ExtractionSources["exchangeRate"] = fallback.Source;
+        }
+        var accounts = root.Elements(aggregate + "PaymentMeans").SelectMany(means => means.Elements(aggregate + "PayeeFinancialAccount"))
+            .Select(account => Value(account.Element(basic + "ID"))).Where(value => value is not null).Cast<string>().ToList();
+        if (accounts.Count > 0) invoice.PaymentAccounts.AddRange(accounts);
+        else
+        {
+            var fallback = FindIbans(notes);
+            invoice.PaymentAccounts.AddRange(fallback.Values);
+            if (fallback.Source is not null) invoice.ExtractionSources["paymentAccounts"] = fallback.Source;
+        }
         foreach (var mapping in mappings)
         {
-            var value = ApplyRule(document, mapping);
-            if (value is not null) invoice.CustomFields[mapping.Name] = value;
+            var result = ApplyRule(document, mapping);
+            if (result.Value is not null)
+            {
+                invoice.CustomFields[mapping.Name] = result.Value;
+                if (result.SourceNote is not null) invoice.ExtractionSources[mapping.Name] = result.SourceNote;
+            }
         }
         return invoice;
     }
 
-    private object? ApplyRule(XDocument document, InvoiceMappingRule rule)
+    private (object? Value, string? SourceNote) ApplyRule(XDocument document, InvoiceMappingRule rule)
     {
         var ns = CreateNamespaceManager(document);
         IEnumerable<string> sourceValues = rule.Source switch
@@ -96,9 +113,11 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
             "XPath" => ReadXPathValues(document, rule, ns),
             _ => []
         };
-        var values = sourceValues.Select(value => Match(value, rule)).Where(value => value is not null).Select(value => ConvertValue(value!, rule)).ToList();
+        var values = sourceValues.Select(source => (Source: source, Match: Match(source, rule))).Where(item => item.Match is not null)
+            .Select(item => (item.Source, Value: ConvertValue(item.Match!, rule))).ToList();
         if (values.Count == 0 && rule.Required) throw new InvoiceParseException($"Zorunlu eşleme bulunamadı: {rule.Name}");
-        return rule.Multiple ? values : values.FirstOrDefault();
+        var sourceNote = rule.Source is "InvoiceNotes" or "LineNotes" ? values.FirstOrDefault().Source : null;
+        return (rule.Multiple ? values.Select(item => item.Value).ToList() : values.FirstOrDefault().Value, sourceNote);
     }
 
     private static IEnumerable<string> ReadXPathValues(XDocument document, InvoiceMappingRule rule, XmlNamespaceManager ns)
@@ -127,7 +146,7 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
     private static object ConvertValue(string value, InvoiceMappingRule rule) => rule.Type.ToLowerInvariant() switch
     {
         "string" => value,
-        "decimal" => ParseDecimal(value.Replace(',', '.')) ?? throw ConversionError(rule.Name),
+        "decimal" => ParseDecimal(value) ?? throw ConversionError(rule.Name),
         "integer" => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer) ? integer : throw ConversionError(rule.Name),
         "date" => DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : throw ConversionError(rule.Name),
         "boolean" => bool.TryParse(value, out var boolean) ? boolean : value switch { "1" => true, "0" => false, _ => throw ConversionError(rule.Name) },
@@ -145,16 +164,31 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
         return manager;
     }
 
-    private static decimal? FindExchangeRate(IEnumerable<string> notes)
+    private static (decimal? Value, string? Source) FindExchangeRate(IEnumerable<string> notes)
     {
         var regex = new Regex(@"\b(?:1\s+)?[A-Z]{3}\s*=\s*(?<value>\d+(?:[.,]\d+)?)\s*(?:TL|TRY)\b", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
-        return notes.Select(note => regex.Match(note)).Where(match => match.Success).Select(match => ParseDecimal(match.Groups["value"].Value.Replace(',', '.'))).FirstOrDefault(value => value is not null);
+        foreach (var note in notes)
+        {
+            var match = regex.Match(note);
+            if (match.Success) return (ParseDecimal(match.Groups["value"].Value), note);
+        }
+        return (null, null);
     }
 
-    private static IEnumerable<string> FindIbans(IEnumerable<string> notes)
+    private static (List<string> Values, string? Source) FindIbans(IEnumerable<string> notes)
     {
         var regex = new Regex(@"\bTR(?:\s*\d){24}\b", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
-        return notes.SelectMany(note => regex.Matches(note).Select(match => Regex.Replace(match.Value, @"\s", string.Empty).ToUpperInvariant())).Distinct(StringComparer.Ordinal);
+        var values = new List<string>();
+        string? source = null;
+        foreach (var note in notes)
+        {
+            foreach (Match match in regex.Matches(note))
+            {
+                source ??= note;
+                values.Add(string.Concat(match.Value.Where(character => !char.IsWhiteSpace(character))).ToUpperInvariant());
+            }
+        }
+        return (values.Distinct(StringComparer.Ordinal).ToList(), source);
     }
 
     private static InvoicePartyData? ReadParty(XElement? partyContainer, XNamespace aggregate, XNamespace basic)
@@ -200,6 +234,16 @@ public sealed class UblInvoiceParser(InvoiceParseOptions? options = null)
     private static DateOnly? ParseDate(string? value) =>
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
 
-    private static decimal? ParseDecimal(string? value) =>
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
+    private static decimal? ParseDecimal(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var lastSeparator = Math.Max(value.LastIndexOf('.'), value.LastIndexOf(','));
+        var normalized = string.Concat(value.Select((character, index) => character switch
+        {
+            '.' or ',' when index == lastSeparator => '.',
+            '.' or ',' => '\0',
+            _ => character
+        }).Where(character => character != '\0'));
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
+    }
 }
