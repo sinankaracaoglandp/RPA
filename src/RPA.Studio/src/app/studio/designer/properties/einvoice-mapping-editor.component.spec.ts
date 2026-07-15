@@ -149,6 +149,26 @@ describe('EInvoiceMappingEditorComponent', () => {
     vi.useRealTimers();
   });
 
+  it('previews only the draft when saved rules contain distinct regexes', () => {
+    workerHangs = true;
+    const component = fixture.componentInstance;
+    component.loadSampleXml(SAMPLE_UBL);
+    component.rules = [
+      { ...MAPPING, name: 'saved-a', regex: 'FTR(?<a>\\d+)', group: 'a' },
+      { ...MAPPING, name: 'saved-b', regex: 'IBAN: (?<b>TR\\d+)', group: 'b' },
+    ];
+    component.draft = { ...ibanPreset(), regex: 'IBAN: (?<draft>TR\\d{24})', group: 'draft' };
+
+    const first = JSON.parse(component.previewJson());
+    const draftWorker = workers[0];
+    const second = JSON.parse(component.previewJson());
+
+    expect(workers).toHaveLength(1);
+    expect(workers[0]).toBe(draftWorker);
+    expect(first.rules).toEqual(component.rules.map(mapping => ({ mapping })));
+    expect(second.preview.error).toContain('bekleniyor');
+  });
+
   it.each(['InvoiceNotes', 'LineNotes'] as const)('accepts %s without valueXPath', source => {
     const component = fixture.componentInstance; const emitted: string[] = [];
     component.valueChange.subscribe(value => emitted.push(value));

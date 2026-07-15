@@ -139,7 +139,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   }
 
   previewJson(): string {
-    return JSON.stringify({ mapping: { ...this.draft }, groups: this.regexGroups(), preview: this.preview(this.draft), rules: this.rules.map(rule => ({ mapping: rule, preview: this.preview(rule) })) }, null, 2);
+    return JSON.stringify({ mapping: { ...this.draft }, groups: this.regexGroups(), preview: this.preview(this.draft), rules: this.rules.map(mapping => ({ mapping })) }, null, 2);
   }
 
   findFirst(name: string): XmlTreeNode | undefined {
