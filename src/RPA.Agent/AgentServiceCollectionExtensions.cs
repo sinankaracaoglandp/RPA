@@ -109,6 +109,8 @@ public static class AgentServiceCollectionExtensions
             services.AddSingleton<IWebSinglePicker, PlaywrightWebSinglePicker>();
             // Paket F: image bölge picker'ı. Koordinatör kind:"image" için kullanır.
             services.AddSingleton<IImageRegionPicker, GdiImageRegionPicker>();
+            // Text-offset picker: capa+ofset secimi. Koordinator kind:"text-offset" icin kullanir.
+            services.AddSingleton<ITextOffsetPicker, GdiTextOffsetPicker>();
             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
 
