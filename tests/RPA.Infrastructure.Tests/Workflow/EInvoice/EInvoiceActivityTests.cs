@@ -105,6 +105,19 @@ public sealed class EInvoiceActivityTests
     }
 
     [Fact]
+    public async Task Batch_AllFailures_RejectsUnsafeBindingSourceWithoutPublishingTarget()
+    {
+        var context = FakeActivityContext.With(
+            ("xmlContents", new[] { "<broken-one", "<broken-two" }),
+            ("errorMode", "Continue"),
+            ("outputBindings", "{\"supplier.name\":\"names\"}"));
+
+        await Assert.ThrowsAsync<InvoiceParseException>(() => new ReadUblBatchActivity(new UblInvoiceParser()).ExecuteAsync(context));
+
+        Assert.DoesNotContain("names", context.Variables);
+    }
+
+    [Fact]
     public void Metadata_DeclaresAllActivityInputsOutputsAndContinueDefault()
     {
         var single = new ReadUblActivity(new UblInvoiceParser()).GetMetadata();

@@ -43,6 +43,8 @@ public sealed class ReadUblBatchActivity(UblInvoiceParser parser) : IActivity
 
         var mappings = EInvoiceJson.ReadMappings(context.GetVariable<object?>("mappings"));
         var stopOnError = ReadStopOnError(context.GetVariable<string?>("errorMode"));
+        var outputBindings = context.GetVariable<object?>("outputBindings");
+        EInvoiceJson.ValidateOutputBindings(outputBindings);
         var sources = filePaths.Count > 0 ? filePaths : xmlContents;
         var results = new List<InvoiceBatchItemResult>(sources.Count);
         for (var index = 0; index < sources.Count; index++)
@@ -65,7 +67,7 @@ public sealed class ReadUblBatchActivity(UblInvoiceParser parser) : IActivity
         }
 
         context.SetVariable("results", results);
-        var boundOutputs = EInvoiceJson.ApplyBatchOutputBindings(context, results, context.GetVariable<object?>("outputBindings"));
+        var boundOutputs = EInvoiceJson.ApplyBatchOutputBindings(context, results, outputBindings);
         var outputs = new Dictionary<string, object?> { ["results"] = results };
         foreach (var (name, value) in boundOutputs) outputs[name] = value;
         return Task.FromResult(outputs);
@@ -112,6 +114,8 @@ internal static class EInvoiceJson
             context.SetVariable(target, output);
     }
 
+    public static void ValidateOutputBindings(object? value) => ValidateBindings(ReadBindings(value));
+
     public static Dictionary<string, object?> ApplyBatchOutputBindings(
         IActivityExecutionContext context,
         IReadOnlyList<InvoiceBatchItemResult> results,
@@ -150,12 +154,22 @@ internal static class EInvoiceJson
 
     private static void ValidateBindings(IReadOnlyDictionary<string, string> bindings)
     {
-        foreach (var target in bindings.Values)
+        foreach (var (source, target) in bindings)
         {
+            if (!IsSimpleIdentifier(source))
+                throw new InvoiceParseException($"Output binding kaynağı geçersiz: {source}");
             if (string.IsNullOrWhiteSpace(target)) throw new InvoiceParseException("Output binding hedefi boş olamaz.");
             if (ReservedOutputNames.Contains(target))
                 throw new InvoiceParseException($"Output binding hedefi ayrılmış bir addır: {target}");
         }
+    }
+
+    private static bool IsSimpleIdentifier(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !(value[0] == '_' || char.IsLetter(value[0]))) return false;
+        for (var index = 1; index < value.Length; index++)
+            if (value[index] != '_' && !char.IsLetterOrDigit(value[index])) return false;
+        return true;
     }
 
     private static readonly HashSet<string> ReservedOutputNames = new(StringComparer.OrdinalIgnoreCase)
