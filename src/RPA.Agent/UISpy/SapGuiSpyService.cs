@@ -81,18 +81,10 @@ public sealed class SignalRSpyElementTransport : ISpyElementTransport, IAsyncDis
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private bool _started;
 
-    public SignalRSpyElementTransport(
-        IOptions<AgentOptions> options,
-        RPA.Agent.Authentication.IAgentAccessTokenProvider tokenProvider)
+    public SignalRSpyElementTransport(RPA.Agent.Authentication.IAgentHubConnectionFactory connectionFactory)
     {
-        var url = options?.Value?.OrchestratorUrl ?? throw new ArgumentNullException(nameof(options));
-        ArgumentNullException.ThrowIfNull(tokenProvider);
-        _connection = new HubConnectionBuilder()
-            .WithUrl(
-                $"{url.TrimEnd('/')}/hubs/studio",
-                o => o.AccessTokenProvider = async () => await tokenProvider.GetTokenAsync(CancellationToken.None))
-            .WithAutomaticReconnect()
-            .Build();
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        _connection = connectionFactory.Create("/hubs/studio");
     }
 
     public async Task SendAsync(SpyElementMessage message, CancellationToken cancellationToken = default)

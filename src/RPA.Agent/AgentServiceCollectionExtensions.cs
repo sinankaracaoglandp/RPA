@@ -50,6 +50,9 @@ public static class AgentServiceCollectionExtensions
             sp.GetRequiredService<Authentication.AgentEnrollmentClient>());
         services.AddSingleton<Authentication.IAgentAccessTokenProvider, Authentication.AgentAccessTokenProvider>();
 
+        // Tüm SignalR hub bağlantılarının tek üretim noktası (orkestratör URL'i + ajan JWT'si).
+        services.AddSingleton<Authentication.IAgentHubConnectionFactory, Authentication.AgentHubConnectionFactory>();
+
         // İstisna sınıflandırıcı (Business/System) — iş sonucu raporlama için.
         services.AddSingleton<ExceptionClassifier>();
 

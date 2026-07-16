@@ -1,109 +1,73 @@
 namespace RPA.Agent.Tests.UISpy;
 
-using System.Reflection;
-using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using RPA.Agent.Authentication;
-using RPA.Agent.Configuration;
 using RPA.Agent.Hub;
 using RPA.Agent.Prompts;
 using RPA.Agent.UISpy;
 
 /// <summary>
-/// Task 5: RobotHub ve her iki StudioHub baglantisi da paylasilan token saglayicisini
-/// SignalR <c>AccessTokenProvider</c> uzerinden kullanmalidir.
+/// Task 5: RobotHub ve her iki StudioHub istemcisi de baglantilarini paylasilan
+/// <see cref="IAgentHubConnectionFactory"/> uzerinden kurar — ajan JWT'si tek bir yerde baglanir.
+/// Fabrikanin token'i gercekten bagladigi <c>AgentHubConnectionFactoryTests</c>'te dogrulanir;
+/// burada her istemcinin dogru hub yolunu fabrikadan istedigi dogrulanir.
 /// </summary>
 public sealed class SpyHubAuthenticationTests
 {
-    private const string Token = "fake.access.token";
-
-    private sealed class StubTokenProvider : IAgentAccessTokenProvider
+    /// <summary>Istenen hub yollarini kaydeder; uretilen baglanti hicbir zaman baslatilmaz.</summary>
+    private sealed class RecordingHubConnectionFactory : IAgentHubConnectionFactory
     {
-        public int Calls;
-        public Task<string> GetTokenAsync(CancellationToken cancellationToken)
+        public List<string> RequestedPaths { get; } = [];
+
+        public HubConnection Create(string hubPath)
         {
-            Interlocked.Increment(ref Calls);
-            return Task.FromResult(Token);
+            RequestedPaths.Add(hubPath);
+            return new HubConnectionBuilder()
+                .WithUrl($"https://orchestrator.test{hubPath}")
+                .Build();
         }
-    }
-
-    private static IOptions<AgentOptions> Options()
-        => Microsoft.Extensions.Options.Options.Create(new AgentOptions
-        {
-            OrchestratorUrl = "https://orchestrator:5001",
-            AgentId = Guid.NewGuid(),
-        });
-
-    /// <summary>Kurulmus bir HubConnection'in HttpConnectionOptions'ini yansima ile cikarir.</summary>
-    private static HttpConnectionOptions ExtractHttpOptions(HubConnection connection)
-    {
-        var factory = GetField(connection, "_connectionFactory")
-            ?? throw new InvalidOperationException("HubConnection._connectionFactory bulunamadi.");
-        var options = GetField(factory, "_httpConnectionOptions")
-            ?? throw new InvalidOperationException("HttpConnectionFactory._httpConnectionOptions bulunamadi.");
-        return (HttpConnectionOptions)options;
-
-        static object? GetField(object target, string name)
-        {
-            for (var t = target.GetType(); t is not null; t = t.BaseType)
-            {
-                var f = t.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-                if (f is not null) return f.GetValue(target);
-            }
-            return null;
-        }
-    }
-
-    private static HubConnection ExtractConnection(object client)
-    {
-        var f = client.GetType().GetField("_connection", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("_connection alani bulunamadi.");
-        return (HubConnection)f.GetValue(client)!;
-    }
-
-    private static async Task AssertUsesTokenProviderAsync(object client, StubTokenProvider provider, string expectedPath)
-    {
-        var options = ExtractHttpOptions(ExtractConnection(client));
-        Assert.NotNull(options.AccessTokenProvider);
-        Assert.EndsWith(expectedPath, options.Url!.AbsolutePath, StringComparison.Ordinal);
-
-        var token = await options.AccessTokenProvider!();
-        Assert.Equal(Token, token);
-        Assert.True(provider.Calls > 0);
     }
 
     [Fact]
-    public async Task RobotHubClient_ConfiguresAccessTokenProvider()
+    public void RobotHubClient_BuildsConnectionThroughSharedFactory()
     {
-        var provider = new StubTokenProvider();
-        var client = new RobotHubClient(
-            Options(),
+        var factory = new RecordingHubConnectionFactory();
+
+        _ = new RobotHubClient(
+            factory,
             new HubConnectionStatusCoordinator(NullLogger<HubConnectionStatusCoordinator>.Instance),
             new JobEventRouter(new RPA.Agent.JobList.JobListViewModel(), NullLogger<JobEventRouter>.Instance),
             new UserPromptService(NullLogger<UserPromptService>.Instance),
-            provider,
             NullLogger<RobotHubClient>.Instance);
 
-        await AssertUsesTokenProviderAsync(client, provider, "/hubs/robot");
+        Assert.Equal(["/hubs/robot"], factory.RequestedPaths);
     }
 
     [Fact]
-    public async Task SpyCommandConnection_ConfiguresAccessTokenProvider()
+    public void SpyCommandConnection_BuildsConnectionThroughSharedFactory()
     {
-        var provider = new StubTokenProvider();
-        var client = new SignalRSpyCommandConnection(Options(), provider);
+        var factory = new RecordingHubConnectionFactory();
 
-        await AssertUsesTokenProviderAsync(client, provider, "/hubs/studio");
+        _ = new SignalRSpyCommandConnection(factory);
+
+        Assert.Equal(["/hubs/studio"], factory.RequestedPaths);
     }
 
     [Fact]
-    public async Task SpyElementTransport_ConfiguresAccessTokenProvider()
+    public void SpyElementTransport_BuildsConnectionThroughSharedFactory()
     {
-        var provider = new StubTokenProvider();
-        var client = new SignalRSpyElementTransport(Options(), provider);
+        var factory = new RecordingHubConnectionFactory();
 
-        await AssertUsesTokenProviderAsync(client, provider, "/hubs/studio");
+        _ = new SignalRSpyElementTransport(factory);
+
+        Assert.Equal(["/hubs/studio"], factory.RequestedPaths);
+    }
+
+    [Fact]
+    public void Clients_RejectMissingFactory()
+    {
+        Assert.Throws<ArgumentNullException>(() => new SignalRSpyCommandConnection(null!));
+        Assert.Throws<ArgumentNullException>(() => new SignalRSpyElementTransport(null!));
     }
 }
