@@ -218,6 +218,19 @@ Studio aktivite modeli, mapping editörü ve property paneli.
 Gerekçe: UBL-TR e-faturalarının tekli veya batch olarak güvenli biçimde okunması, özel XPath/regex
 eşlemelerinin tasarlanması ve kararlı çıktıların workflow değişkenlerine bağlanması.
 
+## Kontrat Değişikliği — 2026-07-16 (Proje Kapsamlı E-Fatura Profilleri)
+
+Domain modeline `EInvoiceProfile` ve değişmez yayın snapshot'larını taşıyan
+`EInvoiceProfileVersion` varlıkları eklenmiştir. Profiller `ProjectId` ile proje kapsamında
+izole edilir; workflow'lar yayınlanmış profil kimliği ve pozitif sürüm numarasına sabitlenir.
+Profil tanımı kök scalar alanları ve birden fazla kullanıcı tanımlı `list<object>` koleksiyonunu
+destekler; örnek XML hiçbir kontrat veya kalıcılık modelinde tutulmaz.
+
+Etkilenen paketler: Domain varlıkları, Infrastructure EF/persistence ve profil aktiviteleri,
+WebAPI proje profil uçları, Studio proje sekmesi/Designer değişken kataloğu.
+Gerekçe: XML eşlemelerini workflow node'undan ayırıp proje kapsamında sürümlü ve tekrar
+kullanılabilir hale getirmek; profil şemasını nesne tabanlı RPA değişkenlerine otomatik taşımak.
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:
