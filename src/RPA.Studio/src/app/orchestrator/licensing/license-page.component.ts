@@ -1,9 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 
 import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 import { TranslatePipe } from '../../core/translate.pipe';
-import { LicenseStatus, SignedLicenseDocument, editionOf } from './license.models';
+import { LicenseStatus, SignedLicenseDocument } from './license.models';
 import { LicenseService, apiErrorMessage } from './license.service';
 
 /**
@@ -28,8 +28,6 @@ export class LicensePageComponent implements OnInit {
   readonly importError = signal<string | null>(null);
   readonly importSuccess = signal(false);
   readonly busy = signal(false);
-
-  readonly edition = computed(() => editionOf(this.status()?.features ?? []));
 
   ngOnInit(): void {
     this.load();

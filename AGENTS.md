@@ -400,3 +400,32 @@ Tüm belgeler `docs/` klasöründe tutulur. Plan uygulanırken spec/plan bölüm
 ---
 
 **Versiyonlu:** 2026-07-04 — Kontrat Paketi sabit, TDD/review kuralları kesin.
+
+---
+
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — payload edition + müşteri adı)
+
+`OfflineLicensePayload`'a iki **zorunlu** alan eklendi: `Edition` (string) ve `CustomerName`
+(string) — tasarım spec'i (`docs/superpowers/specs/2026-07-16-offline-agent-licensing-design.md`,
+"Vendor license generation" + "Studio Experience") lisans yükünün sürümü ve müşteri görünen adını
+taşımasını ve Studio'nun bunları göstermesini şart koşuyordu; Task 1 bunları atlamıştı.
+Boş/whitespace değer `ArgumentException` fırlatır (üretici operatörü her ikisini de girer).
+
+- **Kanonik JSON sırası (imza altına giren baytlar) SABİT ve genişledi:** `schemaVersion,
+  licenseId, revision, customerId, customerName, edition, installationId,
+  installationPublicKeyFingerprint, maxActivatedAgents, issuedAt, expiresAt, features`.
+  Yeni alanlar `customerId`'den hemen sonra (kimlik alanları bir arada) yerleştirildi.
+  `CanonicalLicenseSerializer` yazma sırası bu kuralın tek kaynağıdır. `Edition`/`CustomerName`
+  kurcalanması artık `MaxActivatedAgents` gibi imza doğrulamasını **bozar** (test edildi).
+- **`schemaVersion` 1'de KALDI** — henüz hiçbir gerçek lisans üretilmedi/dağıtılmadı, dolayısıyla
+  kırılacak eski imzalı belge yok; sürüm artırmak yalnız ölü bir migration yolu doğururdu.
+- `LicenseStatus` (+ `GET /api/license/status` yanıtı) `customerName` ve `edition` alanlarını
+  yüzeye çıkarır (lisans yoksa/imza geçersizse null).
+- **Studio:** uydurma `edition:<ad>` feature-etiketi konvansiyonu ve `editionOf()` yardımcısı
+  **silindi** (backend'de hiç var olmamıştı; ekran üretimde her zaman "—" gösterirdi). Sürüm artık
+  `status.edition`'dan okunur; müşteri alanı `customerName ?? customerId` gösterir.
+
+Etkilenen paketler: Domain (`RPA.Domain.Licensing`), Infrastructure lisanslama
+(`CanonicalLicenseSerializer`, `LicenseDocumentJson`, `LicenseService`), WebAPI (`LicenseController`),
+Studio (`orchestrator/licensing`) ve **henüz yazılmamış `RPA.LicenseGenerator` (Task 9)** —
+üretici CLI, operatörden edition + müşteri görünen adı istemek ZORUNDADIR. Task 10 (E2E) henüz yok.

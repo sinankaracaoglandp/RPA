@@ -4,6 +4,12 @@ using RPA.Domain.Licensing;
 
 namespace RPA.Infrastructure.Licensing;
 
+/// <summary>
+/// Imza altina giren kanonik JSON. Ozellik sirasi SABITTIR ve asagidaki yazma sirasiyla
+/// tanimlanir: schemaVersion, licenseId, revision, customerId, customerName, edition,
+/// installationId, installationPublicKeyFingerprint, maxActivatedAgents, issuedAt, expiresAt,
+/// features. Yeni alan eklemek imzalanan baytlari degistirir — yalniz kontrat degisikligi ile.
+/// </summary>
 public static class CanonicalLicenseSerializer
 {
     public static byte[] SerializePayload(OfflineLicensePayload payload)
@@ -18,6 +24,8 @@ public static class CanonicalLicenseSerializer
             writer.WriteString("licenseId", payload.LicenseId);
             writer.WriteNumber("revision", payload.Revision);
             writer.WriteString("customerId", payload.CustomerId);
+            writer.WriteString("customerName", payload.CustomerName);
+            writer.WriteString("edition", payload.Edition);
             writer.WriteString("installationId", payload.InstallationId);
             writer.WriteString("installationPublicKeyFingerprint", payload.InstallationPublicKeyFingerprint);
             writer.WriteNumber("maxActivatedAgents", payload.MaxActivatedAgents);

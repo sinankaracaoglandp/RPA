@@ -18,7 +18,7 @@ public class LicenseCryptographyTests
 
         Assert.Equal(firstBytes, secondBytes);
         Assert.Equal(
-            "{\"schemaVersion\":1,\"licenseId\":\"LIC-1\",\"revision\":2,\"customerId\":\"ACME\",\"installationId\":\"install-1\",\"installationPublicKeyFingerprint\":\"ABC\",\"maxActivatedAgents\":5,\"issuedAt\":\"2026-01-01T00:00:00.0000000Z\",\"expiresAt\":\"2027-01-01T00:00:00.0000000Z\",\"features\":[\"Agent\",\"Studio\"]}",
+            "{\"schemaVersion\":1,\"licenseId\":\"LIC-1\",\"revision\":2,\"customerId\":\"ACME\",\"customerName\":\"ACME Sanayi A.S.\",\"edition\":\"enterprise\",\"installationId\":\"install-1\",\"installationPublicKeyFingerprint\":\"ABC\",\"maxActivatedAgents\":5,\"issuedAt\":\"2026-01-01T00:00:00.0000000Z\",\"expiresAt\":\"2027-01-01T00:00:00.0000000Z\",\"features\":[\"Agent\",\"Studio\"]}",
             Encoding.UTF8.GetString(firstBytes));
     }
 
@@ -43,6 +43,8 @@ public class LicenseCryptographyTests
         var signed = new SignedLicenseDocument(payload, Convert.ToBase64String(signature));
 
         Assert.False(verifier.Verify(signed with { Payload = payload with { MaxActivatedAgents = 6 } }));
+        Assert.False(verifier.Verify(signed with { Payload = payload with { Edition = "community" } }));
+        Assert.False(verifier.Verify(signed with { Payload = payload with { CustomerName = "Other Ltd." } }));
         Assert.False(verifier.Verify(signed with { Payload = payload with { InstallationPublicKeyFingerprint = "DEF" } }));
         signature[0] ^= 0xff;
         Assert.False(verifier.Verify(signed with { Signature = Convert.ToBase64String(signature) }));
@@ -97,7 +99,7 @@ public class LicenseCryptographyTests
     }
 
     private static OfflineLicensePayload Payload(IEnumerable<string>? features = null) =>
-        new(1, "LIC-1", 2, "ACME", "install-1", "ABC", 5,
+        new(1, "LIC-1", 2, "ACME", "ACME Sanayi A.S.", "enterprise", "install-1", "ABC", 5,
             DateTimeOffset.Parse("2026-01-01T03:00:00+03:00"),
             DateTimeOffset.Parse("2027-01-01T03:00:00+03:00"), features ?? ["Agent"]);
 

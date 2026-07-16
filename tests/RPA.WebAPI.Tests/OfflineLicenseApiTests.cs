@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -40,6 +41,26 @@ public class OfflineLicenseApiTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("LICENSE_INSTALLATION_MISMATCH", body);
+    }
+
+    [Fact]
+    public async Task Status_SurfacesEditionAndCustomerNameFromSignedPayload()
+    {
+        var license = new Mock<ILicenseService>();
+        license.Setup(x => x.GetStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LicenseStatus(true, true, "LIC-1", 3, "ACME", "ACME Sanayi A.S.", "enterprise",
+                DateTimeOffset.UtcNow.AddDays(30), 5, 2, ["sap"]));
+
+        var client = CreateClient(license.Object, Mock.Of<IAgentIdentityRepository>());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", UserToken("Administrator"));
+
+        var response = await client.GetAsync("/api/license/status");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("enterprise", body.GetProperty("edition").GetString());
+        Assert.Equal("ACME Sanayi A.S.", body.GetProperty("customerName").GetString());
+        Assert.Equal("ACME", body.GetProperty("customerId").GetString());
     }
 
     [Fact]
@@ -103,7 +124,7 @@ public class OfflineLicenseApiTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     private static SignedLicenseDocument SignedLicense() =>
-        new(OfflineLicensePayload.Create("LIC-1", 1, "ACME", "wrong-installation", "ABC", 1,
+        new(OfflineLicensePayload.Create("LIC-1", 1, "ACME", "ACME Sanayi A.S.", "enterprise", "wrong-installation", "ABC", 1,
             DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(30), ["agent"]), "altered");
 
     private static void Replace<T>(IServiceCollection services, T instance) where T : class

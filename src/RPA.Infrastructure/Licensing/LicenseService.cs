@@ -68,15 +68,15 @@ public sealed class LicenseService : ILicenseService
     {
         var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(x => !x.IsDeleted, cancellationToken);
         if (installation?.SignedLicenseDocument is null)
-            return new(false, false, null, null, null, null, 0, 0, [], "LICENSE_MISSING");
+            return new(false, false, null, null, null, null, null, null, 0, 0, [], "LICENSE_MISSING");
         var document = LicenseDocumentJson.Deserialize(installation.SignedLicenseDocument);
         if (document is null || !_verifier.Verify(document))
-            return new(true, false, null, installation.InstalledLicenseRevision, null, null, 0, 0, [], "LICENSE_SIGNATURE_INVALID");
+            return new(true, false, null, installation.InstalledLicenseRevision, null, null, null, null, 0, 0, [], "LICENSE_SIGNATURE_INVALID");
         var used = await _db.AgentIdentities.CountAsync(x => x.LicenseInstallationId == installation.Id && !x.IsDeleted &&
             (x.Status == AgentIdentityStatus.Activated || x.Status == AgentIdentityStatus.Disabled), cancellationToken);
         var valid = document.Payload.ExpiresAt > DateTimeOffset.UtcNow;
         return new(true, valid, document.Payload.LicenseId, document.Payload.Revision, document.Payload.CustomerId,
-            document.Payload.ExpiresAt, document.Payload.MaxActivatedAgents, used, document.Payload.Features,
+            document.Payload.CustomerName, document.Payload.Edition, document.Payload.ExpiresAt, document.Payload.MaxActivatedAgents, used, document.Payload.Features,
             valid ? null : "LICENSE_EXPIRED");
     }
 

@@ -9,6 +9,8 @@ public sealed record OfflineLicensePayload
         string licenseId,
         int revision,
         string customerId,
+        string customerName,
+        string edition,
         string installationId,
         string installationPublicKeyFingerprint,
         int maxActivatedAgents,
@@ -16,10 +18,14 @@ public sealed record OfflineLicensePayload
         DateTimeOffset expiresAt,
         IEnumerable<string> features)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(customerName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(edition);
         SchemaVersion = schemaVersion;
         LicenseId = licenseId;
         Revision = revision;
         CustomerId = customerId;
+        CustomerName = customerName;
+        Edition = edition;
         InstallationId = installationId;
         InstallationPublicKeyFingerprint = installationPublicKeyFingerprint;
         MaxActivatedAgents = maxActivatedAgents;
@@ -32,6 +38,13 @@ public sealed record OfflineLicensePayload
     public string LicenseId { get; init; }
     public int Revision { get; init; }
     public string CustomerId { get; init; }
+
+    /// <summary>Musteri gorunen adi (imzali yuke dahildir; Studio'da gosterilir).</summary>
+    public string CustomerName { get; init; }
+
+    /// <summary>Lisans surumu (edition) — imzali yuke dahildir; degistirilmesi imzayi bozar.</summary>
+    public string Edition { get; init; }
+
     public string InstallationId { get; init; }
     public string InstallationPublicKeyFingerprint { get; init; }
     public int MaxActivatedAgents { get; init; }
@@ -43,14 +56,16 @@ public sealed record OfflineLicensePayload
         string licenseId,
         int revision,
         string customerId,
+        string customerName,
+        string edition,
         string installationId,
         string installationPublicKeyFingerprint,
         int maxActivatedAgents,
         DateTimeOffset issuedAt,
         DateTimeOffset expiresAt,
         IEnumerable<string> features) =>
-        new(1, licenseId, revision, customerId, installationId, installationPublicKeyFingerprint,
-            maxActivatedAgents, issuedAt, expiresAt, features);
+        new(1, licenseId, revision, customerId, customerName, edition, installationId,
+            installationPublicKeyFingerprint, maxActivatedAgents, issuedAt, expiresAt, features);
 }
 
 public sealed record SignedLicenseDocument(
@@ -75,6 +90,8 @@ public sealed record LicenseStatus
         string? licenseId,
         int? revision,
         string? customerId,
+        string? customerName,
+        string? edition,
         DateTimeOffset? expiresAt,
         int maxActivatedAgents,
         int activatedAgents,
@@ -86,6 +103,8 @@ public sealed record LicenseStatus
         LicenseId = licenseId;
         Revision = revision;
         CustomerId = customerId;
+        CustomerName = customerName;
+        Edition = edition;
         ExpiresAt = expiresAt;
         MaxActivatedAgents = maxActivatedAgents;
         ActivatedAgents = activatedAgents;
@@ -98,6 +117,8 @@ public sealed record LicenseStatus
     public string? LicenseId { get; init; }
     public int? Revision { get; init; }
     public string? CustomerId { get; init; }
+    public string? CustomerName { get; init; }
+    public string? Edition { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
     public int MaxActivatedAgents { get; init; }
     public int ActivatedAgents { get; init; }

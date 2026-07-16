@@ -116,7 +116,7 @@ public sealed class AgentSeatEnforcementTests
         TestDatabase database, int maxSeats, AgentIdentityStatus? existingState = null)
     {
         await using var db = database.CreateContext();
-        var payload = OfflineLicensePayload.Create("LIC", 1, "customer", "install", "fingerprint", maxSeats,
+        var payload = OfflineLicensePayload.Create("LIC", 1, "customer", "Customer Ltd.", "enterprise", "install", "fingerprint", maxSeats,
             DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), []);
         var installation = new LicenseInstallation
         {

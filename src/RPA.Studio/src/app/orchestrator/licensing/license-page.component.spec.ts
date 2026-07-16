@@ -9,11 +9,13 @@ const status: LicenseStatus = {
   isValid: true,
   licenseId: 'LIC-1',
   revision: 3,
-  customerId: 'ACME A.S.',
+  customerId: 'ACME',
+  customerName: 'ACME Sanayi A.S.',
+  edition: 'enterprise',
   expiresAt: '2027-01-31T00:00:00+00:00',
   maxActivatedAgents: 5,
   activatedAgents: 2,
-  features: ['edition:enterprise', 'sap', 'vision'],
+  features: ['sap', 'vision'],
   errorCode: null,
 };
 
@@ -55,13 +57,19 @@ describe('LicensePageComponent', () => {
   it('shows customer, edition, validity, features and seat usage', () => {
     loadStatus();
 
-    expect(el('license-customer').textContent).toContain('ACME A.S.');
+    expect(el('license-customer').textContent).toContain('ACME Sanayi A.S.');
     expect(el('license-edition').textContent!.toLowerCase()).toContain('enterprise');
     expect(el('license-seats').textContent).toContain('2 / 5');
     const features = fixture.nativeElement.querySelectorAll('[data-testid="license-feature"]');
-    expect(features.length).toBe(3);
+    expect(features.length).toBe(2);
     expect(el('license-expires')).toBeTruthy();
     expect(el('license-validity')).toBeTruthy();
+  });
+
+  it('falls back to the customer id when the license carries no display name', () => {
+    loadStatus({ ...status, customerName: null });
+
+    expect(el('license-customer').textContent).toContain('ACME');
   });
 
   it('renders the not-installed state without seat details', () => {
@@ -71,6 +79,8 @@ describe('LicensePageComponent', () => {
       licenseId: null,
       revision: null,
       customerId: null,
+      customerName: null,
+      edition: null,
       expiresAt: null,
       maxActivatedAgents: 0,
       activatedAgents: 0,

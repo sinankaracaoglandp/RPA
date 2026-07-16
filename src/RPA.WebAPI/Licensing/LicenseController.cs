@@ -52,6 +52,8 @@ public sealed class LicenseController : ControllerBase
                 GetProperty(payload, "LicenseId").GetString()!,
                 GetProperty(payload, "Revision").GetInt32(),
                 GetProperty(payload, "CustomerId").GetString()!,
+                GetProperty(payload, "CustomerName").GetString()!,
+                GetProperty(payload, "Edition").GetString()!,
                 GetProperty(payload, "InstallationId").GetString()!,
                 GetProperty(payload, "InstallationPublicKeyFingerprint").GetString()!,
                 GetProperty(payload, "MaxActivatedAgents").GetInt32(),

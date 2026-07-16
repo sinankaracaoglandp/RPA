@@ -58,10 +58,10 @@
     } @else {
       <dl class="grid max-w-3xl grid-cols-2 gap-y-3 text-sm">
         <dt class="text-gray-500">{{ 'licensing.customer' | translate }}</dt>
-        <dd data-testid="license-customer">{{ s.customerId ?? '—' }}</dd>
+        <dd data-testid="license-customer">{{ s.customerName ?? s.customerId ?? '—' }}</dd>
 
         <dt class="text-gray-500">{{ 'licensing.edition' | translate }}</dt>
-        <dd data-testid="license-edition">{{ edition() ?? '—' }}</dd>
+        <dd data-testid="license-edition">{{ s.edition ?? '—' }}</dd>
 
         <dt class="text-gray-500">{{ 'licensing.licenseId' | translate }}</dt>
         <dd data-testid="license-id">{{ s.licenseId ?? '—' }} (rev {{ s.revision ?? '—' }})</dd>

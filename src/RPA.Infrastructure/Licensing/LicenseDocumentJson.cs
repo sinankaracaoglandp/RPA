@@ -16,6 +16,7 @@ internal static class LicenseDocumentJson
         return new SignedLicenseDocument(new OfflineLicensePayload(
             payload.GetProperty("SchemaVersion").GetInt32(), payload.GetProperty("LicenseId").GetString()!,
             payload.GetProperty("Revision").GetInt32(), payload.GetProperty("CustomerId").GetString()!,
+            payload.GetProperty("CustomerName").GetString()!, payload.GetProperty("Edition").GetString()!,
             payload.GetProperty("InstallationId").GetString()!, payload.GetProperty("InstallationPublicKeyFingerprint").GetString()!,
             payload.GetProperty("MaxActivatedAgents").GetInt32(), payload.GetProperty("IssuedAt").GetDateTimeOffset(),
             payload.GetProperty("ExpiresAt").GetDateTimeOffset(), features),

@@ -5,6 +5,8 @@ export interface LicenseStatus {
   licenseId: string | null;
   revision: number | null;
   customerId: string | null;
+  customerName: string | null;
+  edition: string | null;
   expiresAt: string | null;
   maxActivatedAgents: number;
   activatedAgents: number;
@@ -28,10 +30,4 @@ export interface SignedLicenseDocument {
   Payload: unknown;
   Signature: string;
   Algorithm?: string;
-}
-
-/** Feature listesindeki `edition:<ad>` etiketinden surumu cozer. */
-export function editionOf(features: readonly string[]): string | null {
-  const tag = features.find((f) => f.toLowerCase().startsWith('edition:'));
-  return tag ? tag.slice('edition:'.length) : null;
 }
