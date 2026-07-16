@@ -243,3 +243,7 @@ Paket F: ✅ TÜM TASKLAR TAMAM (7 task, commits 9ac4466..0eb06c2). Final whole-
 - Task 6: complete (Agent 138/138, Infrastructure 678/678, no new failures)
   - IExecutionContinuationGate + ExecutionSuspendedException (Domain), ConnectivityLease/gate + bounded idempotent AgentOutbox (Agent), BaseRunner node-boundary gate (optional ctor param), JobExecutionOutcome.IsSuspended. Contract entry in AGENTS.md.
   - Deferred minors: lease/gate/outbox not yet wired into AddAgentCore or fed by hub connect/disconnect + refresh-lease; no AgentOptions outbox path; resume-after-reconnect from NextNodeId not implemented.
+- Task 7: complete (commit c43eca4, Studio 295/295 → 304/304, build OK) — report: .superpowers/sdd/task-7-licensing-report.md
+  - /orchestrator/licensing sayfasi: musteri/surum/gecerlilik/ozellik/koltuk gosterimi, kurulum talebi indirme (object URL revoke), gizli .lic dosya girisi (.lic,application/json), kararli API hata mesaji, storage'a lisans/gizli veri yazilmadigi testle iddia edildi.
+  - Sapmalar: status ucu gercekte GET /api/license/status (plan /api/license diyordu); "edition" LicenseStatus'ta yok → features icindeki `edition:<ad>` etiketinden turetiliyor.
+  - Deferred minors: import onay diyalogu yok; license.service icin ayri spec yok; tarih ham ISO olarak gosteriliyor (mevcut robots ekraniyla tutarli).
