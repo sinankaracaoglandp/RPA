@@ -15,8 +15,10 @@
     <div class="einvoice-mapping__panel" data-testid="einvoice-sample-panel">
       <h4>Örnek XML seç</h4>
       <p class="einvoice-mapping__hint">Alanları üzerinde işaretleyeceğin örnek bir e-fatura XML dosyası yükle. Dosya yalnızca tarayıcında kalır; sunucuya gönderilmez.</p>
-      <label for="einvoice-sample">Örnek XML seç</label>
-      <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml" (change)="onSampleFileSelected($event)" />
+      <input id="einvoice-sample" class="einvoice-mapping__file-input" type="file"
+        accept=".xml,text/xml,application/xml" (change)="onSampleFileSelected($event)" />
+      <label for="einvoice-sample" class="einvoice-mapping__file-button">Örnek XML dosyası seç…</label>
+      @if (tree.length) { <p class="einvoice-mapping__loaded">✓ Örnek yüklendi.</p> }
       @if (sampleError) { <p role="alert">{{ sampleError }}</p> }
       @if (tree.length) {
         <button type="button" class="einvoice-mapping__primary" data-testid="einvoice-goto-fields" (click)="setStep(2)">Alanları bağla →</button>
@@ -28,7 +30,14 @@
     <div class="einvoice-mapping__workbench">
       <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
         <h4>XML ağacı</h4>
-        <p class="einvoice-mapping__hint">Almak istediğin değere tıkla — alan ekleme penceresi açılır. ×N işaretli öğeler tekrar eder (satır dizisi adayı).</p>
+        @if (repickPath) {
+          <p class="einvoice-mapping__repick" data-testid="einvoice-repick-hint" role="status">
+            Yeni yol için bir öğeye tıkla — form geri açılacak.
+            <button type="button" data-testid="einvoice-repick-cancel" (click)="repickPath = false; fieldDialogOpen = true">Vazgeç</button>
+          </p>
+        } @else {
+          <p class="einvoice-mapping__hint">Almak istediğin değere tıkla — alan ekleme penceresi açılır. ×N işaretli öğeler tekrar eder (satır dizisi adayı).</p>
+        }
         @if (!tree.length) {
           <p class="einvoice-mapping__empty">Önce 1. adımda örnek XML yükle.</p>
         }
@@ -184,7 +193,12 @@
           </select>
 
           <label for="einvoice-rule-xpath">XML yolu (Value XPath)</label>
-          <input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''" (input)="updateDraft('valueXPath', $any($event.target).value)" placeholder="ağaçtan tıklayınca dolar" />
+          <div class="einvoice-mapping__path-row">
+            <input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''"
+              (input)="updateDraft('valueXPath', $any($event.target).value)" placeholder="örn. /Invoice/cbc:ID" />
+            <button type="button" data-testid="einvoice-pick-path" (click)="pickPathFromTree()">Ağaçtan seç</button>
+          </div>
+          <p class="einvoice-mapping__hint">Ağaçta tıkladığın öğenin yolu buraya yazıldı. Değiştirmek için "Ağaçtan seç"e basıp başka bir öğeye tıkla.</p>
 
           <div class="einvoice-mapping__checks">
             <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>

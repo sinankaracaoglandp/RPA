@@ -1,7 +1,10 @@
 :host { display: block; }
+/* Adımlar dikey akar; sütun bölmesini yalnız __workbench yapar. (Eski 3-sütunlu
+   grid, adım panellerini yan yana sıkıştırıp ağaç ile alan listesini iç içe
+   geçiriyordu.) */
 .einvoice-mapping {
-  display: grid;
-  grid-template-columns: 30% 38% 32%;
+  display: flex;
+  flex-direction: column;
   width: 100%;
 }
 .einvoice-mapping__panel { min-width: 0; padding: 0.75rem; border: 1px solid #d7dde5; }
@@ -11,7 +14,6 @@
 .einvoice-mapping__tree button { text-align: left; }
 .einvoice-mapping__tree-child { padding-left: 1.5rem; }
 .einvoice-mapping__panel pre { overflow: auto; white-space: pre-wrap; }
-@media (max-width: 760px) { .einvoice-mapping { grid-template-columns: 1fr; } }
 
 .einvoice-mapping__validation { list-style: none; margin: 0; padding: 0; }
 .einvoice-mapping__validation-row {
@@ -108,4 +110,40 @@
 .einvoice-mapping__dialog-actions {
   display: flex; justify-content: flex-end; gap: 0.5rem;
   padding: 0.7rem 0.9rem; border-top: 1px solid #e1e7ef;
+}
+
+/* --- Dosya seçici gerçek bir butona dönüşür ---
+   Özgüllük notu: `.einvoice-mapping__panel input:not([type='checkbox'])` (0,2,1)
+   kuralını yenmek için element+iki sınıf kullanılıyor. */
+.einvoice-mapping__panel input.einvoice-mapping__file-input {
+  position: absolute;
+  width: 1px; height: 1px; margin: -1px; padding: 0;
+  border: 0; overflow: hidden; white-space: nowrap;
+  clip-path: inset(50%);
+}
+.einvoice-mapping__file-button {
+  display: inline-block; margin-top: 0.5rem;
+  padding: 0.45rem 0.9rem; border: 1px solid #1565c0; border-radius: 0.3rem;
+  background: #1565c0; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+}
+.einvoice-mapping__file-button:hover { background: #0f4c96; }
+.einvoice-mapping__file-input:focus-visible + .einvoice-mapping__file-button {
+  outline: 2px solid #0f4c96; outline-offset: 2px;
+}
+.einvoice-mapping__loaded { color: #2e7d32; font-size: 0.85rem; font-weight: 600; }
+
+/* --- Diyalogdaki XML yolu satırı --- */
+.einvoice-mapping__path-row {
+  display: flex; gap: 0.4rem; align-items: center;
+  input { flex: 1; min-width: 0; }
+  button { white-space: nowrap; }
+}
+.einvoice-mapping__path-row input { margin: 0.25rem 0 0; }
+
+/* --- Ağaçta yol yeniden seçme modu --- */
+.einvoice-mapping__repick {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  margin: 0.3rem 0; padding: 0.4rem 0.6rem;
+  border: 1px solid #1565c0; border-radius: 0.3rem; background: #e3f2fd;
+  color: #0f4c96; font-size: 0.82rem; font-weight: 600;
 }

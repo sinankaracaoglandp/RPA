@@ -140,11 +140,16 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
 
   selectNode(node: XmlTreeNode): void {
     this.draft = { ...this.draft, valueXPath: this.buildXPath(node) };
-    if (node.children.length || this.repeatedCount(node) > 1) {
-      // Tekrar eden/dallı öğe → satır dizisi adayı; scope'u doldur, form açma.
-      this.collectionScopeXPath = this.buildXPath(node);
+    const isBranch = node.children.length > 0 || this.repeatedCount(node) > 1;
+    if (isBranch) this.collectionScopeXPath = this.buildXPath(node);
+
+    if (this.repickPath) {
+      // Diyalogdaki "Ağaçtan seç" ile gelindi: formu bozmadan yeni yolla geri dön.
+      this.repickPath = false;
+      this.fieldDialogOpen = true;
       return;
     }
+    if (isBranch) return; // dallı/tekrar eden öğe → satır dizisi adayı, form açma
     // Yaprak öğe → doğrudan alan ekleme formunu aç (tıkla-ekle akışı).
     if (!this.fieldDialogOpen) {
       this.editingIndex = null;
@@ -245,8 +250,18 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   draftTarget = 'root';
   newCollectionOpen = false;
   fieldDialogOpen = false;
+  /** Diyalog "Ağaçtan seç" için geçici kapandı; sonraki ağaç tıklaması formu geri açar. */
+  repickPath = false;
   private editingCollection: string | null = null;
   private editingFieldName: string | null = null;
+
+  /** Diyalogdan ağaca dön: form korunur, tıklanan öğenin yolu forma yazılır. */
+  pickPathFromTree(): void {
+    this.repickPath = true;
+    this.fieldDialogOpen = false;
+    this.activeStep = 2;
+    this.cdr?.markForCheck();
+  }
 
   /** Sağ paneldeki "+ Alan ekle": boş formla diyaloğu açar. */
   openFieldDialog(): void {

@@ -387,6 +387,38 @@ describe('EInvoiceMappingEditorComponent', () => {
       .toBe('./cac:Item/cbc:SellersItemIdentification/cbc:ID');
   });
 
+  it('"Ağaçtan seç" formu koruyarak ağaca döner ve seçilen yolla geri açılır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.openFieldDialog();
+    component.draft = { name: 'faturaNo', source: 'XPath', valueXPath: '', type: 'date', required: true, multiple: false };
+
+    component.pickPathFromTree();
+    expect(component.fieldDialogOpen).toBe(false);
+    expect(component.repickPath).toBe(true);
+
+    component.selectNode(component.findFirst('cbc:ID')!);
+
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.repickPath).toBe(false);
+    expect(component.draft.valueXPath).toBe('/Invoice/cbc:ID');
+    // Form korunmalı: yeniden seçim ad/tip bilgisini sıfırlamaz.
+    expect(component.draft.name).toBe('faturaNo');
+    expect(component.draft.type).toBe('date');
+  });
+
+  it('"Ağaçtan seç" modunda dallı öğe seçilebilir ve form geri açılır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.openFieldDialog();
+    component.pickPathFromTree();
+
+    component.selectNode(component.findFirst('cac:InvoiceLine')!);
+
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.draft.valueXPath).toBe('/Invoice/cac:InvoiceLine');
+  });
+
   it('yaprak öğeye tıklayınca alan ekleme diyaloğu açılır ve yol dolar', () => {
     const component = new EInvoiceMappingEditorComponent();
     component.loadSampleXml(PREVIEW_SAMPLE);
