@@ -50,6 +50,7 @@ export class GenericPropertyComponent {
   einvoiceProfileOptions: EInvoiceProfile[] = [];
   einvoiceProfileVersions: EInvoiceProfileVersion[] = [];
   einvoiceProfileError = '';
+  einvoiceNewerVersion: number | null = null;
 
   /** Alan başına giriş kipi: Değer (literal) / Değişken / İfade. Kullanıcı elle değiştirdiğinde saklanır. */
   private readonly modeOverrides: Record<string, FieldMode> = {};
@@ -231,6 +232,7 @@ export class GenericPropertyComponent {
         };
         this.properties = withSchema;
         this.propertiesChange.emit(withSchema);
+        this.refreshEInvoiceVersionWarning();
         this.cdr.markForCheck();
       },
       error: () => {
@@ -238,6 +240,37 @@ export class GenericPropertyComponent {
         this.cdr.markForCheck();
       },
     });
+  }
+
+  /** Node var olan profileId ile açıldığında sürüm listesini çekip yeni sürüm kontrolü yapar. */
+  private loadEInvoiceVersionInfo(): void {
+    const projectId = String(this.properties['projectId'] ?? '').trim();
+    const profileId = String(this.properties['profileId'] ?? '').trim();
+    if (!projectId || !profileId) return;
+    this.einvoiceProfiles.versions(projectId, profileId).subscribe({
+      next: versions => {
+        this.einvoiceProfileVersions = versions;
+        this.refreshEInvoiceVersionWarning();
+        this.cdr.markForCheck();
+      },
+      error: () => { /* uyarı üretilemedi; node çalışmaya devam eder */ },
+    });
+  }
+
+  private refreshEInvoiceVersionWarning(): void {
+    const latest = [...this.einvoiceProfileVersions].sort((a, b) => b.version - a.version)[0];
+    const current = Number(this.properties['profileVersion'] ?? 0);
+    this.einvoiceNewerVersion = latest && current > 0 && latest.version > current ? latest.version : null;
+  }
+
+  /** Kullanıcı onayıyla node'u en son yayınlanmış sürüme taşır (spec 8.6: otomatik geçiş yok). */
+  applyLatestEInvoiceVersion(): void {
+    const latest = [...this.einvoiceProfileVersions].sort((a, b) => b.version - a.version)[0];
+    if (!latest) return;
+    const next = { ...this.properties, profileVersion: latest.version, outputSchemaJson: latest.outputSchemaJson };
+    this.properties = next;
+    this.propertiesChange.emit(next);
+    this.refreshEInvoiceVersionWarning();
   }
 
   /** Vision.ClickTextOffset gibi çapa+ofset editörü gerektiren alan mı? */
@@ -484,6 +517,9 @@ export class GenericPropertyComponent {
       next: (meta) => {
         this.metadata = meta;
         this.loading = false;
+        if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
+          this.loadEInvoiceVersionInfo();
+        }
         this.cdr.markForCheck();
       },
       error: () => {

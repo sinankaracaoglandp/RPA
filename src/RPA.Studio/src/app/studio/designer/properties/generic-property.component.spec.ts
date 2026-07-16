@@ -247,6 +247,44 @@ describe('GenericPropertyComponent', () => {
     });
   });
 
+  it('node eski profil sürümündeyse yeni sürüm uyarısı gösterir', () => {
+    component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
+    component.activityType = 'EInvoice.ReadProfile';
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profil Oku',
+      inputs: [
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+        { name: 'profileVersion', type: 'int', required: true },
+      ],
+    });
+    http.expectOne('/api/projects/proj-1/einvoice-profiles/prof-1/versions').flush([
+      { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-16T00:00:00Z' },
+      { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-15T00:00:00Z' },
+    ]);
+    fixture.detectChanges();
+
+    expect(component.einvoiceNewerVersion).toBe(2);
+    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-newer-version"]')).toBeTruthy();
+  });
+
+  it('son sürüme geç butonu sürümü ve şemayı günceller', () => {
+    component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
+    component.einvoiceProfileVersions = [
+      { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"v":2}', publishedAt: '2026-07-16T00:00:00Z' },
+      { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"v":1}', publishedAt: '2026-07-15T00:00:00Z' },
+    ];
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe(properties => emitted.push(properties));
+
+    component.applyLatestEInvoiceVersion();
+
+    expect(emitted[0]['profileVersion']).toBe(2);
+    expect(emitted[0]['outputSchemaJson']).toBe('{"v":2}');
+    expect(component.einvoiceNewerVersion).toBeNull();
+  });
+
   it('shows condition expression examples for Logic.If', () => {
     component.activityType = 'Logic.If';
     component.properties = {};

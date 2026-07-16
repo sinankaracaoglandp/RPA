@@ -59,6 +59,15 @@
               @if (einvoiceProfileError) {
                 <p class="generic-property__error" role="alert">{{ einvoiceProfileError }}</p>
               }
+              @if (einvoiceNewerVersion) {
+                <p class="generic-property__warning" data-testid="einvoice-newer-version" role="status">
+                  Bu profilin daha yeni bir sürümü yayınlandı (v{{ einvoiceNewerVersion }}).
+                  Node şu an v{{ properties['profileVersion'] }} kullanıyor.
+                  <button type="button" data-testid="einvoice-apply-latest" (click)="applyLatestEInvoiceVersion()">
+                    Son sürüme geç
+                  </button>
+                </p>
+              }
               <span class="generic-property__hint">{{ port.name }} · seçilen profil schema olarak değişkenlere eklenir</span>
             } @else if (inputType(port) === 'checkbox') {
               <div class="generic-property__boolean-row">
