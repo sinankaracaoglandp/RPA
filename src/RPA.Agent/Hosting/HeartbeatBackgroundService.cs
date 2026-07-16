@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RPA.Agent.Configuration;
+using RPA.Agent.Connectivity;
 using RPA.Agent.State;
 using RPA.Domain.Interfaces;
 
@@ -20,17 +21,20 @@ public sealed class HeartbeatBackgroundService : BackgroundService
     private readonly IAgentState _state;
     private readonly AgentOptions _options;
     private readonly ILogger<HeartbeatBackgroundService> _logger;
+    private readonly ConnectivityLease? _lease;
 
     public HeartbeatBackgroundService(
         IServiceScopeFactory scopeFactory,
         IAgentState state,
         IOptions<AgentOptions> options,
-        ILogger<HeartbeatBackgroundService> logger)
+        ILogger<HeartbeatBackgroundService> logger,
+        ConnectivityLease? lease = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _state = state ?? throw new ArgumentNullException(nameof(state));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _lease = lease;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -62,10 +66,19 @@ public sealed class HeartbeatBackgroundService : BackgroundService
             var robotService = scope.ServiceProvider.GetRequiredService<IRobotService>();
             await robotService.RecordHeartbeatAsync(robotId.Value, cancellationToken);
             _state.RecordHeartbeat(DateTime.UtcNow);
+
+            // Başarılı heartbeat = "son BAŞARILI sunucu doğrulaması" (Task 6 — ConnectivityLease).
+            // Kirayı besleyen tek kaynak budur: heartbeat aralığı (varsayılan 30 sn) 15 dakikalık
+            // kira sınırından çok küçüktür, dolayısıyla sağlıklı bağlantıda kira hiç dolmaz;
+            // orkestratöre ulaşılamadığı andan itibaren 15 dk sayacı işler.
+            _lease?.RecordServerValidation();
             _logger.LogDebug("Heartbeat gönderildi — Robot {RobotId}.", robotId);
         }
         catch (Exception ex)
         {
+            // Kira SÜRESİ etkilenmez (çalışan node normal sınırına ulaşmalı) — yalnız bağlantı
+            // kopuk işaretlenir; süre son başarılı doğrulamadan itibaren işlemeye devam eder.
+            _lease?.MarkDisconnected();
             _logger.LogError(ex, "Heartbeat gönderilemedi — Robot {RobotId}. Sonraki turda yeniden denenecek.", robotId);
         }
     }

@@ -598,6 +598,35 @@ dışıdır — operatör credential'ı ajana elle taşır (aktivasyon kodu akı
 
 ---
 
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — Task 10: kira kablolaması)
+
+Task 6 `IExecutionContinuationGate` + `ConnectivityLease` + `ConnectivityLeaseContinuationGate`
+sözleşmesini tanımlamış ama **hiçbir yerde kablolamamıştı**: kapıyı kimse oluşturmuyordu, dolayısıyla
+15 dakikalık offline sınırı **üretimde hiç uygulanmıyordu** (yalnız birim testlerinde vardı). Task 10
+bu boşluğu kapatır. **Arayüz imzaları değişmedi.**
+
+- **`AddAgentCore`:** `ConnectivityLease` (**singleton** — scope başına ayrı kira 15 dakikayı sürekli
+  yeniden başlatırdı) + `IExecutionContinuationGate` → `ConnectivityLeaseContinuationGate` kaydedildi.
+  `BaseRunner` (transient) opsiyonel `continuationGate` parametresini artık DI'dan çözer → sınır
+  gerçekten uygulanır. Davranışla doğrulanır (`ConnectivityLeaseWiringTests.
+  ResolvedWorkflowRunner_SuspendsAtNodeBoundary_WhenLeaseExpired`).
+- **`HeartbeatBackgroundService`** ctor'a opsiyonel `ConnectivityLease? lease` parametresi aldı
+  (son parametre, varsayılan `null` → mevcut çağıranlar/testler etkilenmez). **Kirayı besleyen tek
+  kaynak budur:** başarılı heartbeat = "son BAŞARILI sunucu doğrulaması" → `RecordServerValidation()`;
+  başarısız heartbeat → `MarkDisconnected()` (kira SÜRESİ kısalmaz — çalışan node normal sınırına
+  ulaşmalıdır). Heartbeat aralığı (varsayılan 30 sn) 15 dk kiradan çok küçüktür.
+- **Kapsam dışı (bilinçli):** `POST /api/agent-auth/refresh-lease` (spec'in API yüzeyinde var,
+  implementasyonu YOK — heartbeat kira beslemesidir); hub connect/disconnect olaylarının
+  `IsConnected`'ı beslemesi (`IsConnected`/`MarkDisconnected`'ın henüz tüketicisi yok — "yeni iş
+  kabulünü durdur" akışı yazılmadı); yeniden bağlanınca askıya alınan node'dan devam.
+  `docs/backlog/hybrid-licensing.md` içinde kayıtlıdır.
+
+Etkilenen paketler: Agent (`AgentServiceCollectionExtensions`, `Hosting/HeartbeatBackgroundService`).
+Domain/Infrastructure/WebAPI/Studio/LicenseGenerator **etkilenmez**.
+Gerekçe: sözleşmesi tanımlanmış ama bağlanmamış bir kapı, uygulanmayan bir güvenlik sınırıdır.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

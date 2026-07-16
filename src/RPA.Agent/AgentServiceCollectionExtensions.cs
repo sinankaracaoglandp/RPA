@@ -53,6 +53,14 @@ public static class AgentServiceCollectionExtensions
         // Tüm SignalR hub bağlantılarının tek üretim noktası (orkestratör URL'i + ajan JWT'si).
         services.AddSingleton<Authentication.IAgentHubConnectionFactory, Authentication.AgentHubConnectionFactory>();
 
+        // Bağlantı kirası + süreklilik kapısı (Task 6 kontratı, Task 10'da kablolandı).
+        // Kira TEKİLDİR ve HeartbeatBackgroundService tarafından beslenir (başarılı heartbeat =
+        // başarılı sunucu doğrulaması). Kapı IExecutionContinuationGate olarak kaydedilir; BaseRunner
+        // (transient) bu opsiyonel parametreyi DI'dan çözer → 15 dakikalık offline sınırı artık
+        // gerçekten uygulanır (önceden kapı hiçbir yerde oluşturulmuyordu).
+        services.AddSingleton<Connectivity.ConnectivityLease>();
+        services.AddSingleton<IExecutionContinuationGate, Connectivity.ConnectivityLeaseContinuationGate>();
+
         // İstisna sınıflandırıcı (Business/System) — iş sonucu raporlama için.
         services.AddSingleton<ExceptionClassifier>();
 
