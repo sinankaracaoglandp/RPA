@@ -28,6 +28,14 @@ export const routes: Routes = [
       import('./studio/projects/projects.component').then((m) => m.ProjectsComponent),
   },
   {
+    path: 'projects/:projectId/einvoice-profiles',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./studio/projects/einvoice-profiles/einvoice-profiles.component').then(
+        (m) => m.EInvoiceProfilesComponent,
+      ),
+  },
+  {
     path: 'component-library',
     canActivate: [authGuard],
     loadComponent: () =>

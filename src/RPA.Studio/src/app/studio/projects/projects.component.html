@@ -80,6 +80,11 @@
             }
           </p>
         </div>
+        @if (selectedProjectId()) {
+          <button type="button" data-testid="open-einvoice-profiles" (click)="openEInvoiceProfiles()">
+            E-Fatura Profilleri
+          </button>
+        }
       </div>
 
       @if (selectedProjectId()) {

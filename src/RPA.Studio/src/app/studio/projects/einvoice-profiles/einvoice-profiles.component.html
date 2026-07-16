@@ -1,0 +1,106 @@
+<section class="einvoice-profiles">
+  <header class="einvoice-profiles__header">
+    <div>
+      <p class="einvoice-profiles__eyebrow">E-Fatura Profilleri</p>
+      <h1>Profil adresleme alanı</h1>
+      <p>XML alanlarını proje içinde sürümleyip workflow değişkenlerine hazırla.</p>
+    </div>
+    <a class="einvoice-profiles__back" [routerLink]="['/projects']">Projeler</a>
+  </header>
+
+  @if (error()) {
+    <p class="einvoice-profiles__error" data-testid="einvoice-profile-error">{{ error() }}</p>
+  }
+
+  <div class="einvoice-profiles__layout">
+    <section class="einvoice-profiles__panel">
+      <div class="einvoice-profiles__panel-title">
+        <div>
+          <h2>Profiller</h2>
+          <p>{{ profiles().length }} profil</p>
+        </div>
+      </div>
+
+      <div class="einvoice-profiles__create">
+        <input
+          type="text"
+          data-testid="new-profile-name"
+          [ngModel]="newName()"
+          (ngModelChange)="newName.set($event)"
+          placeholder="Profil adı"
+        />
+        <input
+          type="text"
+          [ngModel]="newDescription()"
+          (ngModelChange)="newDescription.set($event)"
+          placeholder="Kısa açıklama"
+        />
+        <button type="button" data-testid="create-profile" (click)="createProfile()">Oluştur</button>
+      </div>
+
+      @if (profiles().length === 0) {
+        <div class="einvoice-profiles__empty">Bu projede henüz e-fatura profili yok.</div>
+      } @else {
+        <div class="einvoice-profiles__rows">
+          @for (profile of profiles(); track profile.id) {
+            <article
+              class="einvoice-profiles__row"
+              [class.einvoice-profiles__row--active]="selectedProfileId() === profile.id"
+              data-testid="einvoice-profile-row"
+            >
+              <div class="einvoice-profiles__row-main">
+                <h3>{{ profile.name }}</h3>
+                <p>{{ profile.description || 'Açıklama yok.' }}</p>
+                <div class="einvoice-profiles__schema-strip" aria-hidden="true"></div>
+              </div>
+              <div class="einvoice-profiles__row-actions">
+                <span class="einvoice-profiles__version">
+                  @if (latestVersion(profile.id)) {
+                    v{{ latestVersion(profile.id) }}
+                  } @else {
+                    taslak
+                  }
+                </span>
+                <button type="button" data-testid="edit-profile" (click)="openDraft(profile.id)">Düzenle</button>
+                <button type="button" (click)="publish(profile.id)">Yayınla</button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+
+    <section class="einvoice-profiles__panel einvoice-profiles__panel--draft">
+      <div class="einvoice-profiles__panel-title">
+        <div>
+          <h2>Taslak</h2>
+          <p>{{ selectedProfile?.name || 'Profil seç' }}</p>
+        </div>
+        @if (selectedProfileId()) {
+          <button type="button" (click)="saveDraft()">Kaydet</button>
+        }
+      </div>
+
+      @if (selectedProfileId()) {
+        <textarea
+          class="einvoice-profiles__draft"
+          data-testid="profile-draft"
+          [ngModel]="draftJson()"
+          (ngModelChange)="draftJson.set($event)"
+          spellcheck="false"
+        ></textarea>
+        <div class="einvoice-profiles__versions" data-testid="profile-versions">
+          @if (versions().length === 0) {
+            <span>Yayınlanmış sürüm yok.</span>
+          } @else {
+            @for (version of versions(); track version.id) {
+              <span>v{{ version.version }}</span>
+            }
+          }
+        </div>
+      } @else {
+        <div class="einvoice-profiles__empty">Adresleme taslağını görmek için soldan profil seç.</div>
+      }
+    </section>
+  </div>
+</section>

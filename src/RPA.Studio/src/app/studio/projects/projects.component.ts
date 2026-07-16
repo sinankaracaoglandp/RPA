@@ -84,4 +84,11 @@ export class ProjectsComponent implements OnInit {
   openWorkflow(workflowId: string): void {
     void this.router.navigate(['/designer', workflowId]);
   }
+
+  openEInvoiceProfiles(): void {
+    const projectId = this.selectedProjectId();
+    if (projectId) {
+      void this.router.navigate(['/projects', projectId, 'einvoice-profiles']);
+    }
+  }
 }
