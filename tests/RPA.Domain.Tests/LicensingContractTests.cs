@@ -22,4 +22,28 @@ public class LicensingContractTests
         Assert.Equal(5, payload.MaxActivatedAgents);
         Assert.Equal(1, payload.Revision);
     }
+
+    [Fact]
+    public void OfflineLicensePayload_DefensivelyCopiesAndNormalizesFeatures()
+    {
+        var features = new List<string> { "Studio", "Agent", "Studio" };
+        var payload = new OfflineLicensePayload(1, "LIC-1", 1, "ACME", "install-1", "ABC", 5,
+            DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2027-01-01T00:00:00Z"), features);
+
+        features.Add("WebAPI");
+
+        Assert.Equal(["Agent", "Studio"], payload.Features.ToArray());
+    }
+
+    [Fact]
+    public void LicenseStatus_DefensivelyCopiesFeatures()
+    {
+        var features = new List<string> { "Studio" };
+        var status = new LicenseStatus(true, true, "LIC-1", 1, "ACME",
+            DateTimeOffset.Parse("2027-01-01T00:00:00Z"), 5, 1, features);
+
+        features.Add("Agent");
+
+        Assert.Equal(["Studio"], status.Features.ToArray());
+    }
 }
