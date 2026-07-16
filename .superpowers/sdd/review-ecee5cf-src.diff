@@ -1,0 +1,183 @@
+# Commit
+ecee5cf feat(vision): ClickTextOffset kanal impl + OcrEngine/VisionOffset
+
+# Stat (bin/obj excluded)
+ src/RPA.Agent/Vision/OcrEngine.cs                  | 37 ++++++++++++++++++++++
+ .../Vision/TesseractOpenCvVisionChannel.cs         | 33 ++++++++-----------
+ src/RPA.Agent/Vision/VisionOffset.cs               | 11 +++++++
+ tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs  | 27 ++++++++++++++++
+ 4 files changed, 89 insertions(+), 19 deletions(-)
+
+# Diff (bin/obj excluded)
+diff --git a/src/RPA.Agent/Vision/OcrEngine.cs b/src/RPA.Agent/Vision/OcrEngine.cs
+new file mode 100644
+index 0000000..ac1fe5d
+--- /dev/null
++++ b/src/RPA.Agent/Vision/OcrEngine.cs
+@@ -0,0 +1,37 @@
++namespace RPA.Agent.Vision;
++
++using System.Runtime.Versioning;
++using OpenCvSharp;
++using RPA.Domain.ValueObjects;
++using Tesseract;
++
++/// <summary>Tesseract OCR — bir görüntüden tam metni ve kelime kutularını çıkarır.
++/// Kanal ve text-offset picker tarafından paylaşılır.</summary>
++[SupportedOSPlatform("windows")]
++public static class OcrEngine
++{
++    public sealed record OcrWord(string Text, VisionMatch Box);
++
++    public static (string Text, List<OcrWord> Words) Read(Mat image, string tessdataPath, string language)
++    {
++        using var engine = new TesseractEngine(tessdataPath, language, EngineMode.Default);
++        var bytes = image.ImEncode(".png");
++        using var pix = Pix.LoadFromMemory(bytes);
++        using var page = engine.Process(pix);
++        var full = page.GetText() ?? string.Empty;
++
++        var words = new List<OcrWord>();
++        using var iter = page.GetIterator();
++        iter.Begin();
++        do
++        {
++            if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
++            {
++                var w = iter.GetText(PageIteratorLevel.Word);
++                words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
++            }
++        }
++        while (iter.Next(PageIteratorLevel.Word));
++        return (full, words);
++    }
++}
+diff --git a/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs b/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
+index 972368a..af318f0 100644
+--- a/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
++++ b/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
+@@ -67,20 +67,32 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
+         if (box is null)
+         {
+             throw new SystemException($"Metin ekranda bulunamadı: '{text}' (timeout).");
+         }
+         DoClick(box.CenterX, box.CenterY, clickType);
+     }
+ 
+     public async Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs)
+         => await PollForTextAsync(text, language, matchMode, timeoutMs) is not null;
+ 
++    public async Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
++        string language, string matchMode, string? clickType, int timeoutMs)
++    {
++        var box = await PollForTextAsync(anchorText, language, matchMode, timeoutMs);
++        if (box is null)
++        {
++            throw new SystemException($"Çapa metni ekranda bulunamadı: '{anchorText}' (timeout).");
++        }
++        var (x, y) = VisionOffset.ClickPoint(box, dx, dy);
++        DoClick(x, y, clickType);
++    }
++
+     private async Task<(VisionMatch? Match, double BestScore, string? DumpPath)> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
+     {
+         using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
+         var sw = Stopwatch.StartNew();
+         var bestSeen = 0d;
+         Mat? firstScreen = null;
+         Mat? lastScreen = null;
+         try
+         {
+             do
+@@ -168,39 +180,22 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
+             await Task.Delay(250);
+         }
+         while (sw.ElapsedMilliseconds < timeoutMs);
+         return null;
+     }
+ 
+     private (string Text, List<OcrWord> Words) RunOcr(Mat image, string language)
+     {
+         try
+         {
+-            using var engine = new TesseractEngine(_tessdataPath, language, EngineMode.Default);
+-            var bytes = image.ImEncode(".png");
+-            using var pix = Pix.LoadFromMemory(bytes);
+-            using var page = engine.Process(pix);
+-            var full = page.GetText() ?? string.Empty;
+-
+-            var words = new List<OcrWord>();
+-            using var iter = page.GetIterator();
+-            iter.Begin();
+-            do
+-            {
+-                if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
+-                {
+-                    var w = iter.GetText(PageIteratorLevel.Word);
+-                    words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
+-                }
+-            }
+-            while (iter.Next(PageIteratorLevel.Word));
+-            return (full, words);
++            var (full, words) = OcrEngine.Read(image, _tessdataPath, language);
++            return (full, words.Select(w => new OcrWord(w.Text, w.Box)).ToList());
+         }
+         catch (Exception ex) when (ex is not RPA.Domain.Exceptions.SystemException)
+         {
+             throw new SystemException($"OCR başarısız: {ex.Message}", ex);
+         }
+     }
+ 
+     private void DoClick(int x, int y, string? clickType)
+     {
+         // Eşleşme koordinatları tam-ekran (sanal ekran) yakalamasına göredir; mutlak imleç
+diff --git a/src/RPA.Agent/Vision/VisionOffset.cs b/src/RPA.Agent/Vision/VisionOffset.cs
+new file mode 100644
+index 0000000..e9a7d10
+--- /dev/null
++++ b/src/RPA.Agent/Vision/VisionOffset.cs
+@@ -0,0 +1,11 @@
++namespace RPA.Agent.Vision;
++
++using RPA.Domain.ValueObjects;
++
++/// <summary>Çapa kelime kutusunun merkezinden piksel ofsetle tıklama noktasını hesaplar.
++/// Picker-zamanı ve runtime aynı referansı (tight OCR kutusu merkezi) kullanır.</summary>
++public static class VisionOffset
++{
++    public static (int X, int Y) ClickPoint(VisionMatch anchorBox, int dx, int dy)
++        => (anchorBox.CenterX + dx, anchorBox.CenterY + dy);
++}
+diff --git a/tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs b/tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs
+new file mode 100644
+index 0000000..d6e9286
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs
+@@ -0,0 +1,27 @@
++namespace RPA.Agent.Tests.Vision;
++
++using RPA.Agent.Vision;
++using RPA.Domain.ValueObjects;
++using Xunit;
++
++public class VisionOffsetTests
++{
++    [Fact]
++    public void ClickPoint_UsesAnchorBoxCenterPlusOffset()
++    {
++        // Kutu (x=100,y=200,w=40,h=20) → merkez (120,210); ofset (+50,-10) → (170,200)
++        var box = new VisionMatch(100, 200, 40, 20, 1.0);
++        var (x, y) = VisionOffset.ClickPoint(box, 50, -10);
++        Assert.Equal(170, x);
++        Assert.Equal(200, y);
++    }
++
++    [Fact]
++    public void ClickPoint_ZeroOffset_IsCenter()
++    {
++        var box = new VisionMatch(0, 0, 10, 10, 1.0);
++        var (x, y) = VisionOffset.ClickPoint(box, 0, 0);
++        Assert.Equal(5, x);
++        Assert.Equal(5, y);
++    }
++}

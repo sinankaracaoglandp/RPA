@@ -1,0 +1,217 @@
+# Review package: eaeb631..c284b7e
+
+## Commits
+c284b7e feat(webapi): trigger DTO ajan hedefleme alanlari + GET /api/triggers listesi
+
+## Files changed
+ src/RPA.WebAPI/Triggers/TriggersController.cs      | 33 +++++++++++++++++++
+ .../TriggersControllerIntegrationTests.cs          | 37 ++++++++++++++++++++++
+ 2 files changed, 70 insertions(+)
+
+## Diff
+diff --git a/src/RPA.WebAPI/Triggers/TriggersController.cs b/src/RPA.WebAPI/Triggers/TriggersController.cs
+index e934de3..c3ffc9f 100644
+--- a/src/RPA.WebAPI/Triggers/TriggersController.cs
++++ b/src/RPA.WebAPI/Triggers/TriggersController.cs
+@@ -39,40 +39,61 @@ public class TriggersController : ControllerBase
+             return BadRequest(new { error = "Cron tetikleyici için Schedule zorunludur." });
+ 
+         var trigger = new Trigger
+         {
+             ProjectId = request.ProjectId,
+             WorkflowVersionId = request.WorkflowVersionId,
+             Type = type,
+             Configuration = request.Configuration ?? "{}",
+             EnvironmentId = request.EnvironmentId,
+             IsActive = request.IsActive,
++            TargetRobotTags = request.TargetRobotTags ?? "",
++            Priority = request.Priority,
+         };
+         await _repository.AddTriggerAsync(trigger, ct);
+ 
+         Schedule? schedule = null;
+         if (type == TriggerType.Cron && request.Schedule is not null)
+         {
+             schedule = new Schedule
+             {
+                 TriggerId = trigger.Id,
+                 CronExpression = request.Schedule.CronExpression,
+                 TimeZone = string.IsNullOrWhiteSpace(request.Schedule.TimeZone) ? "UTC" : request.Schedule.TimeZone,
+                 OverlapPolicy = string.IsNullOrWhiteSpace(request.Schedule.OverlapPolicy) ? "skip" : request.Schedule.OverlapPolicy,
+             };
+             await _repository.AddScheduleAsync(schedule, ct);
+         }
+ 
+         await _repository.SaveChangesAsync(ct);
+         return CreatedAtAction(nameof(GetByWorkflowVersion), new { workflowVersionId = trigger.WorkflowVersionId }, TriggerDto.From(trigger, schedule));
+     }
+ 
++    /// <summary>Tüm job tanımlarını (trigger) opsiyonel filtrelerle listeler (Studio Zamanlamalar ekranı).</summary>
++    [HttpGet("triggers")]
++    [ProducesResponseType(typeof(List<TriggerDto>), StatusCodes.Status200OK)]
++    public async Task<IActionResult> List(
++        [FromQuery] Guid? projectId, [FromQuery] Guid? environmentId, [FromQuery] bool? isActive,
++        CancellationToken ct)
++    {
++        var triggers = await _repository.ListTriggersAsync(projectId, environmentId, isActive, ct);
++        var dtos = new List<TriggerDto>();
++        foreach (var trigger in triggers)
++        {
++            var schedule = trigger.Type == TriggerType.Cron
++                ? await _repository.FindScheduleByTriggerIdAsync(trigger.Id, ct)
++                : null;
++            dtos.Add(TriggerDto.From(trigger, schedule));
++        }
++        return Ok(dtos);
++    }
++
+     /// <summary>Belirtilen workflow versiyonuna ait tüm tetikleyicileri döner.</summary>
+     [HttpGet("workflows/{workflowVersionId:guid}/triggers")]
+     [ProducesResponseType(typeof(List<TriggerDto>), StatusCodes.Status200OK)]
+     public async Task<IActionResult> GetByWorkflowVersion(Guid workflowVersionId, CancellationToken ct)
+     {
+         var triggers = await _repository.FindTriggersByWorkflowVersionAsync(workflowVersionId, ct);
+         var dtos = new List<TriggerDto>();
+         foreach (var trigger in triggers)
+         {
+             var schedule = trigger.Type == TriggerType.Cron
+@@ -91,20 +112,24 @@ public class TriggersController : ControllerBase
+     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateTriggerRequest request, CancellationToken ct)
+     {
+         var trigger = await _repository.FindTriggerByIdAsync(id, ct);
+         if (trigger is null)
+             return NotFound();
+ 
+         if (request.IsActive.HasValue)
+             trigger.IsActive = request.IsActive.Value;
+         if (request.Configuration is not null)
+             trigger.Configuration = request.Configuration;
++        if (request.TargetRobotTags is not null)
++            trigger.TargetRobotTags = request.TargetRobotTags;
++        if (request.Priority.HasValue)
++            trigger.Priority = request.Priority.Value;
+ 
+         Schedule? schedule = await _repository.FindScheduleByTriggerIdAsync(id, ct);
+         if (request.Schedule is not null && schedule is not null)
+         {
+             if (!string.IsNullOrWhiteSpace(request.Schedule.CronExpression))
+                 schedule.CronExpression = request.Schedule.CronExpression;
+             if (!string.IsNullOrWhiteSpace(request.Schedule.TimeZone))
+                 schedule.TimeZone = request.Schedule.TimeZone;
+             if (!string.IsNullOrWhiteSpace(request.Schedule.OverlapPolicy))
+                 schedule.OverlapPolicy = request.Schedule.OverlapPolicy;
+@@ -134,53 +159,61 @@ public class TriggersController : ControllerBase
+ }
+ 
+ public sealed class CreateTriggerRequest
+ {
+     public Guid ProjectId { get; set; }
+     public Guid WorkflowVersionId { get; set; }
+     public string Type { get; set; } = "Manual";
+     public string? Configuration { get; set; }
+     public Guid EnvironmentId { get; set; }
+     public bool IsActive { get; set; } = true;
++    public string TargetRobotTags { get; set; } = "";
++    public int Priority { get; set; }
+     public ScheduleRequest? Schedule { get; set; }
+ }
+ 
+ public sealed class UpdateTriggerRequest
+ {
+     public bool? IsActive { get; set; }
+     public string? Configuration { get; set; }
++    public string? TargetRobotTags { get; set; }
++    public int? Priority { get; set; }
+     public ScheduleRequest? Schedule { get; set; }
+ }
+ 
+ public sealed class ScheduleRequest
+ {
+     public string CronExpression { get; set; } = "";
+     public string TimeZone { get; set; } = "UTC";
+     public string OverlapPolicy { get; set; } = "skip";
+ }
+ 
+ public sealed class TriggerDto
+ {
+     public Guid Id { get; set; }
+     public Guid WorkflowVersionId { get; set; }
+     public string Type { get; set; } = "";
+     public string Configuration { get; set; } = "{}";
+     public bool IsActive { get; set; }
++    public string TargetRobotTags { get; set; } = "";
++    public int Priority { get; set; }
+     public ScheduleDto? Schedule { get; set; }
+ 
+     public static TriggerDto From(Trigger t, Schedule? s) => new()
+     {
+         Id = t.Id,
+         WorkflowVersionId = t.WorkflowVersionId,
+         Type = t.Type.ToString(),
+         Configuration = t.Configuration,
+         IsActive = t.IsActive,
++        TargetRobotTags = t.TargetRobotTags,
++        Priority = t.Priority,
+         Schedule = s is null ? null : new ScheduleDto
+         {
+             CronExpression = s.CronExpression,
+             TimeZone = s.TimeZone,
+             OverlapPolicy = s.OverlapPolicy,
+         },
+     };
+ }
+ 
+ public sealed class ScheduleDto
+diff --git a/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs b/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs
+index b8f50d9..2ef21a8 100644
+--- a/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs
++++ b/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs
+@@ -168,11 +168,48 @@ public class TriggersControllerIntegrationTests : IClassFixture<WebApplicationFa
+             .ReturnsAsync(TriggerExecutionResult.Executed(jobRun));
+         var client = CreateClient(repo.Object, svc.Object);
+ 
+         var response = await client.PostAsync($"/api/triggers/{triggerId}/fire", null);
+ 
+         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+         var body = await response.Content.ReadFromJsonAsync<TriggerFireResultDto>();
+         Assert.Equal("Executed", body!.Outcome);
+         Assert.Equal(jobRun.Id, body.JobRunId);
+     }
++
++    [Fact]
++    public async Task Create_Then_List_ReturnsRobotTargeting()
++    {
++        var store = new List<Trigger>();
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.AddTriggerAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
++            .Callback<Trigger, CancellationToken>((t, _) => store.Add(t)).Returns(Task.CompletedTask);
++        repo.Setup(r => r.ListTriggersAsync(It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<bool?>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(() => store);
++        var client = CreateClient(repo.Object);
++
++        var create = new
++        {
++            projectId = Guid.NewGuid(),
++            workflowVersionId = Guid.NewGuid(),
++            type = "Manual",
++            environmentId = Guid.NewGuid(),
++            isActive = true,
++            targetRobotTags = "prod-vm,sap",
++            priority = 3,
++        };
++        var createResp = await client.PostAsJsonAsync("/api/triggers", create);
++        createResp.EnsureSuccessStatusCode();
++
++        var listResp = await client.GetAsync("/api/triggers");
++        listResp.EnsureSuccessStatusCode();
++        var list = await listResp.Content.ReadFromJsonAsync<List<TriggerDtoShape>>();
++
++        Assert.Contains(list!, t => t.TargetRobotTags == "prod-vm,sap" && t.Priority == 3);
++    }
++
++    private sealed class TriggerDtoShape
++    {
++        public string TargetRobotTags { get; set; } = "";
++        public int Priority { get; set; }
++    }
+ }

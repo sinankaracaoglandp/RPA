@@ -1,0 +1,95 @@
+# Review package: 5fa2c37d9801648904a2f26a66395aad948dbfc4..HEAD
+
+## Commits
+5e87366 refactor(contract): IVisionAutomationChannel.ClickTextOffsetAsync
+
+## Files changed
+ CLAUDE.md                                                | 16 ++++++++++++++++
+ src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs    |  8 ++++++++
+ .../Vision/UnavailableVisionAutomationChannel.cs         |  3 +++
+ 3 files changed, 27 insertions(+)
+
+## Diff
+diff --git a/CLAUDE.md b/CLAUDE.md
+index f9875b3..2c364ba 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -544,10 +544,26 @@ Studio workflow'larının hangi ajanda koşacağı `Trigger` katmanında tanıml
+ - **`Trigger`** entity: `TargetRobotTags` (virgülle ayrık tag havuzu) + `Priority` eklendi. Migration `AddTriggerRobotTargeting`.
+ - **Yeni arayüz:** `IRobotDispatcher.SelectRobotAsync(trigger, ct)` — Online + kapasitesi müsait +
+   tag'leri kapsayan robotu seçer (en boş kapasite → heartbeat). Impl `RobotDispatcher` (Infrastructure).
+ - **`TriggerService`** ctor'a `IRobotDispatcher` aldı; JobRun'a `AssignedRobotId` yazar, aday yoksa `Status="Pending"`.
+ - **`ITriggerRepository`**: `ListTriggersAsync(projectId?, environmentId?, isActive?)` + `GetActiveJobCountsByRobotAsync()`.
+ - **API:** `GET /api/triggers` (job listesi); `CreateTriggerRequest`/`UpdateTriggerRequest`/`TriggerDto` `TargetRobotTags`+`Priority` içerir.
+ - **Studio:** `orchestrator/schedules` ekranı (job oluştur/liste/fire, hedef ajan tag seçimi).
+ 
+ Kapsam dışı: Agent handoff/poll protokolü (JobRun'ın ajana gerçekten teslim edilip çalıştırılması) — ayrı spec.
+ Etkilenen paketler yok (yeni özellik; mevcut in-process çalıştırma placeholder'ı korunur).
++
++---
++
++## Kontrat Değişikliği — 2026-07-15 (Vision metin çapası ofset tıklama)
++
++`IVisionAutomationChannel.ClickTextOffsetAsync(anchorText, dx, dy, language, matchMode, clickType, timeoutMs)`
++eklendi — OCR metin çapasının kelime kutusu merkezinden piksel ofsetle tıklar (etiketin yanındaki
++boş input gibi hedefler). Yeni aktivite `Vision.ClickTextOffset` (kategori "Görüntü", capability
++`vision`). Yeni picker kind `text-offset` (iki aşamalı: çapa metni seç + hedef nokta tıkla → dx/dy
++otomatik). `SpyElementMessage`'a `Kind="text-offset"`, `AnchorText`, `Dx`, `Dy` + `FromTextOffset`;
++`StudioHub.SupportedKinds`'e `text-offset`. Referans: çapanın OCR tight kelime kutusu **merkezi**
++(picker-zamanı ve runtime aynı) → çözünürlük farkında ofset kaymaz.
++
++Etkilenen paketler: Paket F (Vision), Studio picker metadata tüketicileri, Agent UI Spy transport.
++Gerekçe: erişilebilirlik ağacı olmayan ekranlarda etiket-yanı boş alanlara tıklama (UiPath CV
++"anchor + relative offset" modeli).
+diff --git a/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+index 2f31281..5804904 100644
+--- a/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
++++ b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+@@ -20,13 +20,21 @@ public interface IVisionAutomationChannel
+ 
+     /// <summary>Template ekranda var mı? Fırlatmaz. timeoutMs 0 ise tek bakış.</summary>
+     Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs);
+ 
+     /// <summary>Bölgeden (null ise tam ekran) OCR ile metin okur. language örn. "tur+eng".</summary>
+     Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language);
+ 
+     /// <summary>OCR ile metni bulur, merkezine tıklar. matchMode "contains" (vars.) / "exact". Bulunmazsa SystemException.</summary>
+     Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs);
+ 
++    /// <summary>
++    /// OCR ile anchorText'i bulur, kelime kutusunun merkezinden (dx,dy) piksel ofsetle tıklar
++    /// (etiketin yanındaki boş alan gibi kendi başına ayırt edilemeyen hedefler için).
++    /// Çapa bulunamazsa/timeout → SystemException.
++    /// </summary>
++    Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
++        string language, string matchMode, string? clickType, int timeoutMs);
++
+     /// <summary>Metin ekranda var mı? Fırlatmaz.</summary>
+     Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs);
+ }
+diff --git a/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs b/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
+index 255d769..2c764ff 100644
+--- a/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
++++ b/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
+@@ -6,18 +6,21 @@ using RPA.Domain.Interfaces;
+ /// Non-agent süreçlerde Vision.* aktivite kayıtlarının DI-geçerli kalması için yer tutucu kanal.
+ /// Gerçek OpenCvSharp+Tesseract implementasyonu RPA.Agent tarafından Windows'ta kaydedilir.
+ /// </summary>
+ public sealed class UnavailableVisionAutomationChannel : IVisionAutomationChannel
+ {
+     public Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs) => Unavailable();
+     public Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs) => Unavailable();
+     public Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs) => Unavailable<bool>();
+     public Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language) => Unavailable<string>();
+     public Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs) => Unavailable();
++    public Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
++        string language, string matchMode, string? clickType, int timeoutMs)
++        => Unavailable();
+     public Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs) => Unavailable<bool>();
+ 
+     private static Task Unavailable() => Task.FromException(new InvalidOperationException(Message));
+     private static Task<T> Unavailable<T>() => Task.FromException<T>(new InvalidOperationException(Message));
+ 
+     private const string Message =
+         "Vision automation channel is not available in this process. Run Vision.* activities through RPA.Agent on Windows.";
+ }

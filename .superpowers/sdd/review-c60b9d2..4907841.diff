@@ -1,0 +1,300 @@
+# Review package: c60b9d2..HEAD
+
+## Commits
+4907841 feat(persistence): Project/Workflow EF eşlemesi ve repolar — Paket B kalıcılık temeli
+
+## Files changed
+ src/RPA.Domain/Interfaces/IProjectRepository.cs    | 14 ++++
+ src/RPA.Domain/Interfaces/IWorkflowRepository.cs   | 15 ++++
+ .../Persistence/EfProjectRepository.cs             | 29 +++++++
+ .../Persistence/EfWorkflowRepository.cs            | 40 ++++++++++
+ src/RPA.Infrastructure/Persistence/RpaDbContext.cs | 30 ++++++++
+ .../Persistence/ProjectWorkflowRepositoryTests.cs  | 89 ++++++++++++++++++++++
+ 6 files changed, 217 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Domain/Interfaces/IProjectRepository.cs b/src/RPA.Domain/Interfaces/IProjectRepository.cs
+new file mode 100644
+index 0000000..d413589
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IProjectRepository.cs
+@@ -0,0 +1,14 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++
++/// <summary>Proje kalıcılık soyutlaması (Paket B — Studio Projelerim).</summary>
++public interface IProjectRepository
++{
++    Task<IReadOnlyList<Project>> ListAsync(CancellationToken ct = default);
++    Task<Project?> FindAsync(Guid id, CancellationToken ct = default);
++    Task<Project> AddAsync(Project project, CancellationToken ct = default);
++    /// <summary>Projedeki (soft-delete hariç) workflow sayısı — liste kartı için.</summary>
++    Task<int> CountWorkflowsAsync(Guid projectId, CancellationToken ct = default);
++    Task SaveChangesAsync(CancellationToken ct = default);
++}
+diff --git a/src/RPA.Domain/Interfaces/IWorkflowRepository.cs b/src/RPA.Domain/Interfaces/IWorkflowRepository.cs
+new file mode 100644
+index 0000000..9892ff2
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IWorkflowRepository.cs
+@@ -0,0 +1,15 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++
++/// <summary>Workflow + taslak versiyon kalıcılık soyutlaması (Paket B).</summary>
++public interface IWorkflowRepository
++{
++    Task<IReadOnlyList<Workflow>> ListByProjectAsync(Guid projectId, CancellationToken ct = default);
++    Task<Workflow?> FindAsync(Guid id, CancellationToken ct = default);
++    Task<Workflow> AddAsync(Workflow workflow, CancellationToken ct = default);
++    /// <summary>Workflow'un Status == Draft olan tek taslak versiyonu; yoksa null.</summary>
++    Task<WorkflowVersion?> FindDraftAsync(Guid workflowId, CancellationToken ct = default);
++    Task AddVersionAsync(WorkflowVersion version, CancellationToken ct = default);
++    Task SaveChangesAsync(CancellationToken ct = default);
++}
+diff --git a/src/RPA.Infrastructure/Persistence/EfProjectRepository.cs b/src/RPA.Infrastructure/Persistence/EfProjectRepository.cs
+new file mode 100644
+index 0000000..0c5cca8
+--- /dev/null
++++ b/src/RPA.Infrastructure/Persistence/EfProjectRepository.cs
+@@ -0,0 +1,29 @@
++namespace RPA.Infrastructure.Persistence;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Interfaces;
++
++public sealed class EfProjectRepository : IProjectRepository
++{
++    private readonly RpaDbContext _db;
++
++    public EfProjectRepository(RpaDbContext db) => _db = db;
++
++    public async Task<IReadOnlyList<Project>> ListAsync(CancellationToken ct = default)
++        => await _db.Projects.Where(p => !p.IsDeleted).OrderBy(p => p.Name).ToListAsync(ct);
++
++    public Task<Project?> FindAsync(Guid id, CancellationToken ct = default)
++        => _db.Projects.FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, ct);
++
++    public async Task<Project> AddAsync(Project project, CancellationToken ct = default)
++    {
++        _db.Projects.Add(project);
++        return await Task.FromResult(project);
++    }
++
++    public Task<int> CountWorkflowsAsync(Guid projectId, CancellationToken ct = default)
++        => _db.Workflows.CountAsync(w => w.ProjectId == projectId && !w.IsDeleted, ct);
++
++    public Task SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
++}
+diff --git a/src/RPA.Infrastructure/Persistence/EfWorkflowRepository.cs b/src/RPA.Infrastructure/Persistence/EfWorkflowRepository.cs
+new file mode 100644
+index 0000000..b360d03
+--- /dev/null
++++ b/src/RPA.Infrastructure/Persistence/EfWorkflowRepository.cs
+@@ -0,0 +1,40 @@
++namespace RPA.Infrastructure.Persistence;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++public sealed class EfWorkflowRepository : IWorkflowRepository
++{
++    private readonly RpaDbContext _db;
++
++    public EfWorkflowRepository(RpaDbContext db) => _db = db;
++
++    public async Task<IReadOnlyList<Workflow>> ListByProjectAsync(Guid projectId, CancellationToken ct = default)
++        => await _db.Workflows
++            .Where(w => w.ProjectId == projectId && !w.IsDeleted)
++            .OrderByDescending(w => w.UpdatedAt)
++            .ToListAsync(ct);
++
++    public Task<Workflow?> FindAsync(Guid id, CancellationToken ct = default)
++        => _db.Workflows.FirstOrDefaultAsync(w => w.Id == id && !w.IsDeleted, ct);
++
++    public async Task<Workflow> AddAsync(Workflow workflow, CancellationToken ct = default)
++    {
++        _db.Workflows.Add(workflow);
++        return await Task.FromResult(workflow);
++    }
++
++    public Task<WorkflowVersion?> FindDraftAsync(Guid workflowId, CancellationToken ct = default)
++        => _db.WorkflowVersions.FirstOrDefaultAsync(
++            v => v.WorkflowId == workflowId && v.Status == ComponentStatus.Draft && !v.IsDeleted, ct);
++
++    public Task AddVersionAsync(WorkflowVersion version, CancellationToken ct = default)
++    {
++        _db.WorkflowVersions.Add(version);
++        return Task.CompletedTask;
++    }
++
++    public Task SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
++}
+diff --git a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+index 25c88ad..5fa1ac7 100644
+--- a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
++++ b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+@@ -24,20 +24,25 @@ public class RpaDbContext : DbContext
+     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+ 
+     public DbSet<User> Users => Set<User>();
+ 
+     /// <summary>Task 2.5.1 — Idempotency/Checkpoint için minimal Queue/QueueItem eşlemesi.
+     /// Tam Queue şeması (Project ilişkisi dahil) WP-1.2 tam DbContext paketinde tamamlanacaktır.</summary>
+     public DbSet<Queue> Queues => Set<Queue>();
+ 
+     public DbSet<QueueItem> QueueItems => Set<QueueItem>();
+ 
++    /// <summary>Paket B — Studio proje/workflow kalıcılığı.</summary>
++    public DbSet<Project> Projects => Set<Project>();
++
++    public DbSet<RPA.Domain.Entities.Workflow> Workflows => Set<RPA.Domain.Entities.Workflow>();
++
+     /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
+     public DbSet<Robot> Robots => Set<Robot>();
+ 
+     /// <summary>Task 3.3 — Zamanlayıcı + tetikleyiciler (Spec Bölüm 7).</summary>
+     public DbSet<Trigger> Triggers => Set<Trigger>();
+ 
+     public DbSet<Schedule> Schedules => Set<Schedule>();
+ 
+     public DbSet<JobRun> JobRuns => Set<JobRun>();
+ 
+@@ -174,12 +179,37 @@ public class RpaDbContext : DbContext
+         {
+             entity.HasKey(v => v.Id);
+             entity.Property(v => v.Version).HasMaxLength(32).IsRequired();
+             entity.Property(v => v.Status).HasConversion<string>().HasMaxLength(32);
+             entity.Property(v => v.ChangeNotes).HasMaxLength(2048);
+             entity.HasIndex(v => new { v.WorkflowId, v.Version }).IsUnique();
+             // Workflow/Environment navigasyonları tam şema paketinde (WP-1.2) yapılandırılacak.
+             entity.Ignore(v => v.Workflow);
+             entity.Ignore(v => v.Environment);
+         });
++
++        modelBuilder.Entity<Project>(entity =>
++        {
++            entity.HasKey(p => p.Id);
++            entity.Property(p => p.Name).HasMaxLength(256).IsRequired();
++            entity.Property(p => p.Description).HasMaxLength(1024);
++            // Navigasyonlar tam şema paketinde (WP-1.2) yapılandırılacak.
++            entity.Ignore(p => p.Workflows);
++            entity.Ignore(p => p.Components);
++            entity.Ignore(p => p.Queues);
++        });
++
++        modelBuilder.Entity<RPA.Domain.Entities.Workflow>(entity =>
++        {
++            entity.HasKey(w => w.Id);
++            entity.Property(w => w.Name).HasMaxLength(256).IsRequired();
++            entity.Property(w => w.Description).HasMaxLength(1024);
++            entity.Property(w => w.Tags).HasMaxLength(1024);
++            entity.HasIndex(w => w.ProjectId);
++            entity.Ignore(w => w.Project);
++            entity.Ignore(w => w.ActiveVersion);
++            entity.Ignore(w => w.Versions);
++            entity.Ignore(w => w.ComponentUsages);
++            entity.Ignore(w => w.JobRuns);
++        });
+     }
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/Persistence/ProjectWorkflowRepositoryTests.cs b/tests/RPA.Infrastructure.Tests/Persistence/ProjectWorkflowRepositoryTests.cs
+new file mode 100644
+index 0000000..f270dd3
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Persistence/ProjectWorkflowRepositoryTests.cs
+@@ -0,0 +1,89 @@
++namespace RPA.Infrastructure.Tests.Persistence;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Infrastructure.Persistence;
++using Xunit;
++
++/// <summary>Paket B — proje/workflow kalıcılığı: EF repo davranışları (InMemory).</summary>
++public class ProjectWorkflowRepositoryTests
++{
++    private static RpaDbContext NewDb() => new(
++        new DbContextOptionsBuilder<RpaDbContext>()
++            .UseInMemoryDatabase(Guid.NewGuid().ToString())
++            .Options);
++
++    [Fact]
++    public async Task Projects_AddAndList_Roundtrips()
++    {
++        using var db = NewDb();
++        var repo = new EfProjectRepository(db);
++
++        await repo.AddAsync(new Project { Id = Guid.NewGuid(), Name = "Pilot" });
++        await repo.SaveChangesAsync();
++
++        var list = await repo.ListAsync();
++        Assert.Single(list);
++        Assert.Equal("Pilot", list[0].Name);
++    }
++
++    [Fact]
++    public async Task Projects_CountWorkflows_CountsOnlyThatProject()
++    {
++        using var db = NewDb();
++        var projects = new EfProjectRepository(db);
++        var workflows = new EfWorkflowRepository(db);
++        var p1 = Guid.NewGuid();
++        var p2 = Guid.NewGuid();
++        await projects.AddAsync(new Project { Id = p1, Name = "A" });
++        await projects.AddAsync(new Project { Id = p2, Name = "B" });
++        await workflows.AddAsync(new Workflow { Id = Guid.NewGuid(), ProjectId = p1, Name = "w1" });
++        await workflows.AddAsync(new Workflow { Id = Guid.NewGuid(), ProjectId = p1, Name = "w2" });
++        await workflows.AddAsync(new Workflow { Id = Guid.NewGuid(), ProjectId = p2, Name = "w3" });
++        await projects.SaveChangesAsync();
++
++        Assert.Equal(2, await projects.CountWorkflowsAsync(p1));
++        Assert.Equal(1, await projects.CountWorkflowsAsync(p2));
++    }
++
++    [Fact]
++    public async Task Workflows_FindDraft_ReturnsOnlyDraftStatus()
++    {
++        using var db = NewDb();
++        var repo = new EfWorkflowRepository(db);
++        var wf = Guid.NewGuid();
++        await repo.AddVersionAsync(new WorkflowVersion
++        {
++            Id = Guid.NewGuid(), WorkflowId = wf, Version = "1.0.0",
++            Status = ComponentStatus.Published, JsonDefinition = "{}",
++        });
++        await repo.AddVersionAsync(new WorkflowVersion
++        {
++            Id = Guid.NewGuid(), WorkflowId = wf, Version = "1.1.0",
++            Status = ComponentStatus.Draft, JsonDefinition = "{\"draft\":true}",
++        });
++        await repo.SaveChangesAsync();
++
++        var draft = await repo.FindDraftAsync(wf);
++
++        Assert.NotNull(draft);
++        Assert.Equal("1.1.0", draft!.Version);
++        Assert.Equal(ComponentStatus.Draft, draft.Status);
++    }
++
++    [Fact]
++    public async Task Workflows_ListByProject_OrdersByUpdatedAtDescending()
++    {
++        using var db = NewDb();
++        var repo = new EfWorkflowRepository(db);
++        var p = Guid.NewGuid();
++        await repo.AddAsync(new Workflow { Id = Guid.NewGuid(), ProjectId = p, Name = "eski", UpdatedAt = DateTime.UtcNow.AddDays(-1) });
++        await repo.AddAsync(new Workflow { Id = Guid.NewGuid(), ProjectId = p, Name = "yeni", UpdatedAt = DateTime.UtcNow });
++        await repo.SaveChangesAsync();
++
++        var list = await repo.ListByProjectAsync(p);
++
++        Assert.Equal(new[] { "yeni", "eski" }, list.Select(w => w.Name).ToArray());
++    }
++}

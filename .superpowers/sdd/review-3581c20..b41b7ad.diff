@@ -1,0 +1,156 @@
+# Review package: 3581c20..b41b7adce26e87c52b5f22dc637278c00dfce6bd
+
+## Commits
+b41b7ad feat(agent): OpenCvSharp template matcher (Paket F)
+
+## Files changed
+ src/RPA.Agent/RPA.Agent.csproj                     |  3 ++
+ src/RPA.Agent/Vision/TemplateMatcher.cs            | 56 ++++++++++++++++++++++
+ .../RPA.Agent.Tests/Vision/TemplateMatcherTests.cs | 48 +++++++++++++++++++
+ 3 files changed, 107 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Agent/RPA.Agent.csproj b/src/RPA.Agent/RPA.Agent.csproj
+index b21435e..9ca9e2e 100644
+--- a/src/RPA.Agent/RPA.Agent.csproj
++++ b/src/RPA.Agent/RPA.Agent.csproj
+@@ -7,20 +7,23 @@
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <RootNamespace>RPA.Agent</RootNamespace>
+     <AssemblyName>RPA.Agent</AssemblyName>
+     <!-- Yerel geliştirici sırları için user-secrets (Development). Üretimde ortam değişkeni kullanın. -->
+     <UserSecretsId>rpa-agent-dev-secrets</UserSecretsId>
+   </PropertyGroup>
+ 
+   <ItemGroup>
+     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
++    <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
++    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
++    <PackageReference Include="Tesseract" Version="5.2.0" />
+     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+     <PackageReference Include="Serilog" Version="4.3.1" />
+     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+     <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
+     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+diff --git a/src/RPA.Agent/Vision/TemplateMatcher.cs b/src/RPA.Agent/Vision/TemplateMatcher.cs
+new file mode 100644
+index 0000000..7f23647
+--- /dev/null
++++ b/src/RPA.Agent/Vision/TemplateMatcher.cs
+@@ -0,0 +1,56 @@
++namespace RPA.Agent.Vision;
++
++using System.Runtime.Versioning;
++using OpenCvSharp;
++using RPA.Domain.ValueObjects;
++
++/// <summary>
++/// OpenCvSharp tabanlı template matching. Anchor (Faz 2) için FindAll birden çok eşleşme
++/// döndürür; şu an aktiviteler yalnız FindBest'i kullanır. Çok-ölçekli tarama DPI toleransı
++/// sağlar.
++/// </summary>
++[SupportedOSPlatform("windows")]
++public static class TemplateMatcher
++{
++    private static readonly double[] Scales = { 1.0, 0.9, 1.1, 0.8, 1.25 };
++
++    public static VisionMatch? FindBest(Mat haystack, Mat needle, double confidence)
++    {
++        VisionMatch? best = null;
++        foreach (var scale in Scales)
++        {
++            using var scaled = scale == 1.0
++                ? needle.Clone()
++                : needle.Resize(default, scale, scale, InterpolationFlags.Area);
++            if (scaled.Width > haystack.Width || scaled.Height > haystack.Height)
++            {
++                continue;
++            }
++
++            using var result = new Mat();
++            // SQDIFF (unnormalized) is used instead of the *_NORMED variants because those
++            // divide by the template's own norm — a uniform-color template (norm 0, e.g. a
++            // solid-color icon) produces a 0/0 degenerate score everywhere. SQDIFF has no such
++            // division; we convert it to a [0,1] similarity by scaling against the theoretical
++            // worst case (every pixel/channel maximally different).
++            Cv2.MatchTemplate(haystack, scaled, result, TemplateMatchModes.SqDiff);
++            Cv2.MinMaxLoc(result, out double minVal, out _, out Point minLoc, out _);
++
++            double maxPossibleSqDiff = (double)scaled.Rows * scaled.Cols * scaled.Channels() * 255.0 * 255.0;
++            double score = maxPossibleSqDiff > 0 ? 1.0 - (minVal / maxPossibleSqDiff) : 1.0;
++
++            if (score >= confidence && (best is null || score > best.Score))
++            {
++                best = new VisionMatch(minLoc.X, minLoc.Y, scaled.Width, scaled.Height, score);
++            }
++        }
++        return best;
++    }
++
++    public static IReadOnlyList<VisionMatch> FindAll(Mat haystack, Mat needle, double confidence)
++    {
++        // Faz 1: tek en iyi eşleşmeyi liste olarak döndür (anchor Faz 2'de genişletilecek).
++        var best = FindBest(haystack, needle, confidence);
++        return best is null ? Array.Empty<VisionMatch>() : new[] { best };
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs b/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs
+new file mode 100644
+index 0000000..7da87c8
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs
+@@ -0,0 +1,48 @@
++namespace RPA.Agent.Tests.Vision;
++
++using OpenCvSharp;
++using RPA.Agent.Vision;
++using Xunit;
++
++public class TemplateMatcherTests
++{
++    // 100x100 beyaz zemin, (40,30) konumunda 10x10 siyah kare içeren haystack üret.
++    private static Mat MakeHaystack(out Rect knownBox)
++    {
++        var img = new Mat(new Size(100, 100), MatType.CV_8UC3, Scalar.White);
++        knownBox = new Rect(40, 30, 10, 10);
++        Cv2.Rectangle(img, knownBox, Scalar.Black, thickness: -1);
++        return img;
++    }
++
++    private static Mat MakeNeedle()
++    {
++        // 10x10 siyah kare — haystack'teki desenle aynı.
++        return new Mat(new Size(10, 10), MatType.CV_8UC3, Scalar.Black);
++    }
++
++    [Fact]
++    public void FindBest_LocatesNeedle_AtKnownPosition()
++    {
++        using var haystack = MakeHaystack(out var box);
++        using var needle = MakeNeedle();
++
++        var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.8);
++
++        Assert.NotNull(match);
++        Assert.InRange(match!.X, box.X - 2, box.X + 2);
++        Assert.InRange(match.Y, box.Y - 2, box.Y + 2);
++        Assert.True(match.Score >= 0.8);
++    }
++
++    [Fact]
++    public void FindBest_ReturnsNull_WhenBelowConfidence()
++    {
++        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, Scalar.White);
++        using var needle = MakeNeedle(); // siyah kare beyaz zeminde yok
++
++        var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.95);
++
++        Assert.Null(match);
++    }
++}

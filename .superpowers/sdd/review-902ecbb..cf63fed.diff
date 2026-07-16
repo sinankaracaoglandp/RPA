@@ -1,0 +1,1396 @@
+# Review package: 902ecbb..HEAD
+
+## Commits
+cf63fed test(catalog): katalog kapsama güvencesi — her aktivite form üretebilir
+4b23d71 fix(studio): bağlantı seçim durumu tutarlılığı + read-only guard
+30b6c76 feat(studio): mouse ile düğüm bağlama ve bağlantı seç/sil
+baed01f feat(studio): node oluşturmada katalog DisplayName ve DefaultProperties kullanılıyor
+d450318 fix(studio): özellik paneli seçimde artık açılıyor — ViewChild bağımlılığı kaldırıldı
+f13cc51 fix(studio): node'a tıklama artık silmiyor, yalnız seçiyor
+
+## Files changed
+ .../src/app/shared/models/activity.model.ts        |   2 +
+ .../studio/designer/canvas/canvas.component.html   |   4 +-
+ .../studio/designer/canvas/canvas.component.scss   |  10 ++
+ .../designer/canvas/canvas.component.spec.ts       | 193 +++++++++++++++++++++
+ .../app/studio/designer/canvas/canvas.component.ts | 159 ++++++++++++++++-
+ .../app/studio/designer/canvas/node.component.html |  14 +-
+ .../app/studio/designer/canvas/node.component.scss |   5 +
+ .../studio/designer/canvas/node.component.spec.ts  |  24 +++
+ .../app/studio/designer/canvas/node.component.ts   |  13 ++
+ .../app/studio/designer/designer.component.html    |   6 +-
+ .../src/app/studio/designer/designer.component.ts  |  17 ++
+ .../properties/generic-property.component.spec.ts  |  71 ++++++++
+ .../properties/generic-property.component.ts       |   5 +-
+ .../properties/properties-panel.component.html     |   2 +-
+ .../properties/properties-panel.component.spec.ts  |  69 ++++++++
+ .../properties/properties-panel.component.ts       |  28 +--
+ .../designer/toolbox/toolbox.component.spec.ts     |  29 +++-
+ .../studio/designer/toolbox/toolbox.component.ts   |   7 +-
+ .../simplified-toolbox.component.spec.ts           |   4 +-
+ .../simple-mode/simplified-toolbox.component.ts    |   6 +-
+ .../Workflow/ActivityRegistryCoverageTests.cs      |  67 +++++++
+ 21 files changed, 700 insertions(+), 35 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/shared/models/activity.model.ts b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+index 3f3259c..fe4b433 100644
+--- a/src/RPA.Studio/src/app/shared/models/activity.model.ts
++++ b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+@@ -10,11 +10,13 @@ export interface ActivityPort {
+ }
+ 
+ export interface ActivityMetadata {
+   activityId: string;
+   displayName: string;
+   category?: string;
+   description?: string;
+   icon?: string;
+   inputs?: ActivityPort[];
+   outputs?: ActivityPort[];
++  /** Katalogda tanımlı başlangıç özellik değerleri (node oluşturmada kopyalanır). */
++  defaultProperties?: Record<string, unknown>;
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html
+index a5e71fb..d08f5be 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html
+@@ -52,14 +52,14 @@
+     </button>
+   </div>
+ 
+   <div
+     #reteContainer
+     class="rete-canvas"
+     data-testid="rete-canvas"
+     tabindex="0"
+     role="application"
+     [attr.aria-label]="'canvas.ariaLabel' | translate"
+-    (keydown.delete)="selected && deleteNode(selected)"
+-    (keydown.backspace)="selected && deleteNode(selected)"
++    (keydown.delete)="onDeleteKey()"
++    (keydown.backspace)="onDeleteKey()"
+   ></div>
+ </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss
+index 9dd19a6..941bcdb 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss
+@@ -71,10 +71,20 @@
+   overflow: visible;
+   pointer-events: none;
+   z-index: 1;
+ 
+   &__path {
+     stroke: #2563eb;
+     stroke-width: 2;
+     fill: none;
+   }
+ }
++
++.canvas-connections__path--pending {
++  stroke-dasharray: 6 4;
++  opacity: 0.6;
++}
++
++.canvas-connections__path--selected {
++  stroke: #2563eb;
++  stroke-width: 3;
++}
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
+index 7e81bd1..95844d3 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
+@@ -185,11 +185,204 @@ describe('CanvasComponent', () => {
+     await component.addNode('B');
+     await component.clear();
+     expect(component.editor.getNodes().length).toBe(0);
+   });
+ 
+   it('throws when mutating a read-only canvas', async () => {
+     component.readOnly = true;
+     await ready();
+     await expect(component.addNode('A')).rejects.toThrow('read-only');
+   });
++
++  it('creates a node with the provided initial properties and label', async () => {
++    await ready();
++    const id = await component.addNode('Logic.Delay', {
++      label: 'Bekle',
++      properties: { durationMs: 1000 },
++    });
++    const node = component.editor.getNode(id)!;
++    expect(node.label).toBe('Bekle');
++    expect(node.properties).toEqual({ durationMs: 1000 });
++  });
++
++  describe('node click behaviour (regression: click must not delete)', () => {
++    it('keeps the node in the graph and emits nodeSelect when the card is clicked', async () => {
++      await ready();
++      const id = await component.addNode('Web.Click');
++      fixture.detectChanges();
++
++      const selections: (string | null)[] = [];
++      component.nodeSelect.subscribe((v) => selections.push(v));
++
++      const card: HTMLElement | null =
++        fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
++      expect(card).toBeTruthy();
++
++      // Gerçek kullanıcı tıklaması: pointerdown → pointerup → click sırası.
++      card!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
++      card!.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
++      card!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
++      fixture.detectChanges();
++
++      expect(component.editor.getNodes().length).toBe(1); // SİLİNMEMELİ
++      expect(component.editor.getNode(id)).toBeDefined();
++      expect(selections).toContain(id);
++    });
++
++    it('keeps the node DOM card rendered after click (no visual disappearance)', async () => {
++      await ready();
++      await component.addNode('Web.Click');
++      fixture.detectChanges();
++
++      const card: HTMLElement =
++        fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
++      card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
++      fixture.detectChanges();
++      await new Promise((r) => setTimeout(r, 0)); // async destroy/mount kuyruğunu boşalt
++
++      const after = fixture.nativeElement.querySelectorAll('[data-testid="canvas-node"]');
++      expect(after.length).toBe(1);
++      expect(after[0].querySelector('[data-testid="canvas-node-title"]')).toBeTruthy();
++    });
++
++    it('deletes the node ONLY via the delete button', async () => {
++      await ready();
++      const id = await component.addNode('Web.Click');
++      fixture.detectChanges();
++
++      const del: HTMLElement =
++        fixture.nativeElement.querySelector('[data-testid="canvas-node-delete"]');
++      del.dispatchEvent(new MouseEvent('click', { bubbles: true }));
++      fixture.detectChanges();
++      await new Promise((r) => setTimeout(r, 0));
++
++      expect(component.editor.getNode(id)).toBeUndefined();
++      expect(component.editor.getNodes().length).toBe(0);
++    });
++  });
++
++  describe('interactive connection lifecycle', () => {
++    it('creates a connection via beginConnection → completeConnection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++
++      component.beginConnection(a);
++      const connId = await component.completeConnection(b);
++
++      expect(connId).toBeTruthy();
++      expect(component.editor.getConnections().length).toBe(1);
++      const conn = component.editor.getConnections()[0];
++      expect(conn.source).toBe(a);
++      expect(conn.target).toBe(b);
++    });
++
++    it('cancelConnection drops the pending connection without creating one', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++
++      component.beginConnection(a);
++      component.cancelConnection();
++      const connId = await component.completeConnection(b);
++
++      expect(connId).toBeNull(); // pending yoktu
++      expect(component.editor.getConnections().length).toBe(0);
++    });
++
++    it('refuses a duplicate connection between the same pair', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      await component.connectNodes(a, b);
++
++      const dup = await component.connectNodes(a, b);
++
++      expect(dup).toBeNull();
++      expect(component.editor.getConnections().length).toBe(1);
++    });
++
++    it('completeConnection on the source node itself refuses (self-connection)', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      component.beginConnection(a);
++      const connId = await component.completeConnection(a);
++      expect(connId).toBeNull();
++      expect(component.editor.getConnections().length).toBe(0);
++    });
++
++    it('selects a connection and deletes it via deleteSelectedConnection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const connId = await component.connectNodes(a, b);
++
++      component.selectConnection(connId!);
++      expect(component.selectedConnection).toBe(connId);
++
++      await component.deleteSelectedConnection();
++      expect(component.editor.getConnections().length).toBe(0);
++      expect(component.selectedConnection).toBeNull();
++    });
++
++    it('emits graphChanged when a connection is created interactively', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const events: unknown[] = [];
++      component.graphChanged.subscribe((g) => events.push(g));
++
++      component.beginConnection(a);
++      await component.completeConnection(b);
++
++      expect(events.length).toBeGreaterThan(0);
++    });
++
++    it('clears selectedConnection when the selected connection is removed via deleteConnection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const connId = await component.connectNodes(a, b);
++
++      component.selectConnection(connId!);
++      expect(component.selectedConnection).toBe(connId);
++
++      await component.deleteConnection(connId!);
++      expect(component.selectedConnection).toBeNull();
++    });
++
++    it('clears selectedConnection when deleteNode cascades removal of the selected connection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const connId = await component.connectNodes(a, b);
++
++      component.selectConnection(connId!);
++      expect(component.selectedConnection).toBe(connId);
++
++      await component.deleteNode(a);
++      expect(component.selectedConnection).toBeNull();
++    });
++  });
++
++  describe('read-only connection drag guard', () => {
++    it('beginConnection does not throw on a read-only canvas', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      component.readOnly = true;
++      expect(() => component.beginConnection(a)).not.toThrow();
++    });
++
++    it('completeConnection resolves to null on a read-only canvas and creates no connections', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      component.readOnly = true;
++
++      component.beginConnection(a);
++      const connId = await component.completeConnection(b);
++
++      expect(connId).toBeNull();
++      expect(component.editor.getConnections().length).toBe(0);
++    });
++  });
+ });
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
+index 856e75d..83c070c 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
+@@ -117,20 +117,23 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+   @Output() readonly graphChanged = new EventEmitter<WorkflowVersion>();
+ 
+   editor!: NodeEditor<Schemes>;
+   area!: AreaPlugin<Schemes, AreaExtra>;
+   history!: HistoryPlugin<Schemes>;
+ 
+   private connectionPlugin!: ConnectionPlugin<Schemes, AreaExtra>;
+   private selectedNodeId: string | null = null;
+   private ready = false;
+   private suppressEvents = false;
++  private pendingConnectionFrom: string | null = null;
++  private pendingPath?: SVGPathElement;
++  private selectedConnectionId: string | null = null;
+ 
+   /** Resolves once the editor and plugins are wired up (awaited by tests). */
+   initialized: Promise<void> = Promise.resolve();
+ 
+   private readonly nodeRefs = new Map<string, ComponentRef<NodeComponent>>();
+   private connectionSvg?: SVGSVGElement;
+   private connectionGroup?: SVGGElement;
+ 
+   private readonly appRef = inject(ApplicationRef);
+   private readonly envInjector = inject(EnvironmentInjector);
+@@ -175,20 +178,36 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+ 
+     AreaExtensions.selectableNodes(this.area, AreaExtensions.selector(), {
+       accumulating: AreaExtensions.accumulateOnCtrl(),
+     });
+     AreaExtensions.simpleNodesOrder(this.area);
+ 
+     this.setupConnectionLayer(container);
+     this.registerRenderPipe();
+     this.registerChangePipes();
+ 
++    container.addEventListener('pointermove', (e: PointerEvent) =>
++      this.updatePendingPath(e.clientX, e.clientY),
++    );
++    container.addEventListener('pointerup', () => this.cancelConnection());
++    container.addEventListener('keydown', (e: KeyboardEvent) => {
++      if (e.key === 'Escape') {
++        this.cancelConnection();
++      }
++    });
++    // Bağlantı path'ine tıklayınca seç (event delegation — path'ler her çizimde yenilenir).
++    this.connectionSvg?.addEventListener('click', (e: MouseEvent) => {
++      const target = e.target as SVGElement;
++      const connId = target?.getAttribute?.('data-connection-id');
++      this.selectConnection(connId ?? null);
++    });
++
+     this.ready = true;
+   }
+ 
+   /** jsdom (unit tests) lacks ResizeObserver, which AreaPlugin subscribes to. */
+   private ensureResizeObserver(): void {
+     const g = globalThis as unknown as { ResizeObserver?: unknown };
+     if (typeof g.ResizeObserver === 'undefined') {
+       g.ResizeObserver = class {
+         observe(): void {}
+         unobserve(): void {}
+@@ -224,20 +243,26 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+           const id = (ctx.data as { id: string } | undefined)?.id ?? null;
+           this.setSelected(id);
+           break;
+         }
+       }
+       return context;
+     });
+ 
+     this.editor.addPipe((context) => {
+       const type = (context as { type?: string }).type;
++      if (type === 'connectionremoved') {
++        const removedId = (context as { data?: { id?: string } }).data?.id;
++        if (removedId && this.selectedConnectionId === removedId) {
++          this.selectedConnectionId = null;
++        }
++      }
+       if (
+         !this.suppressEvents &&
+         (type === 'nodecreated' ||
+           type === 'noderemoved' ||
+           type === 'connectioncreated' ||
+           type === 'connectionremoved')
+       ) {
+         this.redrawConnections();
+         this.emitChange();
+       }
+@@ -246,30 +271,45 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+   }
+ 
+   // --- node rendering (Angular bridge) -------------------------------------
+ 
+   private mountNode(data: { element: HTMLElement; type: string; payload: unknown }): void {
+     if (data?.type !== 'node') {
+       return;
+     }
+     const node = data.payload as FlowNode;
+     try {
++      // Aynı node yeniden render ediliyorsa önce eski görünümü kaldır —
++      // yeni bileşen mount edildikten SONRA destroy etmek (eski kod) aynı
++      // host element'i paylaşan yeni DOM'u da siliyordu (kart "kayboluyor").
++      const existing = this.nodeRefs.get(node.id);
++      if (existing) {
++        if (existing.location.nativeElement === data.element) {
++          // Aynı element, bileşen zaten canlı: sadece girdiyi tazele.
++          existing.setInput('node', this.toView(node));
++          existing.changeDetectorRef.detectChanges();
++          return;
++        }
++        existing.destroy();
++        this.nodeRefs.delete(node.id);
++      }
+       const ref = createComponent(NodeComponent, {
+         environmentInjector: this.envInjector,
+         hostElement: data.element,
+       });
+       ref.setInput('node', this.toView(node));
+       ref.instance.nodeSelect.subscribe((id: string) => this.select(id));
+       ref.instance.nodeDelete.subscribe((id: string) => void this.deleteNode(id));
++      ref.instance.connectStart.subscribe((id: string) => this.beginConnection(id));
++      ref.instance.connectDrop.subscribe((id: string) => void this.completeConnection(id));
+       this.appRef.attachView(ref.hostView);
+       ref.changeDetectorRef.detectChanges();
+-      this.nodeRefs.get(node.id)?.destroy();
+       this.nodeRefs.set(node.id, ref);
+     } catch {
+       // Headless/edge rendering failures must never corrupt the graph model.
+     }
+   }
+ 
+   private unmountNode(data: { element: HTMLElement }): void {
+     for (const [id, ref] of this.nodeRefs) {
+       if (ref.location.nativeElement === data?.element) {
+         ref.destroy();
+@@ -326,21 +366,27 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+     );
+     group.replaceChildren();
+     for (const conn of this.editor.getConnections()) {
+       const from = this.socketPosition(conn.source, 'out');
+       const to = this.socketPosition(conn.target, 'in');
+       if (!from || !to) {
+         continue;
+       }
+       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+       path.setAttribute('d', ConnectionComponent.buildPath(from, to));
+-      path.setAttribute('class', 'canvas-connections__path');
++      path.setAttribute(
++        'class',
++        conn.id === this.selectedConnectionId
++          ? 'canvas-connections__path canvas-connections__path--selected'
++          : 'canvas-connections__path',
++      );
++      path.setAttribute('pointer-events', 'stroke');
+       path.setAttribute('data-connection-id', conn.id);
+       path.setAttribute('data-testid', 'canvas-connection-path');
+       path.setAttribute('fill', 'none');
+       group.appendChild(path);
+     }
+   }
+ 
+   private socketPosition(nodeId: string, port: 'in' | 'out'): NodePosition | null {
+     const view = this.area.nodeViews.get(nodeId);
+     const node = this.editor.getNode(nodeId);
+@@ -351,51 +397,118 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+       x: view.position.x + node.width / 2,
+       y: view.position.y + (port === 'out' ? node.height : 0),
+     };
+   }
+ 
+   // --- public API ----------------------------------------------------------
+ 
+   /** Adds a node (activity by default) and returns its generated id. */
+   async addNode(
+     activityId: string,
+-    options: { type?: WorkflowNodeType; label?: string; position?: NodePosition } = {},
++    options: {
++      type?: WorkflowNodeType;
++      label?: string;
++      position?: NodePosition;
++      properties?: Record<string, unknown>;
++    } = {},
+   ): Promise<string> {
+     this.assertWritable();
+     const type = options.type ?? 'activity';
+     const label = options.label ?? activityId;
+-    const node = new FlowNode(label, type, type === 'activity' ? activityId : undefined);
++    const node = new FlowNode(
++      label,
++      type,
++      type === 'activity' ? activityId : undefined,
++      { ...(options.properties ?? {}) },
++    );
+     await this.editor.addNode(node);
+     const position = options.position ?? this.nextPosition();
+     await this.area.translate(node.id, position);
+     // Re-emit so subscribers observe the final position (the nodecreated
+     // signal fires before the node is translated into place).
+     this.emitChange();
+     return node.id;
+   }
+ 
+   /** Connects two nodes (source out → target in). Returns the connection id. */
+   async connectNodes(fromId: string, toId: string): Promise<string | null> {
+     this.assertWritable();
+     const source = this.editor.getNode(fromId);
+     const target = this.editor.getNode(toId);
+     if (!source || !target || fromId === toId) {
+       return null;
+     }
++    const duplicate = this.editor
++      .getConnections()
++      .some((c) => c.source === fromId && c.target === toId);
++    if (duplicate) {
++      return null;
++    }
+     const connection: FlowConnection = new ClassicPreset.Connection<
+       ClassicPreset.Node,
+       ClassicPreset.Node
+     >(source, 'out', target, 'in');
+     await this.editor.addConnection(connection);
+     return connection.id;
+   }
+ 
++  /** Out soketinden bağlantı sürüklemesi başlatır (geçici kesikli çizgi). */
++  beginConnection(nodeId: string): void {
++    if (this.readOnly) {
++      return;
++    }
++    if (!this.editor.getNode(nodeId)) {
++      return;
++    }
++    this.pendingConnectionFrom = nodeId;
++    this.ensurePendingPath();
++  }
++
++  /** Sürüklemeyi hedef node üzerinde tamamlar; kural ihlalinde null döner. */
++  async completeConnection(targetNodeId: string): Promise<string | null> {
++    if (this.readOnly) {
++      this.cancelConnection();
++      return null;
++    }
++    const from = this.pendingConnectionFrom;
++    this.cancelConnection();
++    if (!from) {
++      return null;
++    }
++    return this.connectNodes(from, targetNodeId);
++  }
++
++  /** Bekleyen bağlantı sürüklemesini iptal eder ve geçici çizgiyi kaldırır. */
++  cancelConnection(): void {
++    this.pendingConnectionFrom = null;
++    this.pendingPath?.remove();
++    this.pendingPath = undefined;
++  }
++
++  selectConnection(connectionId: string | null): void {
++    this.selectedConnectionId = connectionId;
++    this.redrawConnections();
++  }
++
++  get selectedConnection(): string | null {
++    return this.selectedConnectionId;
++  }
++
++  async deleteSelectedConnection(): Promise<boolean> {
++    if (!this.selectedConnectionId) {
++      return false;
++    }
++    const id = this.selectedConnectionId;
++    this.selectedConnectionId = null;
++    return this.deleteConnection(id);
++  }
++
+   async deleteNode(nodeId: string): Promise<boolean> {
+     this.assertWritable();
+     for (const conn of this.editor.getConnections()) {
+       if (conn.source === nodeId || conn.target === nodeId) {
+         await this.editor.removeConnection(conn.id);
+       }
+     }
+     const removed = await this.editor.removeNode(nodeId);
+     if (this.selectedNodeId === nodeId) {
+       this.setSelected(null);
+@@ -579,11 +692,49 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+   private assertWritable(): void {
+     if (this.readOnly) {
+       throw new Error('Canvas is read-only');
+     }
+   }
+ 
+   private nextPosition(): NodePosition {
+     const count = this.editor.getNodes().length;
+     return { x: 80 + (count % 4) * 220, y: 80 + Math.floor(count / 4) * 140 };
+   }
++
++  private ensurePendingPath(): void {
++    if (!this.connectionGroup || this.pendingPath) {
++      return;
++    }
++    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
++    path.setAttribute('class', 'canvas-connections__path canvas-connections__path--pending');
++    path.setAttribute('data-testid', 'canvas-connection-pending');
++    path.setAttribute('fill', 'none');
++    this.connectionGroup.appendChild(path);
++    this.pendingPath = path;
++  }
++
++  /** Container koordinatındaki imleç konumuna göre geçici çizgiyi günceller. */
++  private updatePendingPath(clientX: number, clientY: number): void {
++    if (!this.pendingConnectionFrom || !this.pendingPath) {
++      return;
++    }
++    const from = this.socketPosition(this.pendingConnectionFrom, 'out');
++    if (!from) {
++      return;
++    }
++    const rect = this.reteContainer.nativeElement.getBoundingClientRect();
++    const t = this.area.area.transform;
++    const to: NodePosition = {
++      x: (clientX - rect.left - t.x) / t.k,
++      y: (clientY - rect.top - t.y) / t.k,
++    };
++    this.pendingPath.setAttribute('d', ConnectionComponent.buildPath(from, to));
++  }
++
++  onDeleteKey(): void {
++    if (this.selectedConnectionId) {
++      void this.deleteSelectedConnection();
++    } else if (this.selectedNodeId) {
++      void this.deleteNode(this.selectedNodeId);
++    }
++  }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html
+index 11bc29a..fbf8017 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html
+@@ -8,36 +8,46 @@
+   [attr.aria-label]="('canvas.node.ariaLabel' | translate) + ': ' + node.label"
+   [attr.aria-selected]="!!node.selected"
+   [attr.data-node-id]="node.id"
+   [attr.data-node-type]="node.nodeType"
+   [attr.data-breakpoint]="!!node.breakpoint"
+   [attr.data-current]="!!node.current"
+   data-testid="canvas-node"
+   (click)="select()"
+   (keydown.enter)="select()"
+   (keydown.space)="select()"
++  (pointerup)="onPointerUp()"
+ >
+   @if (node.breakpoint) {
+     <span class="canvas-node__breakpoint" data-testid="canvas-node-breakpoint" aria-hidden="true"></span>
+   }
+-  <span class="canvas-node__socket canvas-node__socket--in" aria-hidden="true"></span>
++  <span
++    class="canvas-node__socket canvas-node__socket--in"
++    data-testid="canvas-node-socket-in"
++    aria-hidden="true"
++  ></span>
+ 
+   <header class="canvas-node__header">
+     <span class="canvas-node__icon" aria-hidden="true">{{ node.icon || '▸' }}</span>
+     <span class="canvas-node__title" data-testid="canvas-node-title">{{ node.label }}</span>
+     <button
+       type="button"
+       class="canvas-node__delete"
+       data-testid="canvas-node-delete"
+       [attr.aria-label]="'canvas.node.delete' | translate"
+       (click)="remove($event)"
+     >
+       ✕
+     </button>
+   </header>
+ 
+   @if (node.activityId) {
+     <p class="canvas-node__subtitle">{{ node.activityId }}</p>
+   }
+ 
+-  <span class="canvas-node__socket canvas-node__socket--out" aria-hidden="true"></span>
++  <span
++    class="canvas-node__socket canvas-node__socket--out"
++    data-testid="canvas-node-socket-out"
++    aria-hidden="true"
++    (pointerdown)="onOutSocketDown($event)"
++  ></span>
+ </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss
+index cd40054..279e88d 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss
+@@ -95,20 +95,25 @@
+ 
+   &__socket {
+     position: absolute;
+     left: 50%;
+     transform: translateX(-50%);
+     width: 12px;
+     height: 12px;
+     border-radius: 9999px;
+     background: #2563eb;
+     border: 2px solid #ffffff;
++    cursor: crosshair;
++
++    &:hover {
++      transform: translateX(-50%) scale(1.4);
++    }
+ 
+     &--in {
+       top: -6px;
+     }
+ 
+     &--out {
+       bottom: -6px;
+     }
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts
+index b8faeb5..55918b3 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts
+@@ -45,11 +45,35 @@ describe('NodeComponent', () => {
+     fixture.nativeElement.querySelector('[data-testid="canvas-node-delete"]').click();
+     expect(deleted).toBe('node-1');
+   });
+ 
+   it('reflects the selected state via aria-selected', () => {
+     fixture.componentRef.setInput('node', { ...view, selected: true });
+     fixture.detectChanges();
+     const el = fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
+     expect(el.getAttribute('aria-selected')).toBe('true');
+   });
++
++  it('emits connectStart on pointerdown at the out socket', () => {
++    const emitted: string[] = [];
++    component.connectStart.subscribe((id) => emitted.push(id));
++    fixture.detectChanges();
++
++    const outSocket: HTMLElement =
++      fixture.nativeElement.querySelector('[data-testid="canvas-node-socket-out"]');
++    outSocket.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
++
++    expect(emitted).toEqual([component.node.id]);
++  });
++
++  it('emits connectDrop on pointerup over the card', () => {
++    const emitted: string[] = [];
++    component.connectDrop.subscribe((id) => emitted.push(id));
++    fixture.detectChanges();
++
++    const card: HTMLElement =
++      fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
++    card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
++
++    expect(emitted).toEqual([component.node.id]);
++  });
+ });
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts
+index c86c3ce..a32e60e 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts
+@@ -33,20 +33,33 @@ export interface CanvasNodeView {
+   imports: [CommonModule, TranslatePipe],
+   changeDetection: ChangeDetectionStrategy.OnPush,
+   templateUrl: './node.component.html',
+   styleUrls: ['./node.component.scss'],
+ })
+ export class NodeComponent {
+   @Input({ required: true }) node!: CanvasNodeView;
+ 
+   @Output() readonly nodeSelect = new EventEmitter<string>();
+   @Output() readonly nodeDelete = new EventEmitter<string>();
++  @Output() readonly connectStart = new EventEmitter<string>();
++  @Output() readonly connectDrop = new EventEmitter<string>();
+ 
+   select(): void {
+     this.nodeSelect.emit(this.node.id);
+   }
+ 
+   remove(event: Event): void {
+     event.stopPropagation();
+     this.nodeDelete.emit(this.node.id);
+   }
++
++  onOutSocketDown(event: Event): void {
++    // Rete'nin node-drag yakalamasını engelle; bağlantı sürüklemesi başlasın.
++    event.stopPropagation();
++    event.preventDefault();
++    this.connectStart.emit(this.node.id);
++  }
++
++  onPointerUp(): void {
++    this.connectDrop.emit(this.node.id);
++  }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.html b/src/RPA.Studio/src/app/studio/designer/designer.component.html
+index 836465e..50ad935 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.html
+@@ -27,13 +27,17 @@
+       (nodeSelect)="onNodeSelect($event)"
+       (graphChanged)="onGraphChanged($event)"
+     ></app-canvas>
+   </main>
+   @if (!isSimpleMode() && debugMode()) {
+     <app-debug-panel
+       [workflow]="currentGraph() ?? workflow()"
+       (currentNodeChange)="onDebugCurrentNode($event)"
+     ></app-debug-panel>
+   } @else {
+-    <app-properties-panel [canvas]="canvas" [selectedNodeId]="selectedNodeId()"></app-properties-panel>
++    <app-properties-panel
++      [activityType]="selectedActivityType()"
++      [properties]="selectedProperties()"
++      (propertiesChange)="onPropertiesChange($event)"
++    ></app-properties-panel>
+   }
+ </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.ts b/src/RPA.Studio/src/app/studio/designer/designer.component.ts
+index 982b35d..eb30de8 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.ts
+@@ -37,20 +37,22 @@ import { PropertiesPanelComponent } from './properties/properties-panel.componen
+ })
+ export class DesignerComponent {
+   @ViewChild(CanvasComponent) canvas?: CanvasComponent;
+ 
+   private readonly debug = inject(DebugService);
+   private readonly modeService = inject(ModeService);
+   private readonly draft = inject(WorkflowDraftService);
+ 
+   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
+   readonly selectedNodeId = signal<string | null>(null);
++  readonly selectedActivityType = signal<string | undefined>(undefined);
++  readonly selectedProperties = signal<Record<string, unknown>>({});
+   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
+   readonly debugMode = signal(false);
+ 
+   readonly mode = this.modeService.mode;
+   readonly isSimpleMode = computed(() => this.mode() === 'Simple');
+ 
+   /** Node ids carrying a breakpoint, for canvas highlighting. Empty in Simple mode. */
+   readonly breakpointNodeIds = computed(() =>
+     this.isSimpleMode() ? [] : this.debug.breakpoints().map((b) => b.nodeId),
+   );
+@@ -75,25 +77,40 @@ export class DesignerComponent {
+     }
+   }
+ 
+   /** Invoked by the toolbox to drop an activity onto the canvas. */
+   async addActivity(activityId: string): Promise<void> {
+     await this.canvas?.addNode(activityId);
+   }
+ 
+   onNodeSelect(nodeId: string | null): void {
+     this.selectedNodeId.set(nodeId);
++    if (nodeId && this.canvas) {
++      this.selectedActivityType.set(this.canvas.getNodeActivityId(nodeId));
++      this.selectedProperties.set(this.canvas.getNodeProperties(nodeId));
++    } else {
++      this.selectedActivityType.set(undefined);
++      this.selectedProperties.set({});
++    }
+     // In debug mode (Advanced only), clicking a node toggles its breakpoint.
+     if (!this.isSimpleMode() && this.debugMode() && nodeId) {
+       this.debug.toggleBreakpoint(nodeId);
+     }
+   }
+ 
++  onPropertiesChange(properties: Record<string, unknown>): void {
++    const nodeId = this.selectedNodeId();
++    if (nodeId) {
++      this.canvas?.updateNodeProperties(nodeId, properties);
++      this.selectedProperties.set(properties);
++    }
++  }
++
+   onGraphChanged(graph: WorkflowVersion): void {
+     this.currentGraph.set(graph);
+   }
+ 
+   onDebugCurrentNode(_nodeId: string | null): void {
+     // Current node is read from the DebugService signal and bound to the canvas;
+     // this handler exists so the panel can notify without extra wiring.
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.spec.ts
+new file mode 100644
+index 0000000..e4b71d1
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.spec.ts
+@@ -0,0 +1,71 @@
++import { provideHttpClient } from '@angular/common/http';
++import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { GenericPropertyComponent } from './generic-property.component';
++
++describe('GenericPropertyComponent', () => {
++  let fixture: ComponentFixture<GenericPropertyComponent>;
++  let component: GenericPropertyComponent;
++  let http: HttpTestingController;
++
++  beforeEach(async () => {
++    await TestBed.configureTestingModule({
++      imports: [GenericPropertyComponent],
++      providers: [provideHttpClient(), provideHttpClientTesting()],
++    }).compileComponents();
++    fixture = TestBed.createComponent(GenericPropertyComponent);
++    component = fixture.componentInstance;
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  it('renders a correctly-typed form field for every supported port type', () => {
++    component.activityType = 'Test.AllTypes';
++    component.properties = {};
++    fixture.detectChanges();
++
++    http.expectOne('/api/activities/Test.AllTypes').flush({
++      activityId: 'Test.AllTypes',
++      displayName: 'Tüm Tipler',
++      inputs: [
++        { name: 'fString', type: 'string', required: true },
++        { name: 'fInt', type: 'int' },
++        { name: 'fNumber', type: 'number' },
++        { name: 'fDecimal', type: 'decimal' },
++        { name: 'fBool', type: 'bool' },
++        { name: 'fBoolean', type: 'boolean' },
++        { name: 'fJson', type: 'JSON' },
++        { name: 'fTable', type: 'DataTable' },
++        { name: 'fCred', type: 'Credential' },
++      ],
++    });
++    fixture.detectChanges();
++
++    const typeOf = (name: string): string =>
++      (fixture.nativeElement.querySelector(`[data-testid="prop-${name}"]`) as HTMLInputElement)
++        .type;
++
++    expect(typeOf('fString')).toBe('text');
++    expect(typeOf('fInt')).toBe('number');
++    expect(typeOf('fNumber')).toBe('number');
++    expect(typeOf('fDecimal')).toBe('number');
++    expect(typeOf('fBool')).toBe('checkbox');
++    expect(typeOf('fBoolean')).toBe('checkbox');
++    expect(typeOf('fJson')).toBe('text');
++    expect(typeOf('fTable')).toBe('text');
++    expect(typeOf('fCred')).toBe('password'); // Credential asla düz metin gösterilmez
++  });
++
++  it('shows a visible error message when catalog metadata cannot be loaded', () => {
++    component.activityType = 'Missing.Activity';
++    fixture.detectChanges();
++    http.expectOne('/api/activities/Missing.Activity').flush(
++      { error: 'yok' },
++      { status: 404, statusText: 'Not Found' },
++    );
++    fixture.detectChanges();
++
++    const status = fixture.nativeElement.querySelector('.generic-property__status--error');
++    expect(status).toBeTruthy();
++    expect(status.textContent).toContain('yüklenemedi');
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+index b95511b..5ed249d 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+@@ -1,31 +1,32 @@
+ import { CommonModule } from '@angular/common';
+-import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
++import { ChangeDetectorRef, Component, EventEmitter, Input, Output, inject } from '@angular/core';
+ import { FormsModule } from '@angular/forms';
+ import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
+ import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.model';
+ 
+ /**
+  * Metadata güdümlü jenerik özellik editörü. Seçili aktivitenin katalog
+  * metadata'sındaki `inputs` listesinden her parametre için bir form alanı üretir.
+  * Web.* dışındaki tüm aktivite aileleri (SAP, Excel, Email, File, API ...) için
+  * özel editör gerekmeden alan girişi sağlar (Faz 5 properties fallback).
+  */
+ @Component({
+   selector: 'app-generic-property',
+   standalone: true,
+   imports: [CommonModule, FormsModule],
+   templateUrl: './generic-property.component.html',
+   styleUrls: ['./generic-property.component.scss'],
+ })
+ export class GenericPropertyComponent {
+   private readonly catalog = inject(ActivityCatalogService);
++  private readonly cdr = inject(ChangeDetectorRef);
+ 
+   private _activityType?: string;
+   metadata?: ActivityMetadata;
+   loading = false;
+   error = false;
+ 
+   @Input()
+   set activityType(value: string | undefined) {
+     if (value === this._activityType) {
+       return;
+@@ -85,18 +86,20 @@ export class GenericPropertyComponent {
+     this.metadata = undefined;
+     this.error = false;
+     if (!activityType) {
+       return;
+     }
+     this.loading = true;
+     this.catalog.getActivity(activityType).subscribe({
+       next: (meta) => {
+         this.metadata = meta;
+         this.loading = false;
++        this.cdr.markForCheck();
+       },
+       error: () => {
+         this.error = true;
+         this.loading = false;
++        this.cdr.markForCheck();
+       },
+     });
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html
+index 182ce32..0d30970 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html
+@@ -1,16 +1,16 @@
+ <aside
+   class="properties-panel"
+   data-testid="properties-panel"
+   [attr.aria-label]="'properties.panel.ariaLabel' | translate"
+ >
+-  @if (!selectedNodeId) {
++  @if (!activityType) {
+     <p class="properties-panel__empty" data-testid="properties-panel-empty">
+       {{ 'properties.panel.empty' | translate }}
+     </p>
+   } @else if (isWebActivity) {
+     <app-web-property-router
+       [activityType]="activityType"
+       [properties]="properties"
+       (propertiesChange)="onPropertiesChange($event)"
+     ></app-web-property-router>
+   } @else {
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.spec.ts
+new file mode 100644
+index 0000000..5373809
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.spec.ts
+@@ -0,0 +1,69 @@
++import { provideHttpClient } from '@angular/common/http';
++import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { PropertiesPanelComponent } from './properties-panel.component';
++
++describe('PropertiesPanelComponent', () => {
++  let fixture: ComponentFixture<PropertiesPanelComponent>;
++  let component: PropertiesPanelComponent;
++  let http: HttpTestingController;
++
++  beforeEach(async () => {
++    await TestBed.configureTestingModule({
++      imports: [PropertiesPanelComponent],
++      providers: [provideHttpClient(), provideHttpClientTesting()],
++    }).compileComponents();
++    fixture = TestBed.createComponent(PropertiesPanelComponent);
++    component = fixture.componentInstance;
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  it('shows the empty state when no activity is selected', () => {
++    fixture.detectChanges();
++    expect(
++      fixture.nativeElement.querySelector('[data-testid="properties-panel-empty"]'),
++    ).toBeTruthy();
++  });
++
++  it('renders the generic editor form for a non-web activity from plain inputs', () => {
++    component.activityType = 'Sap.Gui.Click';
++    component.properties = { elementId: 'wnd[0]/usr/btn' };
++    fixture.detectChanges();
++
++    // GenericPropertyComponent metadata'yı katalogdan çeker.
++    const req = http.expectOne('/api/activities/Sap.Gui.Click');
++    req.flush({
++      activityId: 'Sap.Gui.Click',
++      displayName: 'SAP GUI Tıkla',
++      inputs: [{ name: 'elementId', type: 'string', required: true }],
++    });
++    fixture.detectChanges();
++
++    const input: HTMLInputElement =
++      fixture.nativeElement.querySelector('[data-testid="prop-elementId"]');
++    expect(input).toBeTruthy();
++    expect(input.value).toBe('wnd[0]/usr/btn');
++  });
++
++  it('emits propertiesChange when a field is edited', () => {
++    component.activityType = 'Sap.Gui.Click';
++    component.properties = {};
++    fixture.detectChanges();
++    http.expectOne('/api/activities/Sap.Gui.Click').flush({
++      activityId: 'Sap.Gui.Click',
++      displayName: 'SAP GUI Tıkla',
++      inputs: [{ name: 'elementId', type: 'string', required: true }],
++    });
++    fixture.detectChanges();
++
++    const emitted: Record<string, unknown>[] = [];
++    component.propertiesChange.subscribe((v) => emitted.push(v));
++
++    const input: HTMLInputElement =
++      fixture.nativeElement.querySelector('[data-testid="prop-elementId"]');
++    input.value = 'wnd[0]/usr/txtNew';
++    input.dispatchEvent(new Event('input', { bubbles: true }));
++
++    expect(emitted).toEqual([{ elementId: 'wnd[0]/usr/txtNew' }]);
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts
+index 463e622..41cf738 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts
+@@ -1,42 +1,30 @@
+ import { CommonModule } from '@angular/common';
+-import { Component, Input } from '@angular/core';
++import { Component, EventEmitter, Input, Output } from '@angular/core';
+ import { TranslatePipe } from '../../../core/translate.pipe';
+-import { CanvasComponent } from '../canvas/canvas.component';
+ import { WebPropertyRouterComponent, isWebActivityType } from './web-property-router.component';
+ import { GenericPropertyComponent } from './generic-property.component';
+ 
+ /**
+- * Properties panel shown alongside the canvas (Faz 5 Task 5.6). Reads the
+- * currently selected node's activity type/properties from the CanvasComponent
+- * and routes to the matching activity-family editor. Only the Web.* family
+- * is wired here so far; other activity families route through their own
+- * routers as those tasks land, following the same pattern.
++ * Properties panel shown alongside the canvas (Faz 5 Task 5.6). Seçili node'un
++ * aktivite tipi ve özellikleri designer tarafından DÜZ VERİ olarak verilir —
++ * panel canvas'a referans tutmaz (Paket A: ViewChild bağlama bug'ı düzeltmesi).
+  */
+ @Component({
+   selector: 'app-properties-panel',
+   standalone: true,
+   imports: [CommonModule, TranslatePipe, WebPropertyRouterComponent, GenericPropertyComponent],
+   templateUrl: './properties-panel.component.html',
+ })
+ export class PropertiesPanelComponent {
+-  @Input() canvas?: CanvasComponent;
+-  @Input() selectedNodeId: string | null = null;
+-
+-  get activityType(): string | undefined {
+-    return this.selectedNodeId ? this.canvas?.getNodeActivityId(this.selectedNodeId) : undefined;
+-  }
+-
+-  get properties(): Record<string, unknown> {
+-    return this.selectedNodeId ? (this.canvas?.getNodeProperties(this.selectedNodeId) ?? {}) : {};
+-  }
++  @Input() activityType?: string;
++  @Input() properties: Record<string, unknown> = {};
++  @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
+ 
+   get isWebActivity(): boolean {
+     return isWebActivityType(this.activityType);
+   }
+ 
+   onPropertiesChange(value: Record<string, unknown>): void {
+-    if (this.selectedNodeId) {
+-      this.canvas?.updateNodeProperties(this.selectedNodeId, value);
+-    }
++    this.propertiesChange.emit(value);
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts
+index ee25e81..97c00ad 100644
+--- a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts
+@@ -122,21 +122,48 @@ describe('ToolboxComponent', () => {
+   it('calls canvas.addNode when an activity is activated', async () => {
+     fixture.detectChanges();
+     flushActivities();
+     fixture.detectChanges();
+ 
+     const addNode = vi.fn().mockResolvedValue('node-1');
+     component.canvas = { addNode } as unknown as ToolboxComponent['canvas'];
+ 
+     await component.addActivity('Web.Click');
+ 
+-    expect(addNode).toHaveBeenCalledWith('Web.Click', {});
++    expect(addNode).toHaveBeenCalledWith('Web.Click', {
++      label: 'Click Element',
++    });
++  });
++
++  it('passes displayName and defaultProperties to the canvas when adding an activity', async () => {
++    const activitiesWithDefaults: ActivityMetadata[] = [
++      {
++        activityId: 'Logic.Delay',
++        displayName: 'Bekle',
++        category: 'Mantık',
++        description: 'Waits for a specified duration',
++        defaultProperties: { durationMs: 1000 },
++      },
++    ];
++    fixture.detectChanges();
++    flushActivities(activitiesWithDefaults);
++    fixture.detectChanges();
++
++    const addNode = vi.fn().mockResolvedValue('node-1');
++    component.canvas = { addNode } as unknown as ToolboxComponent['canvas'];
++
++    await component.addActivity('Logic.Delay');
++
++    expect(addNode).toHaveBeenCalledWith('Logic.Delay', {
++      label: 'Bekle',
++      properties: { durationMs: 1000 },
++    });
+   });
+ 
+   it('emits activityAdded when an activity is added', async () => {
+     fixture.detectChanges();
+     flushActivities();
+     fixture.detectChanges();
+ 
+     const emitted: { activityId: string }[] = [];
+     component.activityAdded.subscribe((event) => emitted.push(event));
+ 
+diff --git a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts
+index bb588cb..9904778 100644
+--- a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts
+@@ -92,21 +92,26 @@ export class ToolboxComponent {
+   onSearchChange(term: string): void {
+     this.searchTerm.set(term);
+   }
+ 
+   selectCategory(category: string): void {
+     this.selectedCategory.set(category);
+   }
+ 
+   async addActivity(activityId: string, position?: { x: number; y: number }): Promise<void> {
+     if (this.canvas) {
+-      await this.canvas.addNode(activityId, position ? { position } : {});
++      const meta = this.activities().find((a) => a.activityId === activityId);
++      await this.canvas.addNode(activityId, {
++        ...(position ? { position } : {}),
++        ...(meta?.displayName ? { label: meta.displayName } : {}),
++        ...(meta?.defaultProperties ? { properties: { ...meta.defaultProperties } } : {}),
++      });
+     }
+     this.activityAdded.emit({ activityId, position });
+   }
+ 
+   onCanvasDrop(event: CdkDragDrop<ActivityMetadata[], unknown, string>): void {
+     const activityId = event.item.data as string;
+     void this.addActivity(activityId);
+   }
+ 
+   trackByActivityId(_index: number, activity: ActivityMetadata): string {
+diff --git a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts
+index 8a311f0..839d763 100644
+--- a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts
+@@ -46,13 +46,15 @@ describe('SimplifiedToolboxComponent', () => {
+     const canvasStub = { addNode: vi.fn().mockResolvedValue('node-1') };
+     component.canvas = canvasStub as never;
+ 
+     fixture.detectChanges();
+     const req = httpMock.expectOne('/api/activities');
+     req.flush(ACTIVITIES);
+     fixture.detectChanges();
+ 
+     await component.addActivity('Web.Click');
+ 
+-    expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click');
++    expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click', {
++      label: 'Click Element',
++    });
+   });
+ });
+diff --git a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts
+index 5f08229..ac7ad67 100644
+--- a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts
++++ b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts
+@@ -75,19 +75,23 @@ export class SimplifiedToolboxComponent {
+       },
+       error: () => {
+         this.error.set(true);
+         this.loading.set(false);
+       },
+     });
+   }
+ 
+   async addActivity(activityId: string): Promise<void> {
+     if (this.canvas) {
+-      await this.canvas.addNode(activityId);
++      const meta = this.activities().find((a) => a.activityId === activityId);
++      await this.canvas.addNode(activityId, {
++        ...(meta?.displayName ? { label: meta.displayName } : {}),
++        ...(meta?.defaultProperties ? { properties: { ...meta.defaultProperties } } : {}),
++      });
+     }
+     this.activityAdded.emit({ activityId });
+   }
+ 
+   trackByActivityId(_index: number, activity: ActivityMetadata): string {
+     return activity.activityId;
+   }
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/ActivityRegistryCoverageTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/ActivityRegistryCoverageTests.cs
+new file mode 100644
+index 0000000..27fcd8d
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/ActivityRegistryCoverageTests.cs
+@@ -0,0 +1,67 @@
++namespace RPA.Infrastructure.Tests.Workflow;
++
++using RPA.Infrastructure.Workflow;
++using Xunit;
++
++/// <summary>
++/// Katalog kapsama güvencesi (Paket A): her aktivitenin özellik formu üretilebilir
++/// olmalı — input'lar tanımlı ve tipleri Studio GenericPropertyComponent'in
++/// desteklediği kümede. Yeni aktivite eklendiğinde bu testler otomatik kapsar.
++/// </summary>
++public class ActivityRegistryCoverageTests
++{
++    /// <summary>Studio generic editörünün form alanına eşleyebildiği tipler.</summary>
++    private static readonly HashSet<string> SupportedInputTypes = new(StringComparer.OrdinalIgnoreCase)
++    {
++        "string", "int", "number", "decimal", "bool", "boolean",
++        "JSON", "DataTable", "Credential",
++    };
++
++    /// <summary>Bilinçli olarak input'suz aktiviteler (parametre gerektirmez).</summary>
++    private static readonly HashSet<string> KnownInputlessActivities = new(StringComparer.OrdinalIgnoreCase)
++    {
++        "Sap.Nco.Rollback",   // BAPI_TRANSACTION_ROLLBACK — parametresiz
++        "Sap.Gui.Screenshot", // yalnız çıktı üretir
++    };
++
++    [Fact]
++    public void EveryActivity_HasInputs_OrIsKnownInputless()
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        var missing = catalog.Values
++            .Where(a => a.Inputs.Count == 0 && !KnownInputlessActivities.Contains(a.ActivityId))
++            .Select(a => a.ActivityId)
++            .ToList();
++
++        Assert.True(missing.Count == 0,
++            $"Input tanımı olmayan aktiviteler (bilinçliyse KnownInputlessActivities'e ekleyin): {string.Join(", ", missing)}");
++    }
++
++    [Fact]
++    public void EveryInput_UsesASupportedType()
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        var offenders = catalog.Values
++            .SelectMany(a => a.Inputs.Select(i => (a.ActivityId, i.Name, i.Type)))
++            .Where(x => !SupportedInputTypes.Contains(x.Type))
++            .ToList();
++
++        Assert.True(offenders.Count == 0,
++            $"Desteklenmeyen input tipi: {string.Join(", ", offenders.Select(o => $"{o.ActivityId}.{o.Name}:{o.Type}"))}");
++    }
++
++    [Fact]
++    public void EveryActivity_HasDisplayNameAndCategory()
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        var offenders = catalog.Values
++            .Where(a => string.IsNullOrWhiteSpace(a.DisplayName)
++                     || a.DisplayName == a.ActivityId
++                     || string.IsNullOrWhiteSpace(a.Category))
++            .Select(a => a.ActivityId)
++            .ToList();
++
++        Assert.True(offenders.Count == 0,
++            $"DisplayName/Category eksik: {string.Join(", ", offenders)}");
++    }
++}

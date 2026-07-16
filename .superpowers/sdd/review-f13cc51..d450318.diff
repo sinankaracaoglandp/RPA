@@ -1,0 +1,317 @@
+# Review package: f13cc51..HEAD
+
+## Commits
+d450318 fix(studio): özellik paneli seçimde artık açılıyor — ViewChild bağımlılığı kaldırıldı
+
+## Files changed
+ .../app/studio/designer/designer.component.html    |  6 +-
+ .../src/app/studio/designer/designer.component.ts  | 17 ++++++
+ .../properties/generic-property.component.ts       |  5 +-
+ .../properties/properties-panel.component.html     |  2 +-
+ .../properties/properties-panel.component.spec.ts  | 69 ++++++++++++++++++++++
+ .../properties/properties-panel.component.ts       | 28 +++------
+ 6 files changed, 104 insertions(+), 23 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.html b/src/RPA.Studio/src/app/studio/designer/designer.component.html
+index 836465e..50ad935 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.html
+@@ -27,13 +27,17 @@
+       (nodeSelect)="onNodeSelect($event)"
+       (graphChanged)="onGraphChanged($event)"
+     ></app-canvas>
+   </main>
+   @if (!isSimpleMode() && debugMode()) {
+     <app-debug-panel
+       [workflow]="currentGraph() ?? workflow()"
+       (currentNodeChange)="onDebugCurrentNode($event)"
+     ></app-debug-panel>
+   } @else {
+-    <app-properties-panel [canvas]="canvas" [selectedNodeId]="selectedNodeId()"></app-properties-panel>
++    <app-properties-panel
++      [activityType]="selectedActivityType()"
++      [properties]="selectedProperties()"
++      (propertiesChange)="onPropertiesChange($event)"
++    ></app-properties-panel>
+   }
+ </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.ts b/src/RPA.Studio/src/app/studio/designer/designer.component.ts
+index 982b35d..eb30de8 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.ts
+@@ -37,20 +37,22 @@ import { PropertiesPanelComponent } from './properties/properties-panel.componen
+ })
+ export class DesignerComponent {
+   @ViewChild(CanvasComponent) canvas?: CanvasComponent;
+ 
+   private readonly debug = inject(DebugService);
+   private readonly modeService = inject(ModeService);
+   private readonly draft = inject(WorkflowDraftService);
+ 
+   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
+   readonly selectedNodeId = signal<string | null>(null);
++  readonly selectedActivityType = signal<string | undefined>(undefined);
++  readonly selectedProperties = signal<Record<string, unknown>>({});
+   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
+   readonly debugMode = signal(false);
+ 
+   readonly mode = this.modeService.mode;
+   readonly isSimpleMode = computed(() => this.mode() === 'Simple');
+ 
+   /** Node ids carrying a breakpoint, for canvas highlighting. Empty in Simple mode. */
+   readonly breakpointNodeIds = computed(() =>
+     this.isSimpleMode() ? [] : this.debug.breakpoints().map((b) => b.nodeId),
+   );
+@@ -75,25 +77,40 @@ export class DesignerComponent {
+     }
+   }
+ 
+   /** Invoked by the toolbox to drop an activity onto the canvas. */
+   async addActivity(activityId: string): Promise<void> {
+     await this.canvas?.addNode(activityId);
+   }
+ 
+   onNodeSelect(nodeId: string | null): void {
+     this.selectedNodeId.set(nodeId);
++    if (nodeId && this.canvas) {
++      this.selectedActivityType.set(this.canvas.getNodeActivityId(nodeId));
++      this.selectedProperties.set(this.canvas.getNodeProperties(nodeId));
++    } else {
++      this.selectedActivityType.set(undefined);
++      this.selectedProperties.set({});
++    }
+     // In debug mode (Advanced only), clicking a node toggles its breakpoint.
+     if (!this.isSimpleMode() && this.debugMode() && nodeId) {
+       this.debug.toggleBreakpoint(nodeId);
+     }
+   }
+ 
++  onPropertiesChange(properties: Record<string, unknown>): void {
++    const nodeId = this.selectedNodeId();
++    if (nodeId) {
++      this.canvas?.updateNodeProperties(nodeId, properties);
++      this.selectedProperties.set(properties);
++    }
++  }
++
+   onGraphChanged(graph: WorkflowVersion): void {
+     this.currentGraph.set(graph);
+   }
+ 
+   onDebugCurrentNode(_nodeId: string | null): void {
+     // Current node is read from the DebugService signal and bound to the canvas;
+     // this handler exists so the panel can notify without extra wiring.
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+index b95511b..5ed249d 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+@@ -1,31 +1,32 @@
+ import { CommonModule } from '@angular/common';
+-import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
++import { ChangeDetectorRef, Component, EventEmitter, Input, Output, inject } from '@angular/core';
+ import { FormsModule } from '@angular/forms';
+ import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
+ import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.model';
+ 
+ /**
+  * Metadata güdümlü jenerik özellik editörü. Seçili aktivitenin katalog
+  * metadata'sındaki `inputs` listesinden her parametre için bir form alanı üretir.
+  * Web.* dışındaki tüm aktivite aileleri (SAP, Excel, Email, File, API ...) için
+  * özel editör gerekmeden alan girişi sağlar (Faz 5 properties fallback).
+  */
+ @Component({
+   selector: 'app-generic-property',
+   standalone: true,
+   imports: [CommonModule, FormsModule],
+   templateUrl: './generic-property.component.html',
+   styleUrls: ['./generic-property.component.scss'],
+ })
+ export class GenericPropertyComponent {
+   private readonly catalog = inject(ActivityCatalogService);
++  private readonly cdr = inject(ChangeDetectorRef);
+ 
+   private _activityType?: string;
+   metadata?: ActivityMetadata;
+   loading = false;
+   error = false;
+ 
+   @Input()
+   set activityType(value: string | undefined) {
+     if (value === this._activityType) {
+       return;
+@@ -85,18 +86,20 @@ export class GenericPropertyComponent {
+     this.metadata = undefined;
+     this.error = false;
+     if (!activityType) {
+       return;
+     }
+     this.loading = true;
+     this.catalog.getActivity(activityType).subscribe({
+       next: (meta) => {
+         this.metadata = meta;
+         this.loading = false;
++        this.cdr.markForCheck();
+       },
+       error: () => {
+         this.error = true;
+         this.loading = false;
++        this.cdr.markForCheck();
+       },
+     });
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html
+index 182ce32..0d30970 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.html
+@@ -1,16 +1,16 @@
+ <aside
+   class="properties-panel"
+   data-testid="properties-panel"
+   [attr.aria-label]="'properties.panel.ariaLabel' | translate"
+ >
+-  @if (!selectedNodeId) {
++  @if (!activityType) {
+     <p class="properties-panel__empty" data-testid="properties-panel-empty">
+       {{ 'properties.panel.empty' | translate }}
+     </p>
+   } @else if (isWebActivity) {
+     <app-web-property-router
+       [activityType]="activityType"
+       [properties]="properties"
+       (propertiesChange)="onPropertiesChange($event)"
+     ></app-web-property-router>
+   } @else {
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.spec.ts
+new file mode 100644
+index 0000000..5373809
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.spec.ts
+@@ -0,0 +1,69 @@
++import { provideHttpClient } from '@angular/common/http';
++import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { PropertiesPanelComponent } from './properties-panel.component';
++
++describe('PropertiesPanelComponent', () => {
++  let fixture: ComponentFixture<PropertiesPanelComponent>;
++  let component: PropertiesPanelComponent;
++  let http: HttpTestingController;
++
++  beforeEach(async () => {
++    await TestBed.configureTestingModule({
++      imports: [PropertiesPanelComponent],
++      providers: [provideHttpClient(), provideHttpClientTesting()],
++    }).compileComponents();
++    fixture = TestBed.createComponent(PropertiesPanelComponent);
++    component = fixture.componentInstance;
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  it('shows the empty state when no activity is selected', () => {
++    fixture.detectChanges();
++    expect(
++      fixture.nativeElement.querySelector('[data-testid="properties-panel-empty"]'),
++    ).toBeTruthy();
++  });
++
++  it('renders the generic editor form for a non-web activity from plain inputs', () => {
++    component.activityType = 'Sap.Gui.Click';
++    component.properties = { elementId: 'wnd[0]/usr/btn' };
++    fixture.detectChanges();
++
++    // GenericPropertyComponent metadata'yı katalogdan çeker.
++    const req = http.expectOne('/api/activities/Sap.Gui.Click');
++    req.flush({
++      activityId: 'Sap.Gui.Click',
++      displayName: 'SAP GUI Tıkla',
++      inputs: [{ name: 'elementId', type: 'string', required: true }],
++    });
++    fixture.detectChanges();
++
++    const input: HTMLInputElement =
++      fixture.nativeElement.querySelector('[data-testid="prop-elementId"]');
++    expect(input).toBeTruthy();
++    expect(input.value).toBe('wnd[0]/usr/btn');
++  });
++
++  it('emits propertiesChange when a field is edited', () => {
++    component.activityType = 'Sap.Gui.Click';
++    component.properties = {};
++    fixture.detectChanges();
++    http.expectOne('/api/activities/Sap.Gui.Click').flush({
++      activityId: 'Sap.Gui.Click',
++      displayName: 'SAP GUI Tıkla',
++      inputs: [{ name: 'elementId', type: 'string', required: true }],
++    });
++    fixture.detectChanges();
++
++    const emitted: Record<string, unknown>[] = [];
++    component.propertiesChange.subscribe((v) => emitted.push(v));
++
++    const input: HTMLInputElement =
++      fixture.nativeElement.querySelector('[data-testid="prop-elementId"]');
++    input.value = 'wnd[0]/usr/txtNew';
++    input.dispatchEvent(new Event('input', { bubbles: true }));
++
++    expect(emitted).toEqual([{ elementId: 'wnd[0]/usr/txtNew' }]);
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts
+index 463e622..41cf738 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/properties-panel.component.ts
+@@ -1,42 +1,30 @@
+ import { CommonModule } from '@angular/common';
+-import { Component, Input } from '@angular/core';
++import { Component, EventEmitter, Input, Output } from '@angular/core';
+ import { TranslatePipe } from '../../../core/translate.pipe';
+-import { CanvasComponent } from '../canvas/canvas.component';
+ import { WebPropertyRouterComponent, isWebActivityType } from './web-property-router.component';
+ import { GenericPropertyComponent } from './generic-property.component';
+ 
+ /**
+- * Properties panel shown alongside the canvas (Faz 5 Task 5.6). Reads the
+- * currently selected node's activity type/properties from the CanvasComponent
+- * and routes to the matching activity-family editor. Only the Web.* family
+- * is wired here so far; other activity families route through their own
+- * routers as those tasks land, following the same pattern.
++ * Properties panel shown alongside the canvas (Faz 5 Task 5.6). Seçili node'un
++ * aktivite tipi ve özellikleri designer tarafından DÜZ VERİ olarak verilir —
++ * panel canvas'a referans tutmaz (Paket A: ViewChild bağlama bug'ı düzeltmesi).
+  */
+ @Component({
+   selector: 'app-properties-panel',
+   standalone: true,
+   imports: [CommonModule, TranslatePipe, WebPropertyRouterComponent, GenericPropertyComponent],
+   templateUrl: './properties-panel.component.html',
+ })
+ export class PropertiesPanelComponent {
+-  @Input() canvas?: CanvasComponent;
+-  @Input() selectedNodeId: string | null = null;
+-
+-  get activityType(): string | undefined {
+-    return this.selectedNodeId ? this.canvas?.getNodeActivityId(this.selectedNodeId) : undefined;
+-  }
+-
+-  get properties(): Record<string, unknown> {
+-    return this.selectedNodeId ? (this.canvas?.getNodeProperties(this.selectedNodeId) ?? {}) : {};
+-  }
++  @Input() activityType?: string;
++  @Input() properties: Record<string, unknown> = {};
++  @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
+ 
+   get isWebActivity(): boolean {
+     return isWebActivityType(this.activityType);
+   }
+ 
+   onPropertiesChange(value: Record<string, unknown>): void {
+-    if (this.selectedNodeId) {
+-      this.canvas?.updateNodeProperties(this.selectedNodeId, value);
+-    }
++    this.propertiesChange.emit(value);
+   }
+ }

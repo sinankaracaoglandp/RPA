@@ -1,0 +1,328 @@
+# Commit
+9af21f9 feat(spy): text-offset mesaj + koordinator dali + ITextOffsetPicker
+
+# Stat (bin/obj excluded)
+ src/RPA.Agent/UISpy/SpySessionCoordinator.cs       | 30 ++++++++++++--
+ .../UISpy/SapGuiElementSender.cs                   | 22 ++++++++++
+ .../UISpy/SpySessionCoordinatorTextOffsetTests.cs  | 47 ++++++++++++++++++++++
+ .../UISpy/SpyElementMessageTests.cs                | 14 +++++++
+ 4 files changed, 110 insertions(+), 3 deletions(-)
+
+# Diff (bin/obj excluded)
+diff --git a/src/RPA.Agent/UISpy/SpySessionCoordinator.cs b/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
+index 2b89c9b..4dc76c5 100644
+--- a/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
++++ b/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
+@@ -25,20 +25,29 @@ public interface IWebSinglePicker
+ 
+ /// <summary>🎯 image bölge picker'ı — ekranda dikdörtgen çiz, PNG/koordinat döndür.</summary>
+ public interface IImageRegionPicker
+ {
+     Task<ImagePick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
+ }
+ 
+ /// <summary>Image picker sonucu: base64 PNG (image alanı için) ve/veya {x,y,width,height} JSON (region alanı için).</summary>
+ public sealed record ImagePick(string? ImageBase64, string? RegionJson);
+ 
++/// <summary>🎯 text-offset picker'ı — çapa metnini seç + hedef noktaya tıkla, dx/dy hesapla.</summary>
++public interface ITextOffsetPicker
++{
++    Task<TextOffsetPick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
++}
++
++/// <summary>text-offset picker sonucu: çapa metni, dx/dy ofset ve çapa önizleme (base64 PNG).</summary>
++public sealed record TextOffsetPick(string AnchorText, int Dx, int Dy, string? PreviewBase64);
++
+ /// <summary>
+ /// Image picker'ın "ekran dondurma" (freeze) davranışı. Geçici menü/pencere yakalamak için:
+ /// önce hedef UI açılır, sonra ekran dondurulup donmuş görüntü üzerinde seçim yapılır.
+ /// <para><see cref="CaptureMode"/>: <c>"f2"</c> = kullanıcı kısayola basınca dondur (süre sınırsız);
+ /// <c>"timer"</c> = <see cref="DelaySeconds"/> saniye geri sayıp otomatik dondur.</para>
+ /// <para>Manuel modda dondurma kısayolu node'dan gelir: <see cref="HotKey"/> (F1–F12) +
+ /// opsiyonel <see cref="Ctrl"/>/<see cref="Shift"/>/<see cref="Alt"/> — hedef uygulamada boş bir
+ /// tuş seçilebilsin diye.</para>
+ /// </summary>
+ public sealed record ImagePickerOptions(
+@@ -128,92 +137,101 @@ public interface ISpySessionCoordinator
+ 
+ public sealed class SpySessionCoordinator : ISpySessionCoordinator
+ {
+     private readonly ISapGuiSinglePicker _sapPicker;
+     private readonly ISpyElementTransport _transport;
+     private readonly SpySessionOptions _options;
+     private readonly ILogger<SpySessionCoordinator> _logger;
+     private readonly IDesktopSinglePicker? _desktopPicker;
+     private readonly IWebSinglePicker? _webPicker;
+     private readonly IImageRegionPicker? _imagePicker;
++    private readonly ITextOffsetPicker? _textOffsetPicker;
+     private readonly object _gate = new();
+     private Guid _activeSessionId;
+     private CancellationTokenSource? _activeCts;
+ 
+     public SpySessionCoordinator(
+         ISapGuiSinglePicker sapPicker,
+         ISpyElementTransport transport,
+         IOptions<SpySessionOptions> options,
+         ILogger<SpySessionCoordinator> logger,
+         IDesktopSinglePicker? desktopPicker = null,
+         IWebSinglePicker? webPicker = null,
+-        IImageRegionPicker? imagePicker = null)
++        IImageRegionPicker? imagePicker = null,
++        ITextOffsetPicker? textOffsetPicker = null)
+     {
+         _sapPicker = sapPicker ?? throw new ArgumentNullException(nameof(sapPicker));
+         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+         _desktopPicker = desktopPicker;
+         _webPicker = webPicker;
+         _imagePicker = imagePicker;
++        _textOffsetPicker = textOffsetPicker;
+     }
+ 
+     public async Task StartAsync(Guid sessionId, string kind, string? optionsJson = null, CancellationToken cancellationToken = default)
+     {
+         if (sessionId == Guid.Empty)
+         {
+             throw new InvalidOperationException("SessionId zorunludur.");
+         }
+ 
+         var isSap = string.Equals(kind, "sap", StringComparison.OrdinalIgnoreCase);
+         var isDesktop = string.Equals(kind, "desktop", StringComparison.OrdinalIgnoreCase);
+         var isWeb = string.Equals(kind, "web", StringComparison.OrdinalIgnoreCase);
+         var isImage = string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase);
+-        if (!isSap && !isDesktop && !isWeb && !isImage)
++        var isTextOffset = string.Equals(kind, "text-offset", StringComparison.OrdinalIgnoreCase);
++        if (!isSap && !isDesktop && !isWeb && !isImage && !isTextOffset)
+         {
+             throw new InvalidOperationException($"Desteklenmeyen spy tipi: {kind}");
+         }
+ 
+         if (isDesktop && _desktopPicker is null)
+         {
+             throw new InvalidOperationException("Masaüstü picker bu ortamda kayıtlı değil (yalnız Windows).");
+         }
+ 
+         if (isWeb && _webPicker is null)
+         {
+             throw new InvalidOperationException("Web picker bu ortamda kayıtlı değil.");
+         }
+ 
+         if (isImage && _imagePicker is null)
+         {
+             throw new InvalidOperationException("Image picker bu ortamda kayıtlı değil (yalnız Windows).");
+         }
+ 
++        if (isTextOffset && _textOffsetPicker is null)
++        {
++            throw new InvalidOperationException("Metin-ofset picker bu ortamda kayıtlı değil (yalnız Windows).");
++        }
++
+         CancellationTokenSource linkedCts;
+         lock (_gate)
+         {
+             if (_activeCts is not null)
+             {
+                 throw new InvalidOperationException("Aktif UI Spy oturumu zaten var.");
+             }
+ 
+             _activeSessionId = sessionId;
+             _activeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+             linkedCts = _activeCts;
+         }
+ 
+         try
+         {
+             // Image picker'da kullanıcı hedef menüyü/pencereyi elle açtığı için (F2/zamanlayıcı ile
+             // dondurma) daha uzun süre gerekir; diğer picker'lar için normal timeout uygulanır.
+             var timeoutSeconds = Math.Max(1, _options.TimeoutSeconds);
+-            if (isImage)
++            if (isImage || isTextOffset)
+             {
+                 timeoutSeconds = Math.Max(timeoutSeconds, 300);
+             }
+             linkedCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+ 
+             SpyElementMessage? message;
+             if (isDesktop)
+             {
+                 var element = await _desktopPicker!.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.FromDesktop(element, sessionId);
+@@ -222,20 +240,26 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
+             {
+                 var element = await _webPicker!.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.FromWeb(element, sessionId);
+             }
+             else if (isImage)
+             {
+                 var pickerOptions = ImagePickerOptions.Parse(optionsJson);
+                 var pick = await _imagePicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
+                 message = pick is null ? null : SpyElementMessage.FromImage(pick.ImageBase64, pick.RegionJson, sessionId);
+             }
++            else if (isTextOffset)
++            {
++                var pickerOptions = ImagePickerOptions.Parse(optionsJson);
++                var pick = await _textOffsetPicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
++                message = pick is null ? null : SpyElementMessage.FromTextOffset(pick.AnchorText, pick.Dx, pick.Dy, pick.PreviewBase64, sessionId);
++            }
+             else
+             {
+                 var element = await _sapPicker.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.From(element, sessionId);
+             }
+ 
+             if (message is null)
+             {
+                 _logger.LogDebug("UI Spy: session {SessionId} ({Kind}) secim yapilmadan iptal edildi.", sessionId, kind);
+                 await NotifyCancelledSafeAsync(sessionId);
+diff --git a/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs b/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
+index 085f15c..674dff5 100644
+--- a/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
++++ b/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
+@@ -40,20 +40,23 @@ public sealed record SpyElementMessage
+     public string? TagName { get; init; }
+     public string? InnerTextPreview { get; init; }
+     public string? PageUrl { get; init; }
+     public string? AutomationId { get; init; }
+     public string? ControlType { get; init; }
+     public string? Name { get; init; }
+     public string? UiaPath { get; init; }
+     public string? ProcessName { get; init; }
+     public string? ImageBase64 { get; init; }
+     public string? Region { get; init; }
++    public string? AnchorText { get; init; }
++    public int? Dx { get; init; }
++    public int? Dy { get; init; }
+ 
+     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
+     public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
+ 
+     public static SpyElementMessage From(SapGuiElement element, Guid sessionId)
+     {
+         ArgumentNullException.ThrowIfNull(element);
+         return new SpyElementMessage
+         {
+             SessionId = sessionId,
+@@ -120,20 +123,39 @@ public sealed record SpyElementMessage
+             SessionId = sessionId,
+             Kind = "image",
+             ElementId = "image",
+             ImageBase64 = imageBase64,
+             Region = regionJson,
+             Selector = imageBase64 ?? regionJson,
+             Enabled = true,
+             Changeable = true,
+         };
+     }
++
++    /// <summary>🎯 text-offset picker'dan (çapa metni + hedef nokta) mesaj oluşturur.</summary>
++    public static SpyElementMessage FromTextOffset(string anchorText, int dx, int dy, string? previewBase64, Guid sessionId)
++    {
++        return new SpyElementMessage
++        {
++            SessionId = sessionId,
++            Kind = "text-offset",
++            ElementId = "text-offset",
++            AnchorText = anchorText,
++            Dx = dx,
++            Dy = dy,
++            ImageBase64 = previewBase64,
++            Text = anchorText,
++            Selector = anchorText,
++            Enabled = true,
++            Changeable = true,
++        };
++    }
+ }
+ 
+ /// <summary>
+ /// Tespit edilen SAP GUI elementini Studio'ya (SignalR köprüsü) gönderen bileşen (Spec Bölüm 6).
+ /// Elementi <see cref="SpyElementMessage"/>'e biçimlendirir ve <see cref="ISpyElementTransport"/>
+ /// üzerinden StudioHub'a iletir. Windows-only (tespit yalnızca Windows'ta üretilir).
+ /// </summary>
+ [SupportedOSPlatform("windows")]
+ public sealed class SapGuiElementSender
+ {
+diff --git a/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorTextOffsetTests.cs b/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorTextOffsetTests.cs
+new file mode 100644
+index 0000000..36fe6a8
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorTextOffsetTests.cs
+@@ -0,0 +1,47 @@
++namespace RPA.Agent.Tests.UISpy;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Agent.UISpy;
++using RPA.Infrastructure.UISpy;
++using Xunit;
++
++public class SpySessionCoordinatorTextOffsetTests
++{
++    [Fact]
++    public async Task Start_TextOffsetKind_SendsTextOffsetMessage()
++    {
++        var sessionId = Guid.NewGuid();
++        var transport = new Mock<ISpyElementTransport>();
++        var picker = new Mock<ITextOffsetPicker>();
++        picker.Setup(p => p.DetectOnceAsync(It.IsAny<ImagePickerOptions>(), It.IsAny<CancellationToken>()))
++              .ReturnsAsync(new TextOffsetPick("Malzeme No", 120, -4, "PNG64"));
++        var options = Options.Create(new SpySessionOptions { TimeoutSeconds = 5 });
++
++        var coordinator = new SpySessionCoordinator(
++            Mock.Of<ISapGuiSinglePicker>(), transport.Object, options,
++            NullLogger<SpySessionCoordinator>.Instance,
++            textOffsetPicker: picker.Object);
++
++        await coordinator.StartAsync(sessionId, "text-offset", "{\"captureMode\":\"timer\",\"delaySeconds\":8}");
++
++        transport.Verify(t => t.SendAsync(
++            It.Is<SpyElementMessage>(m => m.Kind == "text-offset" && m.AnchorText == "Malzeme No" && m.Dx == 120 && m.Dy == -4),
++            It.IsAny<CancellationToken>()), Times.Once);
++        picker.Verify(p => p.DetectOnceAsync(
++            It.Is<ImagePickerOptions>(o => o.CaptureMode == "timer" && o.DelaySeconds == 8),
++            It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task Start_TextOffsetKind_NoPicker_Throws()
++    {
++        var coordinator = new SpySessionCoordinator(
++            Mock.Of<ISapGuiSinglePicker>(), Mock.Of<ISpyElementTransport>(),
++            Options.Create(new SpySessionOptions()), NullLogger<SpySessionCoordinator>.Instance);
++
++        await Assert.ThrowsAsync<InvalidOperationException>(
++            () => coordinator.StartAsync(Guid.NewGuid(), "text-offset"));
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs b/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
+index 852873a..ee90aea 100644
+--- a/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
++++ b/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
+@@ -9,11 +9,25 @@ public class SpyElementMessageTests
+     public void FromImage_SetsKindAndPayload()
+     {
+         var sessionId = Guid.NewGuid();
+         var msg = SpyElementMessage.FromImage("BASE64PNG", "{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", sessionId);
+ 
+         Assert.Equal("image", msg.Kind);
+         Assert.Equal(sessionId, msg.SessionId);
+         Assert.Equal("BASE64PNG", msg.ImageBase64);
+         Assert.Equal("{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", msg.Region);
+     }
++
++    [Fact]
++    public void FromTextOffset_SetsKindAndFields()
++    {
++        var sid = Guid.NewGuid();
++        var msg = SpyElementMessage.FromTextOffset("Malzeme No", 120, -4, "PNG64", sid);
++
++        Assert.Equal("text-offset", msg.Kind);
++        Assert.Equal(sid, msg.SessionId);
++        Assert.Equal("Malzeme No", msg.AnchorText);
++        Assert.Equal(120, msg.Dx);
++        Assert.Equal(-4, msg.Dy);
++        Assert.Equal("PNG64", msg.ImageBase64);
++    }
+ }

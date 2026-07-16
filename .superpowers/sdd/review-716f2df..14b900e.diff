@@ -1,0 +1,447 @@
+# Review package: 716f2df..HEAD
+
+## Commits
+14b900e feat(studio): designer'da taslak yükle/kaydet — kirli takibi, Ctrl+S, canDeactivate
+
+## Files changed
+ src/RPA.Studio/public/assets/i18n/en.json          |  5 ++
+ src/RPA.Studio/public/assets/i18n/tr.json          |  5 ++
+ src/RPA.Studio/src/app/app.routes.ts               |  9 ++
+ .../app/studio/designer/designer.component.html    | 28 ++++++-
+ .../app/studio/designer/designer.component.spec.ts | 98 +++++++++++++++++++++-
+ .../src/app/studio/designer/designer.component.ts  | 51 +++++++++++
+ .../src/app/studio/designer/dirty-guard.ts         | 13 +++
+ 7 files changed, 207 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Studio/public/assets/i18n/en.json b/src/RPA.Studio/public/assets/i18n/en.json
+index 4169bef..80bf3c1 100644
+--- a/src/RPA.Studio/public/assets/i18n/en.json
++++ b/src/RPA.Studio/public/assets/i18n/en.json
+@@ -23,20 +23,25 @@
+     "robotsDesc": "Registered robots and their status",
+     "queuesTitle": "Queues",
+     "queuesDesc": "Work queues and their items",
+     "actionCenterTitle": "Action Center",
+     "actionCenterDesc": "Resolve business exceptions",
+     "alertRulesTitle": "Alert Rules",
+     "alertRulesDesc": "Notification and alarm rules",
+     "environmentsTitle": "Environments",
+     "environmentsDesc": "Environment and deployment configuration"
+   },
++  "designer": {
++    "save": "Save",
++    "saveError": "Save failed",
++    "unsavedConfirm": "You have unsaved changes. Leave anyway?"
++  },
+   "projects": {
+     "title": "My Projects",
+     "newProject": "New project",
+     "newProjectPlaceholder": "Project name",
+     "newWorkflow": "New workflow",
+     "newWorkflowPlaceholder": "Workflow name",
+     "workflows": "Workflows",
+     "workflowCount": "workflows",
+     "open": "Open",
+     "loadError": "Failed to load projects",
+diff --git a/src/RPA.Studio/public/assets/i18n/tr.json b/src/RPA.Studio/public/assets/i18n/tr.json
+index daa9722..90d37eb 100644
+--- a/src/RPA.Studio/public/assets/i18n/tr.json
++++ b/src/RPA.Studio/public/assets/i18n/tr.json
+@@ -23,20 +23,25 @@
+     "robotsDesc": "Kayıtlı robotlar ve durumları",
+     "queuesTitle": "Kuyruklar",
+     "queuesDesc": "İş kuyrukları ve öğeleri",
+     "actionCenterTitle": "Aksiyon Merkezi",
+     "actionCenterDesc": "İş kuralı istisnalarını çözümleyin",
+     "alertRulesTitle": "Uyarı Kuralları",
+     "alertRulesDesc": "Bildirim ve alarm kuralları",
+     "environmentsTitle": "Ortamlar",
+     "environmentsDesc": "Ortam ve dağıtım yapılandırması"
+   },
++  "designer": {
++    "save": "Kaydet",
++    "saveError": "Kaydetme başarısız",
++    "unsavedConfirm": "Kaydedilmemiş değişiklikler var. Ayrılmak istiyor musunuz?"
++  },
+   "projects": {
+     "title": "Projelerim",
+     "newProject": "Yeni proje",
+     "newProjectPlaceholder": "Proje adı",
+     "newWorkflow": "Yeni workflow",
+     "newWorkflowPlaceholder": "Workflow adı",
+     "workflows": "Workflow'lar",
+     "workflowCount": "workflow",
+     "open": "Aç",
+     "loadError": "Projeler yüklenemedi",
+diff --git a/src/RPA.Studio/src/app/app.routes.ts b/src/RPA.Studio/src/app/app.routes.ts
+index 9fa9717..4fb0712 100644
+--- a/src/RPA.Studio/src/app/app.routes.ts
++++ b/src/RPA.Studio/src/app/app.routes.ts
+@@ -1,21 +1,30 @@
+ import { Routes } from '@angular/router';
+ import { authGuard } from './auth/auth.guard';
+ import { LoginComponent } from './auth/login.component';
+ import { DashboardComponent } from './dashboard/dashboard.component';
++import { dirtyGuard } from './studio/designer/dirty-guard';
+ 
+ export const routes: Routes = [
+   { path: 'login', component: LoginComponent },
+   { path: '', component: DashboardComponent, canActivate: [authGuard] },
+   {
+     path: 'designer',
+     canActivate: [authGuard],
++    canDeactivate: [dirtyGuard],
++    loadComponent: () =>
++      import('./studio/designer/designer.component').then((m) => m.DesignerComponent),
++  },
++  {
++    path: 'designer/:workflowId',
++    canActivate: [authGuard],
++    canDeactivate: [dirtyGuard],
+     loadComponent: () =>
+       import('./studio/designer/designer.component').then((m) => m.DesignerComponent),
+   },
+   {
+     path: 'projects',
+     canActivate: [authGuard],
+     loadComponent: () =>
+       import('./studio/projects/projects.component').then((m) => m.ProjectsComponent),
+   },
+   {
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.html b/src/RPA.Studio/src/app/studio/designer/designer.component.html
+index 5e4e21c..812dd9e 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.html
+@@ -1,19 +1,45 @@
+-<div class="designer flex h-full w-full">
++<div
++  class="designer flex h-full w-full"
++  (keydown.control.s)="onSaveShortcut($event)"
++  tabindex="-1"
++>
+   @if (isSimpleMode()) {
+     <app-simplified-toolbox [canvas]="canvas()"></app-simplified-toolbox>
+   } @else {
+     <app-toolbox [canvas]="canvas()"></app-toolbox>
+   }
+   <main class="designer__canvas relative flex-1">
+     <div class="designer__header">
+       <app-simple-mode-toggle></app-simple-mode-toggle>
++      @if (workflowId()) {
++        <span class="designer__title" data-testid="designer-title">
++          {{ workflow()?.name }}
++          @if (dirty()) {
++            <span class="designer__dirty" data-testid="designer-dirty" aria-hidden="true">●</span>
++          }
++        </span>
++        <button
++          type="button"
++          class="designer__save"
++          data-testid="designer-save"
++          [disabled]="saveState() === 'saving'"
++          (click)="save()"
++        >
++          {{ 'designer.save' | translate }}
++        </button>
++        @if (saveState() === 'error') {
++          <span class="designer__save-error text-red-600" data-testid="designer-save-error">
++            {{ 'designer.saveError' | translate }}
++          </span>
++        }
++      }
+       @if (!isSimpleMode()) {
+         <button
+           type="button"
+           class="designer__debug-toggle"
+           data-testid="designer-debug-toggle"
+           [attr.aria-pressed]="debugMode()"
+           [attr.aria-label]="'debug.panel.title' | translate"
+           (click)="toggleDebug()"
+         >
+           {{ 'debug.panel.title' | translate }}
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/designer.component.spec.ts
+index 4b72805..60fa562 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.spec.ts
+@@ -1,28 +1,34 @@
+ import { provideHttpClient } from '@angular/common/http';
+ import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+ import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+ import { DesignerComponent } from './designer.component';
+ import { ModeService } from '../../shared/services/mode.service';
+ import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
+ 
+ describe('DesignerComponent — Simple Mode integration', () => {
+   let fixture: ComponentFixture<DesignerComponent>;
+   let component: DesignerComponent;
+   let httpMock: HttpTestingController;
+   let modeService: ModeService;
+ 
+   beforeEach(async () => {
+     localStorage.clear();
+     await TestBed.configureTestingModule({
+       imports: [DesignerComponent],
+-      providers: [provideHttpClient(), provideHttpClientTesting()],
++      providers: [
++        provideHttpClient(),
++        provideHttpClientTesting(),
++        provideRouter([]),
++        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
++      ],
+     }).compileComponents();
+ 
+     fixture = TestBed.createComponent(DesignerComponent);
+     component = fixture.componentInstance;
+     httpMock = TestBed.inject(HttpTestingController);
+     modeService = TestBed.inject(ModeService);
+   });
+ 
+   afterEach(() => {
+     // Activity catalog requests fired by whichever toolbox is active.
+@@ -76,10 +82,100 @@ describe('DesignerComponent — Simple Mode integration', () => {
+       version: '1.0.0',
+       nodes: [],
+       connections: [],
+     };
+     draft.setPending(workflow);
+ 
+     const freshFixture = TestBed.createComponent(DesignerComponent);
+     expect(freshFixture.componentInstance.workflow()).toEqual(workflow);
+   });
+ });
++
++describe('draft persistence (Paket B)', () => {
++  let fixture: ComponentFixture<DesignerComponent>;
++  let component: DesignerComponent;
++  let http: HttpTestingController;
++
++  beforeEach(async () => {
++    localStorage.clear();
++    await TestBed.configureTestingModule({
++      imports: [DesignerComponent],
++      providers: [
++        provideHttpClient(),
++        provideHttpClientTesting(),
++        provideRouter([]),
++        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ workflowId: 'w1' }) } } },
++      ],
++    }).compileComponents();
++
++    fixture = TestBed.createComponent(DesignerComponent);
++    component = fixture.componentInstance;
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => {
++    http.match('/api/activities').forEach((req) => req.flush([]));
++  });
++
++  it('loads the draft for the routed workflowId on init', () => {
++    fixture.detectChanges();
++    const req = http.expectOne('/api/workflows/w1/draft');
++    req.flush({
++      id: 'v1', workflowId: 'w1', version: '1.0.0',
++      jsonDefinition: JSON.stringify({
++        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
++        nodes: [], connections: [],
++      }),
++    });
++    fixture.detectChanges();
++
++    expect(component.workflow()?.name).toBe('Sipariş');
++    expect(component.dirty()).toBe(false);
++  });
++
++  it('marks dirty when the graph changes and clears it after save', () => {
++    fixture.detectChanges();
++    http.expectOne('/api/workflows/w1/draft').flush({
++      id: 'v1', workflowId: 'w1', version: '1.0.0',
++      jsonDefinition: JSON.stringify({
++        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
++        nodes: [], connections: [],
++      }),
++    });
++
++    component.onGraphChanged({
++      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
++      nodes: [], connections: [],
++    });
++    expect(component.dirty()).toBe(true);
++
++    void component.save();
++    const put = http.expectOne('/api/workflows/w1/draft');
++    expect(put.request.method).toBe('PUT');
++    put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
++
++    expect(component.dirty()).toBe(false);
++  });
++
++  it('sets saveState to error when the save fails', () => {
++    fixture.detectChanges();
++    http.expectOne('/api/workflows/w1/draft').flush({
++      id: 'v1', workflowId: 'w1', version: '1.0.0',
++      jsonDefinition: JSON.stringify({
++        schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
++        nodes: [], connections: [],
++      }),
++    });
++    component.onGraphChanged({
++      schemaVersion: '1.0', id: 'w1', name: 'Sipariş', version: '1.0.0',
++      nodes: [], connections: [],
++    });
++
++    void component.save();
++    http.expectOne('/api/workflows/w1/draft').flush(
++      { error: 'şema hatası' }, { status: 400, statusText: 'Bad Request' },
++    );
++
++    expect(component.saveState()).toBe('error');
++    expect(component.dirty()).toBe(true);
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/designer.component.ts b/src/RPA.Studio/src/app/studio/designer/designer.component.ts
+index e761456..e41c36f 100644
+--- a/src/RPA.Studio/src/app/studio/designer/designer.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/designer.component.ts
+@@ -1,12 +1,13 @@
+ import { CommonModule } from '@angular/common';
+ import { Component, computed, inject, signal, viewChild } from '@angular/core';
++import { ActivatedRoute } from '@angular/router';
+ import { WorkflowVersion } from '../../shared/models/workflow.model';
+ import { DebugService } from '../../shared/services/debug.service';
+ import { ModeService } from '../../shared/services/mode.service';
+ import { WorkflowDraftService } from '../../shared/services/workflow-draft.service';
+ import { TranslatePipe } from '../../core/translate.pipe';
+ import { CanvasComponent } from './canvas/canvas.component';
+ import { ToolboxComponent } from './toolbox/toolbox.component';
+ import { DebugPanelComponent } from '../debug/debug-panel.component';
+ import { SimpleModeToggleComponent } from '../simple-mode/simple-mode-toggle.component';
+ import { SimplifiedToolboxComponent } from '../simple-mode/simplified-toolbox.component';
+@@ -40,38 +41,52 @@ export class DesignerComponent {
+    * Sinyal tabanlı viewChild: zoneless CD'de dekoratör @ViewChild referansının
+    * template binding'e ilk change detection turunda işlenmemesi, ilk kullanıcı
+    * etkileşiminin (örn. ilk aktivite ekleme) sessizce kaybolmasına yol açıyordu.
+    * Sinyal, resolve olduğunda bağlamaları reaktif olarak günceller.
+    */
+   readonly canvas = viewChild(CanvasComponent);
+ 
+   private readonly debug = inject(DebugService);
+   private readonly modeService = inject(ModeService);
+   private readonly draft = inject(WorkflowDraftService);
++  private readonly route = inject(ActivatedRoute);
+ 
+   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
+   readonly selectedNodeId = signal<string | null>(null);
+   readonly selectedActivityType = signal<string | undefined>(undefined);
+   readonly selectedProperties = signal<Record<string, unknown>>({});
+   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
+   readonly debugMode = signal(false);
+ 
++  readonly workflowId = signal<string | null>(null);
++  readonly dirty = signal(false);
++  readonly saveState = signal<'idle' | 'saving' | 'error'>('idle');
++
+   readonly mode = this.modeService.mode;
+   readonly isSimpleMode = computed(() => this.mode() === 'Simple');
+ 
+   /** Node ids carrying a breakpoint, for canvas highlighting. Empty in Simple mode. */
+   readonly breakpointNodeIds = computed(() =>
+     this.isSimpleMode() ? [] : this.debug.breakpoints().map((b) => b.nodeId),
+   );
+   readonly debugCurrentNodeId = this.debug.currentNodeId;
+ 
+   constructor() {
++    const routedId = this.route.snapshot.paramMap.get('workflowId');
++    if (routedId) {
++      this.workflowId.set(routedId);
++      this.draft.load(routedId).subscribe({
++        next: (wf) => this.workflow.set(wf),
++        error: () => this.saveState.set('error'),
++      });
++      return;
++    }
+     const pending = this.draft.consumePending();
+     if (pending) {
+       this.workflow.set(pending);
+     }
+   }
+ 
+   /** Toggles the debug panel, connecting to RobotHub on first open. Disabled in Simple mode. */
+   async toggleDebug(): Promise<void> {
+     if (this.isSimpleMode()) {
+       return;
+@@ -107,17 +122,53 @@ export class DesignerComponent {
+   onPropertiesChange(properties: Record<string, unknown>): void {
+     const nodeId = this.selectedNodeId();
+     if (nodeId) {
+       this.canvas()?.updateNodeProperties(nodeId, properties);
+       this.selectedProperties.set(properties);
+     }
+   }
+ 
+   onGraphChanged(graph: WorkflowVersion): void {
+     this.currentGraph.set(graph);
++    this.dirty.set(true);
+   }
+ 
+   onDebugCurrentNode(_nodeId: string | null): void {
+     // Current node is read from the DebugService signal and bound to the canvas;
+     // this handler exists so the panel can notify without extra wiring.
+   }
++
++  /** Kaydeder (yalnız yönlendirilmiş bir workflowId varken). Yeni-taslak modunda no-op. */
++  async save(): Promise<void> {
++    const id = this.workflowId();
++    if (!id) {
++      return; // yeni-taslak modu: kalıcı hedef yok (Projelerim'den açılır)
++    }
++    const graph = this.canvas()?.serialize() ?? this.currentGraph();
++    if (!graph) {
++      return;
++    }
++    this.saveState.set('saving');
++    // Not: firstValueFrom + await burada kasıtlı kullanılmadı — .then devamı bir
++    // mikro-görev turuna erteleniyor ve HttpTestingController.flush() hemen
++    // ardından senkron assert eden testler bunu göremiyor. subscribe() next/error
++    // callback'leri flush() sırasında senkron çalışır.
++    return new Promise<void>((resolve) => {
++      this.draft.save(id, graph).subscribe({
++        next: () => {
++          this.dirty.set(false);
++          this.saveState.set('idle');
++          resolve();
++        },
++        error: () => {
++          this.saveState.set('error');
++          resolve();
++        },
++      });
++    });
++  }
++
++  onSaveShortcut(event: Event): void {
++    event.preventDefault();
++    void this.save();
++  }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/dirty-guard.ts b/src/RPA.Studio/src/app/studio/designer/dirty-guard.ts
+new file mode 100644
+index 0000000..551f853
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/dirty-guard.ts
+@@ -0,0 +1,13 @@
++import { inject } from '@angular/core';
++import { CanDeactivateFn } from '@angular/router';
++import { TranslationService } from '../../core/translation.service';
++import { DesignerComponent } from './designer.component';
++
++/** Kaydedilmemiş değişiklik varsa ayrılmadan önce onay ister (Paket B). */
++export const dirtyGuard: CanDeactivateFn<DesignerComponent> = (component) => {
++  if (!component.dirty()) {
++    return true;
++  }
++  const translation = inject(TranslationService);
++  return window.confirm(translation.translate('designer.unsavedConfirm'));
++};

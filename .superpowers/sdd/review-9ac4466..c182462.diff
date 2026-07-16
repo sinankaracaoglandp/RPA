@@ -1,0 +1,94 @@
+# Review package: 9ac4466..c182462
+
+## Commits
+c182462 feat(domain): IVisionAutomationChannel + VisionMatch (Paket F)
+
+## Files changed
+ .../Interfaces/IVisionAutomationChannel.cs         | 32 ++++++++++++++++++++++
+ src/RPA.Domain/ValueObjects/VisionMatch.cs         | 15 ++++++++++
+ .../ValueObjects/VisionMatchTests.cs               | 17 ++++++++++++
+ 3 files changed, 64 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+new file mode 100644
+index 0000000..2f31281
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+@@ -0,0 +1,32 @@
++namespace RPA.Domain.Interfaces;
++
++/// <summary>
++/// Erişilebilirlik ağacı (UIA/DOM) olmayan uygulamalar için piksel + metin tabanlı
++/// otomasyon kanalı (Spec Bölüm — Paket F, Görüntü/OCR Fallback). Template matching
++/// (OpenCvSharp) ve OCR (Tesseract) ile ekrandaki nesneyi bulur; gerçek fare/klavye
++/// ile etkileşir. Etkileşimli masaüstü oturumu gerektirir.
++///
++/// <para>Exception sınıflandırması: görüntü/metin bulunamadı / timeout →
++/// <c>SystemException</c> (teknik, retry edilebilir). Var-mı sorguları (<see cref="ImageExistsAsync"/>,
++/// <see cref="TextExistsAsync"/>) fırlatmaz, false döner.</para>
++/// </summary>
++public interface IVisionAutomationChannel
++{
++    /// <summary>Base64 PNG template'i ekranda bulur, merkezine tıklar. timeoutMs içinde bulunmazsa SystemException.</summary>
++    Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs);
++
++    /// <summary>Template ekranda görünene kadar bekler. Süre aşımı → SystemException.</summary>
++    Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs);
++
++    /// <summary>Template ekranda var mı? Fırlatmaz. timeoutMs 0 ise tek bakış.</summary>
++    Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs);
++
++    /// <summary>Bölgeden (null ise tam ekran) OCR ile metin okur. language örn. "tur+eng".</summary>
++    Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language);
++
++    /// <summary>OCR ile metni bulur, merkezine tıklar. matchMode "contains" (vars.) / "exact". Bulunmazsa SystemException.</summary>
++    Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs);
++
++    /// <summary>Metin ekranda var mı? Fırlatmaz.</summary>
++    Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs);
++}
+diff --git a/src/RPA.Domain/ValueObjects/VisionMatch.cs b/src/RPA.Domain/ValueObjects/VisionMatch.cs
+new file mode 100644
+index 0000000..2a7670c
+--- /dev/null
++++ b/src/RPA.Domain/ValueObjects/VisionMatch.cs
+@@ -0,0 +1,15 @@
++namespace RPA.Domain.ValueObjects;
++
++/// <summary>
++/// Ekranda bulunan bir görüntü/metin eşleşmesinin sınır kutusu ve güven skoru.
++/// Anchor (Faz 2) için matcher/OCR birden çok VisionMatch döndürür; aktiviteler
++/// şimdilik en yüksek skorlu tekini kullanır.
++/// </summary>
++public sealed record VisionMatch(int X, int Y, int Width, int Height, double Score)
++{
++    /// <summary>Eşleşmenin yatay merkezi (tıklama noktası).</summary>
++    public int CenterX => X + (Width / 2);
++
++    /// <summary>Eşleşmenin dikey merkezi (tıklama noktası).</summary>
++    public int CenterY => Y + (Height / 2);
++}
+diff --git a/tests/RPA.Domain.Tests/ValueObjects/VisionMatchTests.cs b/tests/RPA.Domain.Tests/ValueObjects/VisionMatchTests.cs
+new file mode 100644
+index 0000000..43fe9f7
+--- /dev/null
++++ b/tests/RPA.Domain.Tests/ValueObjects/VisionMatchTests.cs
+@@ -0,0 +1,17 @@
++namespace RPA.Domain.Tests.ValueObjects;
++
++using RPA.Domain.ValueObjects;
++using Xunit;
++
++public class VisionMatchTests
++{
++    [Fact]
++    public void Center_IsComputedFromBoundingBox()
++    {
++        var match = new VisionMatch(X: 100, Y: 200, Width: 40, Height: 20, Score: 0.95);
++
++        Assert.Equal(120, match.CenterX);
++        Assert.Equal(210, match.CenterY);
++        Assert.Equal(0.95, match.Score);
++    }
++}

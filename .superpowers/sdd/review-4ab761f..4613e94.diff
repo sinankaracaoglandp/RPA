@@ -1,0 +1,129 @@
+# Review package: 4ab761f..4613e94
+
+## Commits
+4613e94 feat(infra): trigger listeleme filtreleri + robot bazli aktif is sayaci
+
+## Files changed
+ src/RPA.Domain/Interfaces/ITriggerRepository.cs    |  7 ++++
+ .../Persistence/EfTriggerRepository.cs             | 20 +++++++++
+ .../EfTriggerRepositoryTests.cs                    | 49 ++++++++++++++++++++++
+ 3 files changed, 76 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Domain/Interfaces/ITriggerRepository.cs b/src/RPA.Domain/Interfaces/ITriggerRepository.cs
+index b6c4c80..936460e 100644
+--- a/src/RPA.Domain/Interfaces/ITriggerRepository.cs
++++ b/src/RPA.Domain/Interfaces/ITriggerRepository.cs
+@@ -23,12 +23,19 @@ public interface ITriggerRepository
+     /// <summary>Verilen workflow versiyonu için Running durumundaki bir JobRun olup olmadığını döner
+     /// (OverlapPolicy = skip/queue kontrolü — Spec Bölüm 7).</summary>
+     Task<bool> HasRunningJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default);
+ 
+     /// <summary>Verilen workflow versiyonu için en eski Queued JobRun'ı döner; yoksa null
+     /// (OverlapPolicy = queue — önceki çalışma bitince sıradaki başlatılır).</summary>
+     Task<JobRun?> FindOldestQueuedJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default);
+ 
+     Task AddJobRunAsync(JobRun jobRun, CancellationToken cancellationToken = default);
+ 
++    /// <summary>Tüm trigger'ları (job tanımları) opsiyonel filtrelerle döner (Studio Zamanlamalar ekranı).</summary>
++    Task<IReadOnlyList<Trigger>> ListTriggersAsync(
++        Guid? projectId, Guid? environmentId, bool? isActive, CancellationToken cancellationToken = default);
++
++    /// <summary>Status=="Running" JobRun'ları AssignedRobotId'ye göre sayar (kapasite kontrolü — dispatcher).</summary>
++    Task<IReadOnlyDictionary<Guid, int>> GetActiveJobCountsByRobotAsync(CancellationToken cancellationToken = default);
++
+     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+ }
+diff --git a/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs b/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs
+index 7f22f8c..6822106 100644
+--- a/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs
++++ b/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs
+@@ -41,13 +41,33 @@ public sealed class EfTriggerRepository : ITriggerRepository
+ 
+     public Task<JobRun?> FindOldestQueuedJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default)
+         => _db.JobRuns
+             .Where(j => j.WorkflowVersionId == workflowVersionId && j.Status == "Queued")
+             .OrderBy(j => j.CreatedAt)
+             .FirstOrDefaultAsync(cancellationToken);
+ 
+     public async Task AddJobRunAsync(JobRun jobRun, CancellationToken cancellationToken = default)
+         => await _db.JobRuns.AddAsync(jobRun, cancellationToken);
+ 
++    public async Task<IReadOnlyList<Trigger>> ListTriggersAsync(
++        Guid? projectId, Guid? environmentId, bool? isActive, CancellationToken cancellationToken = default)
++    {
++        var query = _db.Triggers.Where(t => !t.IsDeleted);
++        if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
++        if (environmentId.HasValue) query = query.Where(t => t.EnvironmentId == environmentId.Value);
++        if (isActive.HasValue) query = query.Where(t => t.IsActive == isActive.Value);
++        return await query.OrderByDescending(t => t.CreatedAt).ToListAsync(cancellationToken);
++    }
++
++    public async Task<IReadOnlyDictionary<Guid, int>> GetActiveJobCountsByRobotAsync(CancellationToken cancellationToken = default)
++    {
++        var grouped = await _db.JobRuns
++            .Where(j => j.Status == "Running" && j.AssignedRobotId != null)
++            .GroupBy(j => j.AssignedRobotId!.Value)
++            .Select(g => new { RobotId = g.Key, Count = g.Count() })
++            .ToListAsync(cancellationToken);
++        return grouped.ToDictionary(x => x.RobotId, x => x.Count);
++    }
++
+     public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+         => _db.SaveChangesAsync(cancellationToken);
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/EfTriggerRepositoryTests.cs b/tests/RPA.Infrastructure.Tests/EfTriggerRepositoryTests.cs
+new file mode 100644
+index 0000000..0c9dffd
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/EfTriggerRepositoryTests.cs
+@@ -0,0 +1,49 @@
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Infrastructure.Persistence;
++using Xunit;
++
++namespace RPA.Infrastructure.Tests;
++
++public class EfTriggerRepositoryTests
++{
++    private static RpaDbContext NewDb() =>
++        new(new DbContextOptionsBuilder<RpaDbContext>()
++            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
++
++    [Fact]
++    public async Task ListTriggersAsync_FiltersByProjectAndActive()
++    {
++        using var db = NewDb();
++        var projectId = Guid.NewGuid();
++        db.Triggers.Add(new Trigger { ProjectId = projectId, IsActive = true, Type = TriggerType.Cron });
++        db.Triggers.Add(new Trigger { ProjectId = projectId, IsActive = false, Type = TriggerType.Manual });
++        db.Triggers.Add(new Trigger { ProjectId = Guid.NewGuid(), IsActive = true, Type = TriggerType.Cron });
++        await db.SaveChangesAsync();
++        var repo = new EfTriggerRepository(db);
++
++        var result = await repo.ListTriggersAsync(projectId, null, isActive: true, default);
++
++        Assert.Single(result);
++        Assert.Equal(projectId, result[0].ProjectId);
++    }
++
++    [Fact]
++    public async Task GetActiveJobCountsByRobotAsync_CountsRunningPerRobot()
++    {
++        using var db = NewDb();
++        var robotA = Guid.NewGuid();
++        db.JobRuns.Add(new JobRun { AssignedRobotId = robotA, Status = "Running", StartedAt = DateTime.UtcNow });
++        db.JobRuns.Add(new JobRun { AssignedRobotId = robotA, Status = "Running", StartedAt = DateTime.UtcNow });
++        db.JobRuns.Add(new JobRun { AssignedRobotId = robotA, Status = "Successful", StartedAt = DateTime.UtcNow });
++        db.JobRuns.Add(new JobRun { AssignedRobotId = null, Status = "Running", StartedAt = DateTime.UtcNow });
++        await db.SaveChangesAsync();
++        var repo = new EfTriggerRepository(db);
++
++        var counts = await repo.GetActiveJobCountsByRobotAsync(default);
++
++        Assert.Equal(2, counts[robotA]);
++        Assert.False(counts.ContainsKey(Guid.Empty));
++    }
++}

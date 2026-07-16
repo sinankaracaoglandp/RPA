@@ -1,0 +1,452 @@
+# Review package: d07cf31..HEAD
+
+## Commits
+6bb2e2c feat(webapi): proje/workflow CRUD ve taslak uçları — Paket B
+
+## Files changed
+ src/RPA.WebAPI/Controllers/ProjectsController.cs  | 125 +++++++++++++++
+ src/RPA.WebAPI/Controllers/WorkflowsController.cs |  81 ++++++++++
+ src/RPA.WebAPI/Program.cs                         |   7 +
+ tests/RPA.WebAPI.Tests/ProjectsControllerTests.cs | 183 ++++++++++++++++++++++
+ 4 files changed, 396 insertions(+)
+
+## Diff
+diff --git a/src/RPA.WebAPI/Controllers/ProjectsController.cs b/src/RPA.WebAPI/Controllers/ProjectsController.cs
+new file mode 100644
+index 0000000..d778cb0
+--- /dev/null
++++ b/src/RPA.WebAPI/Controllers/ProjectsController.cs
+@@ -0,0 +1,125 @@
++namespace RPA.WebAPI.Controllers;
++
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using RPA.Domain.Entities;
++using RPA.Infrastructure.Services;
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++
++/// <summary>Studio Projelerim uç noktaları (Paket B — proje/workflow kalıcılığı).</summary>
++[ApiController]
++[Route("api/projects")]
++[Authorize]
++public class ProjectsController : ControllerBase
++{
++    private readonly WorkflowDesignService _service;
++
++    public ProjectsController(WorkflowDesignService service) => _service = service;
++
++    /// <summary>Proje listesi (workflow sayılarıyla).</summary>
++    [HttpGet]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    public async Task<ActionResult<List<ProjectDto>>> List(CancellationToken ct)
++    {
++        var projects = await _service.ListProjectsAsync(ct);
++        return Ok(projects.Select(p => Map(p.Project, p.WorkflowCount)).ToList());
++    }
++
++    /// <summary>Yeni proje oluşturur.</summary>
++    [HttpPost]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<ProjectDto>> Create(
++        [FromBody] CreateProjectRequest request, CancellationToken ct)
++    {
++        try
++        {
++            var project = await _service.CreateProjectAsync(request.Name, request.Description, ct);
++            return Ok(Map(project, 0));
++        }
++        catch (BusinessException ex)
++        {
++            return BadRequest(new { error = ex.Message });
++        }
++    }
++
++    /// <summary>Projedeki workflow'lar (son güncellenme sırasıyla).</summary>
++    [HttpGet("{projectId}/workflows")]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<List<WorkflowSummaryDto>>> ListWorkflows(
++        string projectId, CancellationToken ct)
++    {
++        if (!Guid.TryParse(projectId, out var id))
++        {
++            return BadRequest(new { error = "'projectId' geçerli bir GUID olmalıdır." });
++        }
++        try
++        {
++            var workflows = await _service.ListWorkflowsAsync(id, ct);
++            return Ok(workflows.Select(Map).ToList());
++        }
++        catch (BusinessException ex)
++        {
++            return BadRequest(new { error = ex.Message });
++        }
++    }
++
++    /// <summary>Projede workflow oluşturur (boş taslak versiyonla).</summary>
++    [HttpPost("{projectId}/workflows")]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<WorkflowSummaryDto>> CreateWorkflow(
++        string projectId, [FromBody] CreateWorkflowRequest request, CancellationToken ct)
++    {
++        if (!Guid.TryParse(projectId, out var id))
++        {
++            return BadRequest(new { error = "'projectId' geçerli bir GUID olmalıdır." });
++        }
++        try
++        {
++            var workflow = await _service.CreateWorkflowAsync(id, request.Name, ct);
++            return Ok(Map(workflow));
++        }
++        catch (BusinessException ex)
++        {
++            return BadRequest(new { error = ex.Message });
++        }
++    }
++
++    private static ProjectDto Map(Project p, int workflowCount) => new()
++    {
++        Id = p.Id, Name = p.Name, Description = p.Description, WorkflowCount = workflowCount,
++    };
++
++    private static WorkflowSummaryDto Map(Workflow w) => new()
++    {
++        Id = w.Id, Name = w.Name, UpdatedAt = w.UpdatedAt,
++    };
++}
++
++public class CreateProjectRequest
++{
++    public string Name { get; set; } = string.Empty;
++    public string? Description { get; set; }
++}
++
++public class CreateWorkflowRequest
++{
++    public string Name { get; set; } = string.Empty;
++}
++
++public class ProjectDto
++{
++    public Guid Id { get; set; }
++    public string Name { get; set; } = string.Empty;
++    public string? Description { get; set; }
++    public int WorkflowCount { get; set; }
++}
++
++public class WorkflowSummaryDto
++{
++    public Guid Id { get; set; }
++    public string Name { get; set; } = string.Empty;
++    public DateTime? UpdatedAt { get; set; }
++}
+diff --git a/src/RPA.WebAPI/Controllers/WorkflowsController.cs b/src/RPA.WebAPI/Controllers/WorkflowsController.cs
+new file mode 100644
+index 0000000..5d0d854
+--- /dev/null
++++ b/src/RPA.WebAPI/Controllers/WorkflowsController.cs
+@@ -0,0 +1,81 @@
++namespace RPA.WebAPI.Controllers;
++
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using RPA.Domain.Entities;
++using RPA.Infrastructure.Services;
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++
++/// <summary>Workflow taslak (draft) kaydet/yükle uçları (Paket B).</summary>
++[ApiController]
++[Route("api/workflows/{workflowId}/draft")]
++[Authorize]
++public class WorkflowsController : ControllerBase
++{
++    private readonly WorkflowDesignService _service;
++
++    public WorkflowsController(WorkflowDesignService service) => _service = service;
++
++    /// <summary>Taslak versiyonu (JsonDefinition dahil) döndürür; yoksa boş taslak oluşturur.</summary>
++    [HttpGet]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<WorkflowDraftDto>> GetDraft(string workflowId, CancellationToken ct)
++    {
++        if (!Guid.TryParse(workflowId, out var id))
++        {
++            return BadRequest(new { error = "'workflowId' geçerli bir GUID olmalıdır." });
++        }
++        try
++        {
++            return Ok(Map(await _service.GetDraftAsync(id, ct)));
++        }
++        catch (BusinessException ex)
++        {
++            return BadRequest(new { error = ex.Message });
++        }
++    }
++
++    /// <summary>Taslağı kaydeder; JSON şema v1.0'a karşı doğrulanır (geçersizse 400).</summary>
++    [HttpPut]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<WorkflowDraftDto>> SaveDraft(
++        string workflowId, [FromBody] SaveDraftRequest request, CancellationToken ct)
++    {
++        if (!Guid.TryParse(workflowId, out var id))
++        {
++            return BadRequest(new { error = "'workflowId' geçerli bir GUID olmalıdır." });
++        }
++        if (request is null || string.IsNullOrWhiteSpace(request.JsonDefinition))
++        {
++            return BadRequest(new { error = "'jsonDefinition' zorunludur." });
++        }
++        try
++        {
++            return Ok(Map(await _service.SaveDraftAsync(id, request.JsonDefinition, ct)));
++        }
++        catch (BusinessException ex)
++        {
++            return BadRequest(new { error = ex.Message });
++        }
++    }
++
++    private static WorkflowDraftDto Map(WorkflowVersion v) => new()
++    {
++        Id = v.Id, WorkflowId = v.WorkflowId, Version = v.Version, JsonDefinition = v.JsonDefinition,
++    };
++}
++
++public class SaveDraftRequest
++{
++    public string JsonDefinition { get; set; } = string.Empty;
++}
++
++public class WorkflowDraftDto
++{
++    public Guid Id { get; set; }
++    public Guid WorkflowId { get; set; }
++    public string Version { get; set; } = string.Empty;
++    public string JsonDefinition { get; set; } = string.Empty;
++}
+diff --git a/src/RPA.WebAPI/Program.cs b/src/RPA.WebAPI/Program.cs
+index f1bf1b0..6fd16e2 100644
+--- a/src/RPA.WebAPI/Program.cs
++++ b/src/RPA.WebAPI/Program.cs
+@@ -74,20 +74,27 @@ builder.Services.AddScoped<RPA.Infrastructure.ActionCenter.ActionCenterService>(
+ builder.Services.AddAlertingServices(builder.Configuration);
+ 
+ // Ortam yönetimi + workflow deployment governance (Dev/Test/Prod, publish/approve) — WP-6.4.
+ builder.Services.AddScoped<RPA.Domain.Interfaces.IEnvironmentRepository,
+     RPA.Infrastructure.Persistence.EfEnvironmentRepository>();
+ builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowVersionRepository,
+     RPA.Infrastructure.Persistence.EfWorkflowVersionRepository>();
+ builder.Services.AddScoped<RPA.Infrastructure.Services.EnvironmentService>();
+ builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDeploymentService>();
+ 
++// Paket B — proje/workflow CRUD + taslak uçları (ProjectsController / WorkflowsController).
++builder.Services.AddScoped<RPA.Domain.Interfaces.IProjectRepository,
++    RPA.Infrastructure.Persistence.EfProjectRepository>();
++builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowRepository,
++    RPA.Infrastructure.Persistence.EfWorkflowRepository>();
++builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDesignService>();
++
+ // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
+ builder.Services.AddSignalR();
+ 
+ // JWT Bearer authentication middleware.
+ var jwt = builder.Configuration
+     .GetSection(AuthenticationOptions.SectionName)
+     .Get<AuthenticationOptions>()?.Jwt ?? new JwtOptions();
+ 
+ // CRITICAL FIX: No fallback to all-zero key. Require JWT_SECRET environment variable.
+ if (string.IsNullOrEmpty(jwt.Secret))
+diff --git a/tests/RPA.WebAPI.Tests/ProjectsControllerTests.cs b/tests/RPA.WebAPI.Tests/ProjectsControllerTests.cs
+new file mode 100644
+index 0000000..e74f3dc
+--- /dev/null
++++ b/tests/RPA.WebAPI.Tests/ProjectsControllerTests.cs
+@@ -0,0 +1,183 @@
++namespace RPA.WebAPI.Tests;
++
++using Microsoft.AspNetCore.Mvc;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Services;
++using RPA.WebAPI.Controllers;
++using Environment = RPA.Domain.Entities.Environment;
++
++/// <summary>Paket B — proje/workflow CRUD ve taslak uçları (fake repolarla).</summary>
++public class ProjectsControllerTests
++{
++    // FakeProjectRepo / FakeWorkflowRepo / FakeEnvRepo: Task 2 test dosyasındaki
++    // implementasyonların birebir kopyası (bkz. WorkflowDesignServiceTests) — buraya aynen ekle.
++
++    private sealed class FakeProjectRepo : IProjectRepository
++    {
++        public readonly List<Project> Items = new();
++        public readonly List<Workflow> WorkflowItems = new();
++        public Task<IReadOnlyList<Project>> ListAsync(CancellationToken ct = default)
++            => Task.FromResult<IReadOnlyList<Project>>(Items.OrderBy(p => p.Name).ToList());
++        public Task<Project?> FindAsync(Guid id, CancellationToken ct = default)
++            => Task.FromResult(Items.FirstOrDefault(p => p.Id == id));
++        public Task<Project> AddAsync(Project p, CancellationToken ct = default)
++        { Items.Add(p); return Task.FromResult(p); }
++        public Task<int> CountWorkflowsAsync(Guid projectId, CancellationToken ct = default)
++            => Task.FromResult(WorkflowItems.Count(w => w.ProjectId == projectId));
++        public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
++    }
++
++    private sealed class FakeWorkflowRepo : IWorkflowRepository
++    {
++        public readonly List<Workflow> Items;
++        public readonly List<WorkflowVersion> Versions = new();
++        public FakeWorkflowRepo(List<Workflow>? shared = null) => Items = shared ?? new List<Workflow>();
++        public Task<IReadOnlyList<Workflow>> ListByProjectAsync(Guid projectId, CancellationToken ct = default)
++            => Task.FromResult<IReadOnlyList<Workflow>>(Items.Where(w => w.ProjectId == projectId).ToList());
++        public Task<Workflow?> FindAsync(Guid id, CancellationToken ct = default)
++            => Task.FromResult(Items.FirstOrDefault(w => w.Id == id));
++        public Task<Workflow> AddAsync(Workflow w, CancellationToken ct = default)
++        { Items.Add(w); return Task.FromResult(w); }
++        public Task<WorkflowVersion?> FindDraftAsync(Guid workflowId, CancellationToken ct = default)
++            => Task.FromResult(Versions.FirstOrDefault(
++                v => v.WorkflowId == workflowId && v.Status == ComponentStatus.Draft));
++        public Task AddVersionAsync(WorkflowVersion v, CancellationToken ct = default)
++        { Versions.Add(v); return Task.CompletedTask; }
++        public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
++    }
++
++    private sealed class FakeEnvRepo : IEnvironmentRepository
++    {
++        public readonly List<Environment> Items = new();
++        public Task<IReadOnlyList<Environment>> ListAsync(CancellationToken ct = default)
++            => Task.FromResult<IReadOnlyList<Environment>>(Items.ToList());
++        public Task<Environment?> FindByNameAsync(string name, CancellationToken ct = default)
++            => Task.FromResult(Items.FirstOrDefault(
++                e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)));
++        public Task<Environment> AddAsync(Environment e, CancellationToken ct = default)
++        { Items.Add(e); return Task.FromResult(e); }
++        public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
++    }
++
++    private static WorkflowDesignService Service(
++        out List<Project> projects, out List<WorkflowVersion> versions)
++    {
++        var projectRepo = new FakeProjectRepo();
++        var workflowRepo = new FakeWorkflowRepo(projectRepo.WorkflowItems);
++        projects = projectRepo.Items;
++        versions = workflowRepo.Versions;
++        return new WorkflowDesignService(
++            projectRepo, workflowRepo, new FakeEnvRepo(),
++            new RPA.Infrastructure.Workflow.WorkflowValidator());
++    }
++
++    private const string ValidJson =
++        "{\"schemaVersion\":\"1.0\",\"id\":\"550e8400-e29b-41d4-a716-446655440000\",\"name\":\"Test\",\"version\":\"1.0.0\",\"nodes\":[],\"connections\":[]}";
++
++    [Fact]
++    public async Task CreateProject_ThenList_ReturnsCard()
++    {
++        var controller = new ProjectsController(Service(out _, out _));
++
++        await controller.Create(new CreateProjectRequest { Name = "Pilot", Description = "d" }, default);
++        var result = await controller.List(default);
++
++        var ok = Assert.IsType<OkObjectResult>(result.Result);
++        var list = Assert.IsType<List<ProjectDto>>(ok.Value);
++        Assert.Single(list);
++        Assert.Equal("Pilot", list[0].Name);
++        Assert.Equal(0, list[0].WorkflowCount);
++    }
++
++    [Fact]
++    public async Task CreateProject_EmptyName_Returns400()
++    {
++        var controller = new ProjectsController(Service(out _, out _));
++        var result = await controller.Create(new CreateProjectRequest { Name = " " }, default);
++        Assert.IsType<BadRequestObjectResult>(result.Result);
++    }
++
++    [Fact]
++    public async Task CreateWorkflow_ThenListWorkflows_ReturnsIt()
++    {
++        var svc = Service(out var projects, out _);
++        var controller = new ProjectsController(svc);
++        var created = await controller.Create(new CreateProjectRequest { Name = "Pilot" }, default);
++        var projectId = ((ProjectDto)((OkObjectResult)created.Result!).Value!).Id;
++
++        await controller.CreateWorkflow(projectId.ToString(),
++            new CreateWorkflowRequest { Name = "Sipariş" }, default);
++        var result = await controller.ListWorkflows(projectId.ToString(), default);
++
++        var ok = Assert.IsType<OkObjectResult>(result.Result);
++        var list = Assert.IsType<List<WorkflowSummaryDto>>(ok.Value);
++        Assert.Single(list);
++        Assert.Equal("Sipariş", list[0].Name);
++    }
++
++    [Fact]
++    public async Task ListWorkflows_BadGuid_Returns400()
++    {
++        var controller = new ProjectsController(Service(out _, out _));
++        var result = await controller.ListWorkflows("not-a-guid", default);
++        Assert.IsType<BadRequestObjectResult>(result.Result);
++    }
++
++    [Fact]
++    public async Task GetDraft_ReturnsJsonDefinition()
++    {
++        var svc = Service(out _, out _);
++        var projects = new ProjectsController(svc);
++        var workflows = new WorkflowsController(svc);
++        var created = await projects.Create(new CreateProjectRequest { Name = "P" }, default);
++        var projectId = ((ProjectDto)((OkObjectResult)created.Result!).Value!).Id;
++        var wfCreated = await projects.CreateWorkflow(projectId.ToString(),
++            new CreateWorkflowRequest { Name = "wf" }, default);
++        var wfId = ((WorkflowSummaryDto)((OkObjectResult)wfCreated.Result!).Value!).Id;
++
++        var result = await workflows.GetDraft(wfId.ToString(), default);
++
++        var ok = Assert.IsType<OkObjectResult>(result.Result);
++        var dto = Assert.IsType<WorkflowDraftDto>(ok.Value);
++        Assert.Contains("\"nodes\"", dto.JsonDefinition);
++    }
++
++    [Fact]
++    public async Task SaveDraft_ValidJson_Persists()
++    {
++        var svc = Service(out _, out var versions);
++        var projects = new ProjectsController(svc);
++        var workflows = new WorkflowsController(svc);
++        var created = await projects.Create(new CreateProjectRequest { Name = "P" }, default);
++        var projectId = ((ProjectDto)((OkObjectResult)created.Result!).Value!).Id;
++        var wfCreated = await projects.CreateWorkflow(projectId.ToString(),
++            new CreateWorkflowRequest { Name = "wf" }, default);
++        var wfId = ((WorkflowSummaryDto)((OkObjectResult)wfCreated.Result!).Value!).Id;
++
++        var result = await workflows.SaveDraft(wfId.ToString(),
++            new SaveDraftRequest { JsonDefinition = ValidJson }, default);
++
++        Assert.IsType<OkObjectResult>(result.Result);
++        Assert.Equal(ValidJson, versions.Single().JsonDefinition);
++    }
++
++    [Fact]
++    public async Task SaveDraft_InvalidJson_Returns400WithErrors()
++    {
++        var svc = Service(out _, out _);
++        var projects = new ProjectsController(svc);
++        var workflows = new WorkflowsController(svc);
++        var created = await projects.Create(new CreateProjectRequest { Name = "P" }, default);
++        var projectId = ((ProjectDto)((OkObjectResult)created.Result!).Value!).Id;
++        var wfCreated = await projects.CreateWorkflow(projectId.ToString(),
++            new CreateWorkflowRequest { Name = "wf" }, default);
++        var wfId = ((WorkflowSummaryDto)((OkObjectResult)wfCreated.Result!).Value!).Id;
++
++        var result = await workflows.SaveDraft(wfId.ToString(),
++            new SaveDraftRequest { JsonDefinition = "{\"nodes\":\"bozuk\"}" }, default);
++
++        Assert.IsType<BadRequestObjectResult>(result.Result);
++    }
++}

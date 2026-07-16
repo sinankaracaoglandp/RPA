@@ -1,0 +1,1917 @@
+# Review package: 575bcf9..9f322d1
+
+## Commits
+9f322d1 feat(agent): tray durum sunucusu + host bileşimi + Windows Service kurulumu
+d8ffbf0 feat(agent): JobExecutor + kuyruk iş kaynağı + yoklama döngüsü
+4192891 feat(agent): robot kaydı + heartbeat döngüsü
+eb357f0 feat(agent): RPA.Agent iskeleti + AgentOptions + thread-safe AgentState
+
+## Files changed
+ RPA.sln                                            |  30 ++++
+ src/RPA.Agent/AgentServiceCollectionExtensions.cs  |  51 +++++++
+ src/RPA.Agent/Configuration/AgentOptions.cs        |  40 +++++
+ .../Hosting/HeartbeatBackgroundService.cs          |  72 +++++++++
+ .../Hosting/QueuePollingBackgroundService.cs       | 100 +++++++++++++
+ src/RPA.Agent/Hosting/RegistrationHostedService.cs |  34 +++++
+ src/RPA.Agent/Jobs/AgentJob.cs                     |  26 ++++
+ src/RPA.Agent/Jobs/AgentJobPayloadParser.cs        |  90 +++++++++++
+ src/RPA.Agent/Jobs/IAgentJobSource.cs              |  21 +++
+ src/RPA.Agent/Jobs/JobExecutionOutcome.cs          |  24 +++
+ src/RPA.Agent/Jobs/JobExecutor.cs                  |  98 ++++++++++++
+ src/RPA.Agent/Jobs/QueueAgentJobSource.cs          |  60 ++++++++
+ src/RPA.Agent/Program.cs                           |  58 +++++++
+ src/RPA.Agent/RPA.Agent.csproj                     |  36 +++++
+ src/RPA.Agent/Registration/IRobotRegistrar.cs      |   8 +
+ src/RPA.Agent/Registration/RobotRegistrar.cs       |  55 +++++++
+ src/RPA.Agent/State/AgentState.cs                  |  41 +++++
+ src/RPA.Agent/State/IAgentState.cs                 |  48 ++++++
+ src/RPA.Agent/Tray/TrayStatusPresenter.cs          |  49 ++++++
+ src/RPA.Agent/appsettings.json                     |  28 ++++
+ src/RPA.Agent/install-service.ps1                  |  46 ++++++
+ src/RPA.Agent/uninstall-service.ps1                |  22 +++
+ .../RPA.Agent.Tests/AgentJobPayloadParserTests.cs  |  56 +++++++
+ tests/RPA.Agent.Tests/AgentStateTests.cs           |  53 +++++++
+ tests/RPA.Agent.Tests/HostedServiceTests.cs        | 166 +++++++++++++++++++++
+ tests/RPA.Agent.Tests/JobExecutorTests.cs          | 116 ++++++++++++++
+ tests/RPA.Agent.Tests/QueueAgentJobSourceTests.cs  |  91 +++++++++++
+ tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj       |  32 ++++
+ tests/RPA.Agent.Tests/RobotRegistrarTests.cs       |  55 +++++++
+ tests/RPA.Agent.Tests/TrayStatusPresenterTests.cs  |  45 ++++++
+ 30 files changed, 1651 insertions(+)
+
+## Diff
+diff --git a/RPA.sln b/RPA.sln
+index b1983f6..99e4fcc 100644
+--- a/RPA.sln
++++ b/RPA.sln
+@@ -14,20 +14,24 @@ EndProject
+ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPA.WebAPI", "src\RPA.WebAPI\RPA.WebAPI.csproj", "{3A60FCF8-E16D-4ADD-838A-5CB3C9383766}"
+ EndProject
+ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+ EndProject
+ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPA.Domain.Tests", "tests\RPA.Domain.Tests\RPA.Domain.Tests.csproj", "{E850B7EA-0E91-4060-88DE-CC61AB36136F}"
+ EndProject
+ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPA.WebAPI.Tests", "tests\RPA.WebAPI.Tests\RPA.WebAPI.Tests.csproj", "{5CCB2F72-2181-4D28-87E6-081CAAE7F01D}"
+ EndProject
+ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPA.Infrastructure.Tests", "tests\RPA.Infrastructure.Tests\RPA.Infrastructure.Tests.csproj", "{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}"
+ EndProject
++Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPA.Agent", "src\RPA.Agent\RPA.Agent.csproj", "{8A400014-0D01-45C1-8081-A702146D8893}"
++EndProject
++Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPA.Agent.Tests", "tests\RPA.Agent.Tests\RPA.Agent.Tests.csproj", "{F49FA0A0-A084-4095-997F-ECBE64B956A6}"
++EndProject
+ Global
+ 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+ 		Debug|Any CPU = Debug|Any CPU
+ 		Debug|x64 = Debug|x64
+ 		Debug|x86 = Debug|x86
+ 		Release|Any CPU = Release|Any CPU
+ 		Release|x64 = Release|x64
+ 		Release|x86 = Release|x86
+ 	EndGlobalSection
+ 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+@@ -108,24 +112,50 @@ Global
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Debug|x64.ActiveCfg = Debug|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Debug|x64.Build.0 = Debug|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Debug|x86.ActiveCfg = Debug|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Debug|x86.Build.0 = Debug|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Release|Any CPU.Build.0 = Release|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Release|x64.ActiveCfg = Release|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Release|x64.Build.0 = Release|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Release|x86.ActiveCfg = Release|Any CPU
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2}.Release|x86.Build.0 = Release|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Debug|Any CPU.Build.0 = Debug|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Debug|x64.ActiveCfg = Debug|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Debug|x64.Build.0 = Debug|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Debug|x86.ActiveCfg = Debug|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Debug|x86.Build.0 = Debug|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Release|Any CPU.ActiveCfg = Release|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Release|Any CPU.Build.0 = Release|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Release|x64.ActiveCfg = Release|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Release|x64.Build.0 = Release|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Release|x86.ActiveCfg = Release|Any CPU
++		{8A400014-0D01-45C1-8081-A702146D8893}.Release|x86.Build.0 = Release|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Debug|x64.ActiveCfg = Debug|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Debug|x64.Build.0 = Debug|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Debug|x86.ActiveCfg = Debug|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Debug|x86.Build.0 = Debug|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Release|Any CPU.Build.0 = Release|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Release|x64.ActiveCfg = Release|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Release|x64.Build.0 = Release|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Release|x86.ActiveCfg = Release|Any CPU
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6}.Release|x86.Build.0 = Release|Any CPU
+ 	EndGlobalSection
+ 	GlobalSection(SolutionProperties) = preSolution
+ 		HideSolutionNode = FALSE
+ 	EndGlobalSection
+ 	GlobalSection(NestedProjects) = preSolution
+ 		{81984215-8F13-4AFC-BE17-AE676C9DBF09} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+ 		{8AC9647F-7393-4352-810A-FCB92188EEE4} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+ 		{F3686124-1566-413F-9FBF-A2C24C6BBA11} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+ 		{3A60FCF8-E16D-4ADD-838A-5CB3C9383766} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+ 		{E850B7EA-0E91-4060-88DE-CC61AB36136F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+ 		{5CCB2F72-2181-4D28-87E6-081CAAE7F01D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+ 		{A7D3E5F1-9C2B-4D6E-8F1A-B2C4D6E8F1A2} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
++		{8A400014-0D01-45C1-8081-A702146D8893} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
++		{F49FA0A0-A084-4095-997F-ECBE64B956A6} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+ 	EndGlobalSection
+ EndGlobal
+diff --git a/src/RPA.Agent/AgentServiceCollectionExtensions.cs b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+new file mode 100644
+index 0000000..77be888
+--- /dev/null
++++ b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+@@ -0,0 +1,51 @@
++namespace RPA.Agent;
++
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using RPA.Agent.Configuration;
++using RPA.Agent.Hosting;
++using RPA.Agent.Jobs;
++using RPA.Agent.Registration;
++using RPA.Agent.State;
++using RPA.Agent.Tray;
++using RPA.Infrastructure.Retry;
++
++/// <summary>
++/// Ajan servislerini DI konteynerine kaydeder. Hosted service sırası önemlidir:
++/// önce kayıt (RegistrationHostedService), sonra heartbeat ve yoklama döngüleri.
++/// </summary>
++public static class AgentServiceCollectionExtensions
++{
++    public static IServiceCollection AddAgentCore(this IServiceCollection services, IConfiguration configuration)
++    {
++        ArgumentNullException.ThrowIfNull(services);
++        ArgumentNullException.ThrowIfNull(configuration);
++
++        services.AddOptions<AgentOptions>()
++            .Bind(configuration.GetSection(AgentOptions.SectionName))
++            .ValidateOnStart();
++
++        // Paylaşılan çalışma zamanı durumu (tek örnek).
++        services.AddSingleton<IAgentState, AgentState>();
++
++        // İstisna sınıflandırıcı (Business/System) — iş sonucu raporlama için.
++        services.AddSingleton<ExceptionClassifier>();
++
++        // Kayıt + iş çalıştırma + iş kaynağı — scoped bağımlılıklar (IRobotService/IQueueService/
++        // IWorkflowRunner) taşıdıkları için scoped; hosted service'ler bunları scope içinde çözer.
++        services.AddScoped<IRobotRegistrar, RobotRegistrar>();
++        services.AddScoped<JobExecutor>();
++        services.AddScoped<IAgentJobSource, QueueAgentJobSource>();
++
++        // Tray sunucusu (attended mod).
++        services.AddSingleton<TrayStatusPresenter>();
++
++        // Hosted service sırası: kayıt önce.
++        services.AddHostedService<RegistrationHostedService>();
++        services.AddHostedService<HeartbeatBackgroundService>();
++        services.AddHostedService<QueuePollingBackgroundService>();
++
++        return services;
++    }
++}
+diff --git a/src/RPA.Agent/Configuration/AgentOptions.cs b/src/RPA.Agent/Configuration/AgentOptions.cs
+new file mode 100644
+index 0000000..2b4ef74
+--- /dev/null
++++ b/src/RPA.Agent/Configuration/AgentOptions.cs
+@@ -0,0 +1,40 @@
++namespace RPA.Agent.Configuration;
++
++using RPA.Domain.Enums;
++
++/// <summary>
++/// Robot ajanı yapılandırması (Spec Bölüm 5.6, 9). appsettings.json'daki "Agent" bölümünden okunur.
++/// Orchestrator adresi, robot kimliği (makine adı/mod/etiket), işlenecek kuyruk ve döngü aralıkları.
++/// </summary>
++public sealed class AgentOptions
++{
++    public const string SectionName = "Agent";
++
++    /// <summary>Orchestrator (WebAPI) taban adresi. Örn. https://orchestrator:5001.</summary>
++    public string OrchestratorUrl { get; set; } = "";
++
++    /// <summary>Robot makine adı. Boşsa <see cref="Environment.MachineName"/> kullanılır.</summary>
++    public string MachineName { get; set; } = "";
++
++    /// <summary>Robot çalışma modu (Attended tray gösterir, Unattended servis).</summary>
++    public RobotMode Mode { get; set; } = RobotMode.Unattended;
++
++    /// <summary>Robot etiketleri (ör. "sap,finance") — kuyruk yönlendirme için.</summary>
++    public string Tags { get; set; } = "";
++
++    /// <summary>Eşzamanlı iş kapasitesi.</summary>
++    public int Capacity { get; set; } = 1;
++
++    /// <summary>İşlenecek kuyruğun kimliği.</summary>
++    public Guid QueueId { get; set; }
++
++    /// <summary>Kuyruk yoklama aralığı. Varsayılan 5 saniye (Spec Bölüm 9).</summary>
++    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
++
++    /// <summary>Heartbeat aralığı. Varsayılan 30 saniye; offline eşiği 5 dk (Spec Bölüm 9).</summary>
++    public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(30);
++
++    /// <summary>Etkin makine adını döndürür (yapılandırma boşsa ortamdan alır).</summary>
++    public string EffectiveMachineName
++        => string.IsNullOrWhiteSpace(MachineName) ? Environment.MachineName : MachineName;
++}
+diff --git a/src/RPA.Agent/Hosting/HeartbeatBackgroundService.cs b/src/RPA.Agent/Hosting/HeartbeatBackgroundService.cs
+new file mode 100644
+index 0000000..66ad1c8
+--- /dev/null
++++ b/src/RPA.Agent/Hosting/HeartbeatBackgroundService.cs
+@@ -0,0 +1,72 @@
++namespace RPA.Agent.Hosting;
++
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using RPA.Agent.Configuration;
++using RPA.Agent.State;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Heartbeat döngüsü (Spec Bölüm 9): her <see cref="AgentOptions.HeartbeatInterval"/> (varsayılan 30 sn)
++/// robotun canlılığını Orchestrator'a bildirir. 5 dk boyunca heartbeat gelmezse Orchestrator robotu
++/// offline işaretler. Tek bir heartbeat hatası döngüyü durdurmaz — bir sonraki turda yeniden denenir.
++/// IRobotService scoped olduğundan her heartbeat bir scope içinde çözülür.
++/// </summary>
++public sealed class HeartbeatBackgroundService : BackgroundService
++{
++    private readonly IServiceScopeFactory _scopeFactory;
++    private readonly IAgentState _state;
++    private readonly AgentOptions _options;
++    private readonly ILogger<HeartbeatBackgroundService> _logger;
++
++    public HeartbeatBackgroundService(
++        IServiceScopeFactory scopeFactory,
++        IAgentState state,
++        IOptions<AgentOptions> options,
++        ILogger<HeartbeatBackgroundService> logger)
++    {
++        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
++    {
++        while (!stoppingToken.IsCancellationRequested)
++        {
++            await SendHeartbeatAsync(stoppingToken);
++            try
++            {
++                await Task.Delay(_options.HeartbeatInterval, stoppingToken);
++            }
++            catch (OperationCanceledException)
++            {
++                break;
++            }
++        }
++    }
++
++    /// <summary>Tek bir heartbeat gönderir (test edilebilirlik için public). Hata yakalanır.</summary>
++    public async Task SendHeartbeatAsync(CancellationToken cancellationToken = default)
++    {
++        var robotId = _state.RobotId;
++        if (robotId is null)
++            return; // Henüz kayıt olmadı.
++
++        try
++        {
++            using var scope = _scopeFactory.CreateScope();
++            var robotService = scope.ServiceProvider.GetRequiredService<IRobotService>();
++            await robotService.RecordHeartbeatAsync(robotId.Value, cancellationToken);
++            _state.RecordHeartbeat(DateTime.UtcNow);
++            _logger.LogDebug("Heartbeat gönderildi — Robot {RobotId}.", robotId);
++        }
++        catch (Exception ex)
++        {
++            _logger.LogError(ex, "Heartbeat gönderilemedi — Robot {RobotId}. Sonraki turda yeniden denenecek.", robotId);
++        }
++    }
++}
+diff --git a/src/RPA.Agent/Hosting/QueuePollingBackgroundService.cs b/src/RPA.Agent/Hosting/QueuePollingBackgroundService.cs
+new file mode 100644
+index 0000000..03b8cf0
+--- /dev/null
++++ b/src/RPA.Agent/Hosting/QueuePollingBackgroundService.cs
+@@ -0,0 +1,100 @@
++namespace RPA.Agent.Hosting;
++
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using RPA.Agent.Configuration;
++using RPA.Agent.Jobs;
++using RPA.Agent.State;
++
++/// <summary>
++/// Ana iş döngüsü (Spec Bölüm 9): her <see cref="AgentOptions.PollInterval"/> (varsayılan 5 sn)
++/// kuyruğu yoklar. İş varsa <see cref="JobExecutor"/> ile izole çalıştırır ve sonucu kuyruğa
++/// raporlar. Duraklatılmışsa (tray) iş çekmez. İş bulunduğunda hemen bir sonraki işe geçer.
++/// Her yoklama turu kendi DI scope'unda çalışır (IQueueService/IWorkflowRunner scoped) — böylece
++/// işler arası durum sızıntısı olmaz (iş izolasyonu).
++/// </summary>
++public sealed class QueuePollingBackgroundService : BackgroundService
++{
++    private readonly IServiceScopeFactory _scopeFactory;
++    private readonly IAgentState _state;
++    private readonly AgentOptions _options;
++    private readonly ILogger<QueuePollingBackgroundService> _logger;
++
++    public QueuePollingBackgroundService(
++        IServiceScopeFactory scopeFactory,
++        IAgentState state,
++        IOptions<AgentOptions> options,
++        ILogger<QueuePollingBackgroundService> logger)
++    {
++        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
++    {
++        while (!stoppingToken.IsCancellationRequested)
++        {
++            bool processed = false;
++            try
++            {
++                processed = await PollOnceAsync(stoppingToken);
++            }
++            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
++            {
++                break;
++            }
++            catch (Exception ex)
++            {
++                _logger.LogError(ex, "Kuyruk yoklama turunda beklenmeyen hata.");
++            }
++
++            if (processed)
++                continue; // İş vardı — bekleme, sıradakini al.
++
++            try
++            {
++                await Task.Delay(_options.PollInterval, stoppingToken);
++            }
++            catch (OperationCanceledException)
++            {
++                break;
++            }
++        }
++    }
++
++    /// <summary>
++    /// Bir yoklama turu: iş çeker, izole scope'ta çalıştırır, sonucu raporlar. İş işlendiyse true.
++    /// Test edilebilirlik için public.
++    /// </summary>
++    public async Task<bool> PollOnceAsync(CancellationToken cancellationToken = default)
++    {
++        if (_state.IsPaused || _state.RobotId is null)
++            return false;
++
++        using var scope = _scopeFactory.CreateScope();
++        var jobSource = scope.ServiceProvider.GetRequiredService<IAgentJobSource>();
++        var executor = scope.ServiceProvider.GetRequiredService<JobExecutor>();
++
++        var job = await jobSource.DequeueAsync(cancellationToken);
++        if (job is null)
++            return false;
++
++        var outcome = await executor.ExecuteAsync(job, cancellationToken);
++
++        if (outcome.Success)
++        {
++            await jobSource.ReportSuccessAsync(job.ItemId, cancellationToken);
++        }
++        else
++        {
++            await jobSource.ReportFailureAsync(
++                job.ItemId, outcome.Exception?.Message, outcome.IsBusinessException, cancellationToken);
++        }
++
++        return true;
++    }
++}
+diff --git a/src/RPA.Agent/Hosting/RegistrationHostedService.cs b/src/RPA.Agent/Hosting/RegistrationHostedService.cs
+new file mode 100644
+index 0000000..eecee2e
+--- /dev/null
++++ b/src/RPA.Agent/Hosting/RegistrationHostedService.cs
+@@ -0,0 +1,34 @@
++namespace RPA.Agent.Hosting;
++
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using Microsoft.Extensions.Logging;
++using RPA.Agent.Registration;
++
++/// <summary>
++/// Ajan başlangıcında robotu Orchestrator'a kaydeder. StartAsync içinde (awaited) çalıştığı için
++/// heartbeat ve yoklama servisleri başlamadan önce robot kimliği garanti altına alınır
++/// (IHostedService'ler kayıt sırasıyla başlatılır — bu servis DI'de ilk sırada olmalıdır).
++/// IRobotRegistrar scoped bağımlılıklara (IRobotService) sahip olduğundan bir scope içinde çözülür.
++/// </summary>
++public sealed class RegistrationHostedService : IHostedService
++{
++    private readonly IServiceScopeFactory _scopeFactory;
++    private readonly ILogger<RegistrationHostedService> _logger;
++
++    public RegistrationHostedService(IServiceScopeFactory scopeFactory, ILogger<RegistrationHostedService> logger)
++    {
++        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public async Task StartAsync(CancellationToken cancellationToken)
++    {
++        _logger.LogInformation("Ajan başlatılıyor — Orchestrator'a kayıt yapılıyor.");
++        using var scope = _scopeFactory.CreateScope();
++        var registrar = scope.ServiceProvider.GetRequiredService<IRobotRegistrar>();
++        await registrar.RegisterAsync(cancellationToken);
++    }
++
++    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
++}
+diff --git a/src/RPA.Agent/Jobs/AgentJob.cs b/src/RPA.Agent/Jobs/AgentJob.cs
+new file mode 100644
+index 0000000..ee320d9
+--- /dev/null
++++ b/src/RPA.Agent/Jobs/AgentJob.cs
+@@ -0,0 +1,26 @@
++namespace RPA.Agent.Jobs;
++
++using RPA.Domain.Entities;
++
++/// <summary>
++/// Ajanın çalıştıracağı çözümlenmiş iş: kuyruk kaleminin kimliği, hedef workflow sürümü ve
++/// giriş argümanları. Kuyruk kaleminin payload'undan <see cref="IAgentJobSource"/> tarafından üretilir.
++/// </summary>
++public sealed class AgentJob
++{
++    public AgentJob(Guid itemId, WorkflowVersion workflowVersion, Dictionary<string, object?> arguments)
++    {
++        ItemId = itemId;
++        WorkflowVersion = workflowVersion ?? throw new ArgumentNullException(nameof(workflowVersion));
++        Arguments = arguments ?? new Dictionary<string, object?>();
++    }
++
++    /// <summary>Kuyruk kaleminin (QueueItem) kimliği — correlation ID.</summary>
++    public Guid ItemId { get; }
++
++    /// <summary>Çalıştırılacak workflow sürümü.</summary>
++    public WorkflowVersion WorkflowVersion { get; }
++
++    /// <summary>Workflow giriş argümanları.</summary>
++    public Dictionary<string, object?> Arguments { get; }
++}
+diff --git a/src/RPA.Agent/Jobs/AgentJobPayloadParser.cs b/src/RPA.Agent/Jobs/AgentJobPayloadParser.cs
+new file mode 100644
+index 0000000..bfac0c0
+--- /dev/null
++++ b/src/RPA.Agent/Jobs/AgentJobPayloadParser.cs
+@@ -0,0 +1,90 @@
++namespace RPA.Agent.Jobs;
++
++using System.Text.Json;
++using RPA.Domain.Entities;
++
++/// <summary>
++/// Kuyruk kaleminin (QueueItem.Payload) JSON'ını çözerek çalıştırılabilir bir workflow sürümü
++/// ve giriş argümanları üretir. Beklenen şema:
++/// <code>
++/// {
++///   "workflowVersionId": "&lt;guid&gt;",
++///   "version": "1.0.0",
++///   "environmentId": "&lt;guid&gt;",
++///   "jsonDefinition": { ...workflow node graph... },
++///   "arguments": { "in_Musteri": "ACME" }
++/// }
++/// </code>
++/// WorkflowVersion tablosu tam şemaya (WP-1.2) kavuşana dek payload, workflow tanımını
++/// kendisi taşır; böylece ajanın Orchestrator'a ayrı bir workflow indirme çağrısına ihtiyacı olmaz.
++/// </summary>
++public static class AgentJobPayloadParser
++{
++    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
++
++    /// <summary>Payload'ı çözer. Geçersizse <see cref="FormatException"/> fırlatır.</summary>
++    public static AgentJob Parse(Guid itemId, string payload)
++    {
++        if (string.IsNullOrWhiteSpace(payload))
++            throw new FormatException($"İş {itemId}: kuyruk payload'u boş.");
++
++        JsonDocument doc;
++        try
++        {
++            doc = JsonDocument.Parse(payload);
++        }
++        catch (JsonException ex)
++        {
++            throw new FormatException($"İş {itemId}: kuyruk payload'u geçersiz JSON.", ex);
++        }
++
++        using (doc)
++        {
++            var root = doc.RootElement;
++
++            var workflowVersion = new WorkflowVersion
++            {
++                Id = GetGuid(root, "workflowVersionId") ?? throw new FormatException(
++                    $"İş {itemId}: payload 'workflowVersionId' içermiyor."),
++                Version = GetString(root, "version") ?? "1.0.0",
++                EnvironmentId = GetGuid(root, "environmentId") ?? Guid.Empty,
++                JsonDefinition = GetDefinition(root),
++            };
++
++            var arguments = new Dictionary<string, object?>();
++            if (root.TryGetProperty("arguments", out var args) && args.ValueKind == JsonValueKind.Object)
++            {
++                foreach (var prop in args.EnumerateObject())
++                    arguments[prop.Name] = ToClrValue(prop.Value);
++            }
++
++            return new AgentJob(itemId, workflowVersion, arguments);
++        }
++    }
++
++    private static string GetDefinition(JsonElement root)
++    {
++        if (!root.TryGetProperty("jsonDefinition", out var def))
++            return "{}";
++        // Nesne ise ham JSON'ını, string ise değerini al.
++        return def.ValueKind == JsonValueKind.String ? def.GetString() ?? "{}" : def.GetRawText();
++    }
++
++    private static Guid? GetGuid(JsonElement root, string name)
++        => root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
++           && Guid.TryParse(el.GetString(), out var g) ? g : null;
++
++    private static string? GetString(JsonElement root, string name)
++        => root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
++           ? el.GetString() : null;
++
++    private static object? ToClrValue(JsonElement el) => el.ValueKind switch
++    {
++        JsonValueKind.String => el.GetString(),
++        JsonValueKind.Number => el.TryGetInt64(out var l) ? l : (object)el.GetDouble(),
++        JsonValueKind.True => true,
++        JsonValueKind.False => false,
++        JsonValueKind.Null => null,
++        _ => el.GetRawText(),
++    };
++}
+diff --git a/src/RPA.Agent/Jobs/IAgentJobSource.cs b/src/RPA.Agent/Jobs/IAgentJobSource.cs
+new file mode 100644
+index 0000000..b403c0d
+--- /dev/null
++++ b/src/RPA.Agent/Jobs/IAgentJobSource.cs
+@@ -0,0 +1,21 @@
++namespace RPA.Agent.Jobs;
++
++/// <summary>
++/// Ajana iş sağlayan kaynak soyutlaması. Varsayılan implementasyon kuyruk motorunu
++/// (IQueueService) sarar; test için sahte kaynak kullanılabilir. İş izolasyonu: her
++/// dequeue tek bir kalem döndürür, raporlama kalem kimliğiyle yapılır.
++/// </summary>
++public interface IAgentJobSource
++{
++    /// <summary>Sıradaki işi atomik olarak çeker (yoksa null).</summary>
++    Task<AgentJob?> DequeueAsync(CancellationToken cancellationToken = default);
++
++    /// <summary>Kalemi başarıyla tamamlandı olarak raporlar.</summary>
++    Task ReportSuccessAsync(Guid itemId, CancellationToken cancellationToken = default);
++
++    /// <summary>
++    /// Kalemi başarısız raporlar. <paramref name="isBusinessException"/> true ise retry edilmez
++    /// (Action Center'a düşer); false ise kuyruk motoru retry politikasını uygular.
++    /// </summary>
++    Task ReportFailureAsync(Guid itemId, string? errorDetail, bool isBusinessException, CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Agent/Jobs/JobExecutionOutcome.cs b/src/RPA.Agent/Jobs/JobExecutionOutcome.cs
+new file mode 100644
+index 0000000..1cffc35
+--- /dev/null
++++ b/src/RPA.Agent/Jobs/JobExecutionOutcome.cs
+@@ -0,0 +1,24 @@
++namespace RPA.Agent.Jobs;
++
++using RPA.Domain.Enums;
++
++/// <summary>İş çalıştırma sonucu: başarı/başarısızlık, çıktı değerleri, istisna sınıflandırması.</summary>
++public sealed class JobExecutionOutcome
++{
++    private JobExecutionOutcome() { }
++
++    public bool Success { get; private init; }
++    public Dictionary<string, object?> Outputs { get; private init; } = new();
++    public Exception? Exception { get; private init; }
++    public ExceptionType? ExceptionType { get; private init; }
++    public long DurationMs { get; private init; }
++
++    /// <summary>İş kuralı istisnası mı? (true → kuyruk retry etmez.)</summary>
++    public bool IsBusinessException => ExceptionType == RPA.Domain.Enums.ExceptionType.Business;
++
++    public static JobExecutionOutcome Succeeded(Dictionary<string, object?> outputs, long durationMs)
++        => new() { Success = true, Outputs = outputs ?? new(), DurationMs = durationMs };
++
++    public static JobExecutionOutcome Failed(Exception exception, ExceptionType type, long durationMs)
++        => new() { Success = false, Exception = exception, ExceptionType = type, DurationMs = durationMs };
++}
+diff --git a/src/RPA.Agent/Jobs/JobExecutor.cs b/src/RPA.Agent/Jobs/JobExecutor.cs
+new file mode 100644
+index 0000000..c259d60
+--- /dev/null
++++ b/src/RPA.Agent/Jobs/JobExecutor.cs
+@@ -0,0 +1,98 @@
++namespace RPA.Agent.Jobs;
++
++using System.Diagnostics;
++using Microsoft.Extensions.Logging;
++using RPA.Agent.State;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Retry;
++
++/// <summary>
++/// Tek bir işi izole biçimde çalıştırır: BaseRunner'ı (<see cref="IWorkflowRunner"/>) çağırır,
++/// çıktıyı yakalar, istisnayı <see cref="ExceptionClassifier"/> ile Business/System olarak
++/// sınıflandırır. Correlation ID = QueueItem kimliği (Spec Bölüm 11). Durum sayaçlarını günceller.
++/// </summary>
++public sealed class JobExecutor
++{
++    private readonly IWorkflowRunner _runner;
++    private readonly ExceptionClassifier _classifier;
++    private readonly IAgentState _state;
++    private readonly ILogger<JobExecutor> _logger;
++
++    public JobExecutor(
++        IWorkflowRunner runner,
++        ExceptionClassifier classifier,
++        IAgentState state,
++        ILogger<JobExecutor> logger)
++    {
++        _runner = runner ?? throw new ArgumentNullException(nameof(runner));
++        _classifier = classifier ?? throw new ArgumentNullException(nameof(classifier));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    /// <summary>
++    /// İşi çalıştırır ve sonucu döndürür. İstisnalar yakalanır ve sınıflandırılır; çağıran
++    /// (yoklama servisi) sonuca göre kuyruğa başarı/başarısızlık raporlar.
++    /// </summary>
++    public async Task<JobExecutionOutcome> ExecuteAsync(AgentJob job, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(job);
++        var sw = Stopwatch.StartNew();
++        _state.SetCurrentJob(job.ItemId);
++        _state.SetActivity(AgentActivity.Running);
++        _logger.LogInformation("İş {ItemId} başlatıldı (WorkflowVersion={WorkflowVersionId}).",
++            job.ItemId, job.WorkflowVersion.Id);
++
++        try
++        {
++            var result = await _runner.ExecuteAsync(
++                job.WorkflowVersion, job.Arguments, job.ItemId, cancellationToken);
++            sw.Stop();
++
++            if (result.Success)
++            {
++                _state.RecordJobCompleted();
++                _logger.LogInformation("İş {ItemId} başarıyla tamamlandı ({DurationMs} ms).",
++                    job.ItemId, sw.ElapsedMilliseconds);
++                return JobExecutionOutcome.Succeeded(result.Outputs, sw.ElapsedMilliseconds);
++            }
++
++            // Runner başarısız döndü ama fırlatmadı — sonuçtaki istisnayı sınıflandır.
++            var ex = result.Exception ?? new RPA.Domain.Exceptions.SystemException(
++                $"İş {job.ItemId} başarısız (istisna bilgisi yok).");
++            return Classify(job, ex, sw.ElapsedMilliseconds);
++        }
++        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
++        {
++            sw.Stop();
++            _logger.LogWarning("İş {ItemId} iptal edildi (servis durduruluyor).", job.ItemId);
++            throw;
++        }
++        catch (Exception ex)
++        {
++            sw.Stop();
++            return Classify(job, ex, sw.ElapsedMilliseconds);
++        }
++        finally
++        {
++            _state.SetCurrentJob(null);
++            _state.SetActivity(_state.IsPaused ? AgentActivity.Paused : AgentActivity.Idle);
++        }
++    }
++
++    private JobExecutionOutcome Classify(AgentJob job, Exception ex, long durationMs)
++    {
++        var type = _classifier.Classify(ex);
++        _state.RecordJobFailed();
++        if (type == ExceptionType.Business)
++        {
++            _logger.LogWarning(ex, "İş {ItemId} iş kuralı istisnasıyla başarısız (retry yok).", job.ItemId);
++        }
++        else
++        {
++            _logger.LogError(ex, "İş {ItemId} sistem istisnasıyla başarısız (retry edilebilir).", job.ItemId);
++        }
++        return JobExecutionOutcome.Failed(ex, type, durationMs);
++    }
++}
+diff --git a/src/RPA.Agent/Jobs/QueueAgentJobSource.cs b/src/RPA.Agent/Jobs/QueueAgentJobSource.cs
+new file mode 100644
+index 0000000..b6df8a3
+--- /dev/null
++++ b/src/RPA.Agent/Jobs/QueueAgentJobSource.cs
+@@ -0,0 +1,60 @@
++namespace RPA.Agent.Jobs;
++
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using RPA.Agent.Configuration;
++using RPA.Agent.State;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Kuyruk motorunu (<see cref="IQueueService"/>) saran varsayılan iş kaynağı. Yapılandırılan
++/// kuyruktan sıradaki kalemi atomik olarak (UPDLOCK) çeker, payload'ını çözer ve raporlamayı
++/// kuyruğun Complete/Fail geçişlerine yönlendirir. Robot kimliği ajan durumundan alınır.
++/// </summary>
++public sealed class QueueAgentJobSource : IAgentJobSource
++{
++    private readonly IQueueService _queue;
++    private readonly IAgentState _state;
++    private readonly AgentOptions _options;
++    private readonly ILogger<QueueAgentJobSource> _logger;
++
++    public QueueAgentJobSource(
++        IQueueService queue,
++        IAgentState state,
++        IOptions<AgentOptions> options,
++        ILogger<QueueAgentJobSource> logger)
++    {
++        _queue = queue ?? throw new ArgumentNullException(nameof(queue));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public async Task<AgentJob?> DequeueAsync(CancellationToken cancellationToken = default)
++    {
++        var robotId = _state.RobotId
++            ?? throw new InvalidOperationException("Robot henüz kaydedilmedi; iş çekilemez.");
++
++        var item = await _queue.GetNextItemAsync(_options.QueueId, robotId, cancellationToken);
++        if (item is null)
++            return null;
++
++        try
++        {
++            return AgentJobPayloadParser.Parse(item.Id, item.Payload);
++        }
++        catch (FormatException ex)
++        {
++            // Bozuk payload iş kuralı hatasıdır — retry etmeden başarısız işaretle (Action Center).
++            _logger.LogWarning(ex, "İş {ItemId}: payload çözümlenemedi, kalem başarısız işaretlendi.", item.Id);
++            await _queue.FailAsync(item.Id, ex.Message, isBusinessException: true, cancellationToken);
++            return null;
++        }
++    }
++
++    public async Task ReportSuccessAsync(Guid itemId, CancellationToken cancellationToken = default)
++        => await _queue.CompleteAsync(itemId, cancellationToken);
++
++    public async Task ReportFailureAsync(Guid itemId, string? errorDetail, bool isBusinessException, CancellationToken cancellationToken = default)
++        => await _queue.FailAsync(itemId, errorDetail, isBusinessException, cancellationToken);
++}
+diff --git a/src/RPA.Agent/Program.cs b/src/RPA.Agent/Program.cs
+new file mode 100644
+index 0000000..5194fb6
+--- /dev/null
++++ b/src/RPA.Agent/Program.cs
+@@ -0,0 +1,58 @@
++using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using RPA.Agent;
++using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Queues;
++using RPA.Infrastructure.Robots;
++using RPA.Infrastructure.Vault;
++using RPA.Infrastructure.Workflow;
++using Serilog;
++
++// --- Serilog (Spec Bölüm 11): Elasticsearch'e correlation ID = Robot/JobRun ile loglar ---
++Log.Logger = new LoggerConfiguration()
++    .ReadFrom.Configuration(new ConfigurationBuilder()
++        .SetBasePath(AppContext.BaseDirectory)
++        .AddJsonFile("appsettings.json", optional: true)
++        .Build())
++    .CreateLogger();
++
++try
++{
++    Log.Information("RPA Agent başlatılıyor.");
++
++    var builder = Host.CreateApplicationBuilder(args);
++
++    // Windows Service olarak çalıştırılabilir (Unattended). Konsol/tray için de çalışır.
++    builder.Services.AddWindowsService(o => o.ServiceName = "RPA.Agent");
++
++    builder.Services.AddSerilog();
++
++    // --- Infrastructure bağımlılıkları (paylaşılan DB üzerinden Orchestrator ile iletişim) ---
++    builder.Services.AddDbContext<RpaDbContext>(options =>
++        options.UseSqlServer(
++            builder.Configuration.GetConnectionString("DefaultConnection")
++            ?? "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"));
++
++    builder.Services.AddVaultServices(builder.Configuration); // Orchestrator/Vault kimlik bilgileri.
++    builder.Services.AddWorkflowServices();                   // IWorkflowRunner (BaseRunner).
++    builder.Services.AddRobotServices();                      // IRobotService (kayıt + heartbeat).
++    builder.Services.AddQueueServices();                      // IQueueService (iş çekme).
++
++    // --- Ajan çekirdeği: kayıt + heartbeat + yoklama döngüleri + tray ---
++    builder.Services.AddAgentCore(builder.Configuration);
++
++    var host = builder.Build();
++    await host.RunAsync();
++    return 0;
++}
++catch (Exception ex)
++{
++    Log.Fatal(ex, "RPA Agent beklenmeyen hata ile sonlandı.");
++    return 1;
++}
++finally
++{
++    await Log.CloseAndFlushAsync();
++}
+diff --git a/src/RPA.Agent/RPA.Agent.csproj b/src/RPA.Agent/RPA.Agent.csproj
+new file mode 100644
+index 0000000..fe50796
+--- /dev/null
++++ b/src/RPA.Agent/RPA.Agent.csproj
+@@ -0,0 +1,36 @@
++<Project Sdk="Microsoft.NET.Sdk">
++
++  <PropertyGroup>
++    <OutputType>Exe</OutputType>
++    <TargetFramework>net10.0</TargetFramework>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <Nullable>enable</Nullable>
++    <RootNamespace>RPA.Agent</RootNamespace>
++    <AssemblyName>RPA.Agent</AssemblyName>
++  </PropertyGroup>
++
++  <ItemGroup>
++    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
++    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
++    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
++    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
++    <PackageReference Include="Serilog" Version="4.3.1" />
++    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
++    <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
++    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
++    <PackageReference Include="Serilog.Sinks.Elasticsearch" Version="10.0.0" />
++  </ItemGroup>
++
++  <ItemGroup>
++    <ProjectReference Include="..\RPA.Domain\RPA.Domain.csproj" />
++    <ProjectReference Include="..\RPA.Application\RPA.Application.csproj" />
++    <ProjectReference Include="..\RPA.Infrastructure\RPA.Infrastructure.csproj" />
++  </ItemGroup>
++
++  <ItemGroup>
++    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
++    <None Update="install-service.ps1" CopyToOutputDirectory="PreserveNewest" />
++    <None Update="uninstall-service.ps1" CopyToOutputDirectory="PreserveNewest" />
++  </ItemGroup>
++
++</Project>
+diff --git a/src/RPA.Agent/Registration/IRobotRegistrar.cs b/src/RPA.Agent/Registration/IRobotRegistrar.cs
+new file mode 100644
+index 0000000..f8994c7
+--- /dev/null
++++ b/src/RPA.Agent/Registration/IRobotRegistrar.cs
+@@ -0,0 +1,8 @@
++namespace RPA.Agent.Registration;
++
++/// <summary>Ajanı Orchestrator'a kaydeder ve robot kimliğini döndürür.</summary>
++public interface IRobotRegistrar
++{
++    /// <summary>Kaydı yapar (idempotent) ve atanan robot kimliğini döndürür.</summary>
++    Task<Guid> RegisterAsync(CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Agent/Registration/RobotRegistrar.cs b/src/RPA.Agent/Registration/RobotRegistrar.cs
+new file mode 100644
+index 0000000..138e430
+--- /dev/null
++++ b/src/RPA.Agent/Registration/RobotRegistrar.cs
+@@ -0,0 +1,55 @@
++namespace RPA.Agent.Registration;
++
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using RPA.Agent.Configuration;
++using RPA.Agent.State;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Ajanı Orchestrator'a kaydeder (Spec Bölüm 5.6). Makine adı idempotent anahtardır:
++/// aynı makine için tekrar çağrı mevcut robot kaydını günceller. Dönen Robot.Id ajan
++/// durumuna yazılır ve tüm sonraki heartbeat/iş atamalarında correlation ID olarak kullanılır.
++/// </summary>
++public sealed class RobotRegistrar : IRobotRegistrar
++{
++    private readonly IRobotService _robotService;
++    private readonly IAgentState _state;
++    private readonly AgentOptions _options;
++    private readonly ILogger<RobotRegistrar> _logger;
++
++    public RobotRegistrar(
++        IRobotService robotService,
++        IAgentState state,
++        IOptions<AgentOptions> options,
++        ILogger<RobotRegistrar> logger)
++    {
++        _robotService = robotService ?? throw new ArgumentNullException(nameof(robotService));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public async Task<Guid> RegisterAsync(CancellationToken cancellationToken = default)
++    {
++        _state.SetActivity(AgentActivity.Registering);
++        var machineName = _options.EffectiveMachineName;
++
++        var request = new RobotRegistrationRequest
++        {
++            MachineName = machineName,
++            Mode = _options.Mode,
++            Tags = _options.Tags,
++            Capacity = _options.Capacity,
++            AgentVersion = typeof(RobotRegistrar).Assembly.GetName().Version?.ToString() ?? "1.0.0",
++        };
++
++        var robot = await _robotService.RegisterAsync(request, cancellationToken);
++        _state.SetRobotId(robot.Id);
++        _state.SetActivity(AgentActivity.Idle);
++        _logger.LogInformation(
++            "Robot {RobotId} ({MachineName}) Orchestrator'a kaydedildi (Mode={Mode}).",
++            robot.Id, machineName, _options.Mode);
++        return robot.Id;
++    }
++}
+diff --git a/src/RPA.Agent/State/AgentState.cs b/src/RPA.Agent/State/AgentState.cs
+new file mode 100644
+index 0000000..d11ed99
+--- /dev/null
++++ b/src/RPA.Agent/State/AgentState.cs
+@@ -0,0 +1,41 @@
++namespace RPA.Agent.State;
++
++/// <summary>
++/// <see cref="IAgentState"/> thread-safe implementasyonu. Alanlar bir kilit altında güncellenir;
++/// sayaçlar <see cref="System.Threading.Interlocked"/> ile artırılır.
++/// </summary>
++public sealed class AgentState : IAgentState
++{
++    private readonly object _gate = new();
++    private Guid? _robotId;
++    private AgentActivity _activity = AgentActivity.Starting;
++    private Guid? _currentJobId;
++    private int _completed;
++    private int _failed;
++    private DateTime? _lastHeartbeatUtc;
++    private bool _isPaused;
++
++    public Guid? RobotId { get { lock (_gate) return _robotId; } }
++    public AgentActivity Activity { get { lock (_gate) return _activity; } }
++    public Guid? CurrentJobId { get { lock (_gate) return _currentJobId; } }
++    public int CompletedJobCount => Volatile.Read(ref _completed);
++    public int FailedJobCount => Volatile.Read(ref _failed);
++    public DateTime? LastHeartbeatUtc { get { lock (_gate) return _lastHeartbeatUtc; } }
++    public bool IsPaused { get { lock (_gate) return _isPaused; } }
++
++    public void SetRobotId(Guid robotId) { lock (_gate) _robotId = robotId; }
++    public void SetActivity(AgentActivity activity) { lock (_gate) _activity = activity; }
++    public void SetCurrentJob(Guid? jobId) { lock (_gate) _currentJobId = jobId; }
++    public void RecordJobCompleted() => Interlocked.Increment(ref _completed);
++    public void RecordJobFailed() => Interlocked.Increment(ref _failed);
++    public void RecordHeartbeat(DateTime utcNow) { lock (_gate) _lastHeartbeatUtc = utcNow; }
++
++    public void SetPaused(bool paused)
++    {
++        lock (_gate)
++        {
++            _isPaused = paused;
++            _activity = paused ? AgentActivity.Paused : AgentActivity.Idle;
++        }
++    }
++}
+diff --git a/src/RPA.Agent/State/IAgentState.cs b/src/RPA.Agent/State/IAgentState.cs
+new file mode 100644
+index 0000000..ddb54f0
+--- /dev/null
++++ b/src/RPA.Agent/State/IAgentState.cs
+@@ -0,0 +1,48 @@
++namespace RPA.Agent.State;
++
++/// <summary>
++/// Ajanın çalışma zamanı durumu (tray gösterimi + servis koordinasyonu için paylaşılan).
++/// Thread-safe: heartbeat, poll ve UI iş parçacıkları eşzamanlı erişir.
++/// </summary>
++public interface IAgentState
++{
++    /// <summary>Orchestrator'a kayıt sonrası atanan robot kimliği (correlation ID kaynağı).</summary>
++    Guid? RobotId { get; }
++
++    /// <summary>Ajanın anlık faaliyet durumu.</summary>
++    AgentActivity Activity { get; }
++
++    /// <summary>Şu anda çalışan işin (QueueItem) kimliği; boştaysa null.</summary>
++    Guid? CurrentJobId { get; }
++
++    /// <summary>Başarıyla tamamlanan iş sayısı.</summary>
++    int CompletedJobCount { get; }
++
++    /// <summary>Başarısız iş sayısı.</summary>
++    int FailedJobCount { get; }
++
++    /// <summary>Son heartbeat zamanı (UTC).</summary>
++    DateTime? LastHeartbeatUtc { get; }
++
++    /// <summary>Kullanıcının duraklattığı mod (tray'den). Duraklatıldıysa yoklama iş almaz.</summary>
++    bool IsPaused { get; }
++
++    void SetRobotId(Guid robotId);
++    void SetActivity(AgentActivity activity);
++    void SetCurrentJob(Guid? jobId);
++    void RecordJobCompleted();
++    void RecordJobFailed();
++    void RecordHeartbeat(DateTime utcNow);
++    void SetPaused(bool paused);
++}
++
++/// <summary>Ajan faaliyet durumu (tray ikonunda gösterilir).</summary>
++public enum AgentActivity
++{
++    Starting,
++    Registering,
++    Idle,
++    Running,
++    Paused,
++    Stopped,
++}
+diff --git a/src/RPA.Agent/Tray/TrayStatusPresenter.cs b/src/RPA.Agent/Tray/TrayStatusPresenter.cs
+new file mode 100644
+index 0000000..bf2af4d
+--- /dev/null
++++ b/src/RPA.Agent/Tray/TrayStatusPresenter.cs
+@@ -0,0 +1,49 @@
++namespace RPA.Agent.Tray;
++
++using System.Globalization;
++using RPA.Agent.State;
++
++/// <summary>
++/// Tray ikonu için durum metnini/ipucunu biçimlendirir (attended mod, Spec Bölüm 5.6). UI çatısından
++/// (WinForms NotifyIcon) bağımsız — böylece Windows dışında da test edilebilir. Gerçek NotifyIcon
++/// bu sunucudan metni okuyup gösterir; duraklat/devam komutlarını <see cref="IAgentState"/>'e iletir.
++/// </summary>
++public sealed class TrayStatusPresenter
++{
++    private readonly IAgentState _state;
++
++    public TrayStatusPresenter(IAgentState state)
++        => _state = state ?? throw new ArgumentNullException(nameof(state));
++
++    /// <summary>Tray tooltip metni (ikonun üzerine gelince görünür).</summary>
++    public string GetTooltip()
++    {
++        var robot = _state.RobotId is { } id ? id.ToString()[..8] : "kayıtsız";
++        var activity = DescribeActivity(_state.Activity);
++        var jobs = string.Format(
++            CultureInfo.InvariantCulture,
++            "Tamamlanan: {0}  Başarısız: {1}",
++            _state.CompletedJobCount, _state.FailedJobCount);
++        return $"RPA Robot [{robot}]\n{activity}\n{jobs}";
++    }
++
++    /// <summary>İkon renk/duruma karşılık gelen kısa etiket.</summary>
++    public string GetStatusLabel() => DescribeActivity(_state.Activity);
++
++    /// <summary>Duraklat/devam menü öğesinin başlığı.</summary>
++    public string GetPauseResumeCaption() => _state.IsPaused ? "Devam Et" : "Duraklat";
++
++    /// <summary>Tray'den duraklat/devam geçişini uygular.</summary>
++    public void TogglePause() => _state.SetPaused(!_state.IsPaused);
++
++    private static string DescribeActivity(AgentActivity activity) => activity switch
++    {
++        AgentActivity.Starting => "Başlatılıyor…",
++        AgentActivity.Registering => "Kaydolunuyor…",
++        AgentActivity.Idle => "Boşta (iş bekleniyor)",
++        AgentActivity.Running => "Çalışıyor…",
++        AgentActivity.Paused => "Duraklatıldı",
++        AgentActivity.Stopped => "Durduruldu",
++        _ => activity.ToString(),
++    };
++}
+diff --git a/src/RPA.Agent/appsettings.json b/src/RPA.Agent/appsettings.json
+new file mode 100644
+index 0000000..99a04bc
+--- /dev/null
++++ b/src/RPA.Agent/appsettings.json
+@@ -0,0 +1,28 @@
++{
++  "ConnectionStrings": {
++    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"
++  },
++  "Agent": {
++    "OrchestratorUrl": "https://localhost:5001",
++    "MachineName": "",
++    "Mode": "Unattended",
++    "Tags": "",
++    "Capacity": 1,
++    "QueueId": "00000000-0000-0000-0000-000000000000",
++    "PollInterval": "00:00:05",
++    "HeartbeatInterval": "00:00:30"
++  },
++  "Serilog": {
++    "MinimumLevel": {
++      "Default": "Information",
++      "Override": {
++        "Microsoft": "Warning",
++        "Microsoft.EntityFrameworkCore": "Warning"
++      }
++    },
++    "WriteTo": [
++      { "Name": "Console" }
++    ],
++    "Enrich": [ "FromLogContext" ]
++  }
++}
+diff --git a/src/RPA.Agent/install-service.ps1 b/src/RPA.Agent/install-service.ps1
+new file mode 100644
+index 0000000..cf01807
+--- /dev/null
++++ b/src/RPA.Agent/install-service.ps1
+@@ -0,0 +1,46 @@
++<#
++.SYNOPSIS
++  RPA Agent'ı Windows Service olarak kurar (Spec Bölüm 9 — Unattended robot).
++.DESCRIPTION
++  Yayınlanmış RPA.Agent.exe'yi "RPA.Agent" adıyla bir Windows Service olarak kaydeder ve başlatır.
++  Yükseltilmiş (Administrator) PowerShell gerektirir.
++.EXAMPLE
++  .\install-service.ps1 -BinPath "C:\RPA\Agent\RPA.Agent.exe"
++#>
++param(
++    [Parameter(Mandatory = $true)]
++    [string]$BinPath,
++
++    [string]$ServiceName = "RPA.Agent",
++    [string]$DisplayName = "RPA Robot Agent",
++    [string]$Description = "RPA platform robot ajanı: kuyruk yoklar, workflow çalıştırır, heartbeat gönderir.",
++    [ValidateSet("Automatic", "Manual", "Disabled")]
++    [string]$StartupType = "Automatic"
++)
++
++$ErrorActionPreference = "Stop"
++
++if (-not (Test-Path $BinPath)) {
++    throw "Yürütülebilir bulunamadı: $BinPath. Önce 'dotnet publish' çalıştırın."
++}
++
++$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
++if ($existing) {
++    Write-Host "Servis '$ServiceName' zaten var — durdurulup kaldırılıyor."
++    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
++    sc.exe delete $ServiceName | Out-Null
++    Start-Sleep -Seconds 2
++}
++
++Write-Host "Servis kuruluyor: $ServiceName -> $BinPath"
++New-Service -Name $ServiceName `
++    -BinaryPathName "`"$BinPath`"" `
++    -DisplayName $DisplayName `
++    -Description $Description `
++    -StartupType $StartupType | Out-Null
++
++# Hata durumunda otomatik yeniden başlatma (5 sn sonra, 3 deneme).
++sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
++
++Start-Service -Name $ServiceName
++Write-Host "Servis '$ServiceName' kuruldu ve başlatıldı." -ForegroundColor Green
+diff --git a/src/RPA.Agent/uninstall-service.ps1 b/src/RPA.Agent/uninstall-service.ps1
+new file mode 100644
+index 0000000..8f0a847
+--- /dev/null
++++ b/src/RPA.Agent/uninstall-service.ps1
+@@ -0,0 +1,22 @@
++<#
++.SYNOPSIS
++  RPA Agent Windows Service'ini durdurur ve kaldırır.
++.EXAMPLE
++  .\uninstall-service.ps1
++#>
++param(
++    [string]$ServiceName = "RPA.Agent"
++)
++
++$ErrorActionPreference = "Stop"
++
++$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
++if (-not $existing) {
++    Write-Host "Servis '$ServiceName' bulunamadı — yapılacak bir şey yok."
++    return
++}
++
++Write-Host "Servis durduruluyor: $ServiceName"
++Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
++sc.exe delete $ServiceName | Out-Null
++Write-Host "Servis '$ServiceName' kaldırıldı." -ForegroundColor Green
+diff --git a/tests/RPA.Agent.Tests/AgentJobPayloadParserTests.cs b/tests/RPA.Agent.Tests/AgentJobPayloadParserTests.cs
+new file mode 100644
+index 0000000..665ba54
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/AgentJobPayloadParserTests.cs
+@@ -0,0 +1,56 @@
++namespace RPA.Agent.Tests;
++
++using RPA.Agent.Jobs;
++
++public class AgentJobPayloadParserTests
++{
++    [Fact]
++    public void Gecerli_Payload_Workflow_Ve_Argumanlari_Cozer()
++    {
++        var wvId = Guid.NewGuid();
++        var envId = Guid.NewGuid();
++        var itemId = Guid.NewGuid();
++        var payload = $$"""
++        {
++          "workflowVersionId": "{{wvId}}",
++          "version": "2.1.0",
++          "environmentId": "{{envId}}",
++          "jsonDefinition": { "nodes": [], "connections": [] },
++          "arguments": { "in_Musteri": "ACME", "in_Adet": 5, "in_Aktif": true }
++        }
++        """;
++
++        var job = AgentJobPayloadParser.Parse(itemId, payload);
++
++        Assert.Equal(itemId, job.ItemId);
++        Assert.Equal(wvId, job.WorkflowVersion.Id);
++        Assert.Equal("2.1.0", job.WorkflowVersion.Version);
++        Assert.Equal(envId, job.WorkflowVersion.EnvironmentId);
++        Assert.Contains("nodes", job.WorkflowVersion.JsonDefinition);
++        Assert.Equal("ACME", job.Arguments["in_Musteri"]);
++        Assert.Equal(5L, job.Arguments["in_Adet"]);
++        Assert.Equal(true, job.Arguments["in_Aktif"]);
++    }
++
++    [Fact]
++    public void JsonDefinition_String_Olarak_Da_Kabul_Edilir()
++    {
++        var payload = $$"""
++        { "workflowVersionId": "{{Guid.NewGuid()}}", "jsonDefinition": "{\"nodes\":[]}" }
++        """;
++        var job = AgentJobPayloadParser.Parse(Guid.NewGuid(), payload);
++        Assert.Equal("{\"nodes\":[]}", job.WorkflowVersion.JsonDefinition);
++    }
++
++    [Fact]
++    public void Bos_Payload_FormatException_Firlatir()
++        => Assert.Throws<FormatException>(() => AgentJobPayloadParser.Parse(Guid.NewGuid(), ""));
++
++    [Fact]
++    public void Gecersiz_Json_FormatException_Firlatir()
++        => Assert.Throws<FormatException>(() => AgentJobPayloadParser.Parse(Guid.NewGuid(), "{ not json"));
++
++    [Fact]
++    public void WorkflowVersionId_Yoksa_FormatException_Firlatir()
++        => Assert.Throws<FormatException>(() => AgentJobPayloadParser.Parse(Guid.NewGuid(), """{ "version": "1.0.0" }"""));
++}
+diff --git a/tests/RPA.Agent.Tests/AgentStateTests.cs b/tests/RPA.Agent.Tests/AgentStateTests.cs
+new file mode 100644
+index 0000000..9bdf868
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/AgentStateTests.cs
+@@ -0,0 +1,53 @@
++namespace RPA.Agent.Tests;
++
++using RPA.Agent.State;
++
++public class AgentStateTests
++{
++    [Fact]
++    public void Yeni_Durum_Starting_Ve_Sifir_Sayac()
++    {
++        var state = new AgentState();
++        Assert.Null(state.RobotId);
++        Assert.Equal(AgentActivity.Starting, state.Activity);
++        Assert.Equal(0, state.CompletedJobCount);
++        Assert.Equal(0, state.FailedJobCount);
++        Assert.False(state.IsPaused);
++    }
++
++    [Fact]
++    public void RobotId_Ve_Sayaclar_Guncellenir()
++    {
++        var state = new AgentState();
++        var id = Guid.NewGuid();
++        state.SetRobotId(id);
++        state.RecordJobCompleted();
++        state.RecordJobCompleted();
++        state.RecordJobFailed();
++
++        Assert.Equal(id, state.RobotId);
++        Assert.Equal(2, state.CompletedJobCount);
++        Assert.Equal(1, state.FailedJobCount);
++    }
++
++    [Fact]
++    public void Pause_Aktivite_Paused_Yapar()
++    {
++        var state = new AgentState();
++        state.SetPaused(true);
++        Assert.True(state.IsPaused);
++        Assert.Equal(AgentActivity.Paused, state.Activity);
++
++        state.SetPaused(false);
++        Assert.False(state.IsPaused);
++        Assert.Equal(AgentActivity.Idle, state.Activity);
++    }
++
++    [Fact]
++    public void Sayaclar_Es_Zamanli_Artislarda_Tutarli()
++    {
++        var state = new AgentState();
++        Parallel.For(0, 1000, _ => state.RecordJobCompleted());
++        Assert.Equal(1000, state.CompletedJobCount);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/HostedServiceTests.cs b/tests/RPA.Agent.Tests/HostedServiceTests.cs
+new file mode 100644
+index 0000000..12aa435
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/HostedServiceTests.cs
+@@ -0,0 +1,166 @@
++namespace RPA.Agent.Tests;
++
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Agent.Configuration;
++using RPA.Agent.Hosting;
++using RPA.Agent.Jobs;
++using RPA.Agent.Registration;
++using RPA.Agent.State;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Retry;
++
++public class HostedServiceTests
++{
++    private static IServiceScopeFactory ScopeFactory(Action<IServiceCollection> configure)
++    {
++        var services = new ServiceCollection();
++        configure(services);
++        return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
++    }
++
++    // --- RegistrationHostedService ---
++
++    [Fact]
++    public async Task Registration_StartAsync_Registrar_Cagirir()
++    {
++        var registrar = new Mock<IRobotRegistrar>();
++        registrar.Setup(r => r.RegisterAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Guid.NewGuid());
++        var sf = ScopeFactory(s => s.AddScoped(_ => registrar.Object));
++        var svc = new RegistrationHostedService(sf, NullLogger<RegistrationHostedService>.Instance);
++
++        await svc.StartAsync(CancellationToken.None);
++
++        registrar.Verify(r => r.RegisterAsync(It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    // --- HeartbeatBackgroundService ---
++
++    [Fact]
++    public async Task Heartbeat_RobotId_Yoksa_Cagirmaz()
++    {
++        var robotSvc = new Mock<IRobotService>();
++        var sf = ScopeFactory(s => s.AddScoped(_ => robotSvc.Object));
++        var svc = new HeartbeatBackgroundService(sf, new AgentState(),
++            Options.Create(new AgentOptions()), NullLogger<HeartbeatBackgroundService>.Instance);
++
++        await svc.SendHeartbeatAsync();
++
++        robotSvc.Verify(r => r.RecordHeartbeatAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
++    }
++
++    [Fact]
++    public async Task Heartbeat_RobotId_Varsa_Kaydeder_Ve_Zaman_Damgalar()
++    {
++        var robotSvc = new Mock<IRobotService>();
++        robotSvc.Setup(r => r.RecordHeartbeatAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new Robot());
++        var state = new AgentState();
++        var robotId = Guid.NewGuid();
++        state.SetRobotId(robotId);
++        var sf = ScopeFactory(s => s.AddScoped(_ => robotSvc.Object));
++        var svc = new HeartbeatBackgroundService(sf, state,
++            Options.Create(new AgentOptions()), NullLogger<HeartbeatBackgroundService>.Instance);
++
++        await svc.SendHeartbeatAsync();
++
++        robotSvc.Verify(r => r.RecordHeartbeatAsync(robotId, It.IsAny<CancellationToken>()), Times.Once);
++        Assert.NotNull(state.LastHeartbeatUtc);
++    }
++
++    [Fact]
++    public async Task Heartbeat_Hata_Yutulur_Dongu_Devam_Eder()
++    {
++        var robotSvc = new Mock<IRobotService>();
++        robotSvc.Setup(r => r.RecordHeartbeatAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ThrowsAsync(new InvalidOperationException("orchestrator erişilemez"));
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        var sf = ScopeFactory(s => s.AddScoped(_ => robotSvc.Object));
++        var svc = new HeartbeatBackgroundService(sf, state,
++            Options.Create(new AgentOptions()), NullLogger<HeartbeatBackgroundService>.Instance);
++
++        await svc.SendHeartbeatAsync(); // Fırlatmamalı.
++    }
++
++    // --- QueuePollingBackgroundService ---
++
++    private static IServiceScopeFactory PollScope(Mock<IAgentJobSource> source, Mock<IWorkflowRunner> runner, AgentState state)
++        => ScopeFactory(s =>
++        {
++            s.AddScoped(_ => source.Object);
++            s.AddSingleton(state);
++            s.AddSingleton<IAgentState>(state);
++            s.AddSingleton<ExceptionClassifier>();
++            s.AddScoped(_ => new JobExecutor(runner.Object, new ExceptionClassifier(), state, NullLogger<JobExecutor>.Instance));
++        });
++
++    private static QueuePollingBackgroundService MakePolling(IServiceScopeFactory sf, AgentState state)
++        => new(sf, state, Options.Create(new AgentOptions()), NullLogger<QueuePollingBackgroundService>.Instance);
++
++    [Fact]
++    public async Task Poll_Is_Yoksa_False_Doner()
++    {
++        var source = new Mock<IAgentJobSource>();
++        source.Setup(s => s.DequeueAsync(It.IsAny<CancellationToken>())).ReturnsAsync((AgentJob?)null);
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        var svc = MakePolling(PollScope(source, new Mock<IWorkflowRunner>(), state), state);
++
++        Assert.False(await svc.PollOnceAsync());
++    }
++
++    [Fact]
++    public async Task Poll_Duraklatilmissa_Is_Cekmez()
++    {
++        var source = new Mock<IAgentJobSource>();
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        state.SetPaused(true);
++        var svc = MakePolling(PollScope(source, new Mock<IWorkflowRunner>(), state), state);
++
++        Assert.False(await svc.PollOnceAsync());
++        source.Verify(s => s.DequeueAsync(It.IsAny<CancellationToken>()), Times.Never);
++    }
++
++    [Fact]
++    public async Task Poll_Basarili_Is_ReportSuccess_Cagirir()
++    {
++        var itemId = Guid.NewGuid();
++        var source = new Mock<IAgentJobSource>();
++        source.Setup(s => s.DequeueAsync(It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new AgentJob(itemId, new WorkflowVersion { Id = Guid.NewGuid() }, new()));
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new WorkflowExecutionResult { Success = true });
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        var svc = MakePolling(PollScope(source, runner, state), state);
++
++        Assert.True(await svc.PollOnceAsync());
++        source.Verify(s => s.ReportSuccessAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
++        source.Verify(s => s.ReportFailureAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
++    }
++
++    [Fact]
++    public async Task Poll_Basarisiz_Is_ReportFailure_Business_Bayragiyla_Cagirir()
++    {
++        var itemId = Guid.NewGuid();
++        var source = new Mock<IAgentJobSource>();
++        source.Setup(s => s.DequeueAsync(It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new AgentJob(itemId, new WorkflowVersion { Id = Guid.NewGuid() }, new()));
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ThrowsAsync(new RPA.Domain.Exceptions.BusinessException("kural ihlali"));
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        var svc = MakePolling(PollScope(source, runner, state), state);
++
++        Assert.True(await svc.PollOnceAsync());
++        source.Verify(s => s.ReportFailureAsync(itemId, It.IsAny<string>(), true, It.IsAny<CancellationToken>()), Times.Once);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/JobExecutorTests.cs b/tests/RPA.Agent.Tests/JobExecutorTests.cs
+new file mode 100644
+index 0000000..e3eb02d
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/JobExecutorTests.cs
+@@ -0,0 +1,116 @@
++namespace RPA.Agent.Tests;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Moq;
++using RPA.Agent.Jobs;
++using RPA.Agent.State;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Retry;
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++using SystemException = RPA.Domain.Exceptions.SystemException;
++
++public class JobExecutorTests
++{
++    private static AgentJob MakeJob()
++        => new(Guid.NewGuid(), new WorkflowVersion { Id = Guid.NewGuid() }, new() { ["x"] = 1 });
++
++    private static JobExecutor Make(Mock<IWorkflowRunner> runner, out AgentState state)
++    {
++        state = new AgentState();
++        return new JobExecutor(runner.Object, new ExceptionClassifier(), state, NullLogger<JobExecutor>.Instance);
++    }
++
++    [Fact]
++    public async Task Basarili_Calisma_Success_Outcome_Ve_Sayac_Artar()
++    {
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new WorkflowExecutionResult { Success = true, Outputs = new() { ["out"] = "ok" } });
++        var executor = Make(runner, out var state);
++        var job = MakeJob();
++
++        var outcome = await executor.ExecuteAsync(job);
++
++        Assert.True(outcome.Success);
++        Assert.Equal("ok", outcome.Outputs["out"]);
++        Assert.Equal(1, state.CompletedJobCount);
++        Assert.Equal(0, state.FailedJobCount);
++        Assert.Null(state.CurrentJobId); // finally temizler
++    }
++
++    [Fact]
++    public async Task Runner_ExecuteAsync_JobRunId_Olarak_ItemId_Kullanir()
++    {
++        Guid captured = Guid.Empty;
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .Callback<WorkflowVersion, Dictionary<string, object?>, Guid, CancellationToken>((_, _, id, _) => captured = id)
++            .ReturnsAsync(new WorkflowExecutionResult { Success = true });
++        var executor = Make(runner, out _);
++        var job = MakeJob();
++
++        await executor.ExecuteAsync(job);
++
++        Assert.Equal(job.ItemId, captured);
++    }
++
++    [Fact]
++    public async Task BusinessException_Firlatilirsa_Business_Olarak_Siniflanir()
++    {
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ThrowsAsync(new BusinessException("Malzeme zaten mevcut"));
++        var executor = Make(runner, out var state);
++
++        var outcome = await executor.ExecuteAsync(MakeJob());
++
++        Assert.False(outcome.Success);
++        Assert.True(outcome.IsBusinessException);
++        Assert.Equal(ExceptionType.Business, outcome.ExceptionType);
++        Assert.Equal(1, state.FailedJobCount);
++    }
++
++    [Fact]
++    public async Task SystemException_Firlatilirsa_System_Olarak_Siniflanir_Ve_Retry_Edilebilir()
++    {
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ThrowsAsync(new SystemException("Bağlantı timeout"));
++        var executor = Make(runner, out _);
++
++        var outcome = await executor.ExecuteAsync(MakeJob());
++
++        Assert.False(outcome.Success);
++        Assert.False(outcome.IsBusinessException);
++        Assert.Equal(ExceptionType.System, outcome.ExceptionType);
++    }
++
++    [Fact]
++    public async Task Runner_Success_False_Donerse_Istisna_Siniflanir()
++    {
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new WorkflowExecutionResult { Success = false, Exception = new BusinessException("kural") });
++        var executor = Make(runner, out _);
++
++        var outcome = await executor.ExecuteAsync(MakeJob());
++
++        Assert.False(outcome.Success);
++        Assert.True(outcome.IsBusinessException);
++    }
++
++    [Fact]
++    public async Task Iptal_Edildiginde_OperationCanceled_Yeniden_Firlatir()
++    {
++        using var cts = new CancellationTokenSource();
++        cts.Cancel();
++        var runner = new Mock<IWorkflowRunner>();
++        runner.Setup(r => r.ExecuteAsync(It.IsAny<WorkflowVersion>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ThrowsAsync(new OperationCanceledException());
++        var executor = Make(runner, out _);
++
++        await Assert.ThrowsAsync<OperationCanceledException>(() => executor.ExecuteAsync(MakeJob(), cts.Token));
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/QueueAgentJobSourceTests.cs b/tests/RPA.Agent.Tests/QueueAgentJobSourceTests.cs
+new file mode 100644
+index 0000000..a3dc8c8
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/QueueAgentJobSourceTests.cs
+@@ -0,0 +1,91 @@
++namespace RPA.Agent.Tests;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Agent.Configuration;
++using RPA.Agent.Jobs;
++using RPA.Agent.State;
++using RPA.Domain.Entities;
++using RPA.Domain.Interfaces;
++
++public class QueueAgentJobSourceTests
++{
++    private static (QueueAgentJobSource src, Mock<IQueueService> queue, AgentState state, Guid queueId) Make()
++    {
++        var queue = new Mock<IQueueService>();
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        var queueId = Guid.NewGuid();
++        var src = new QueueAgentJobSource(queue.Object, state,
++            Options.Create(new AgentOptions { QueueId = queueId }), NullLogger<QueueAgentJobSource>.Instance);
++        return (src, queue, state, queueId);
++    }
++
++    [Fact]
++    public async Task Dequeue_Yapilandirilan_Kuyruk_Ve_RobotId_Ile_Cagirir()
++    {
++        var (src, queue, state, queueId) = Make();
++        var payload = $$"""{ "workflowVersionId": "{{Guid.NewGuid()}}", "arguments": { "a": 1 } }""";
++        queue.Setup(q => q.GetNextItemAsync(queueId, state.RobotId!.Value, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new QueueItem { Id = Guid.NewGuid(), Payload = payload });
++
++        var job = await src.DequeueAsync();
++
++        Assert.NotNull(job);
++        Assert.Equal(1L, job!.Arguments["a"]);
++        queue.Verify(q => q.GetNextItemAsync(queueId, state.RobotId!.Value, It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task Kuyruk_Bossa_Null_Doner()
++    {
++        var (src, queue, _, _) = Make();
++        queue.Setup(q => q.GetNextItemAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync((QueueItem?)null);
++
++        Assert.Null(await src.DequeueAsync());
++    }
++
++    [Fact]
++    public async Task Bozuk_Payload_BusinessException_Olarak_Fail_Edilir_Ve_Null_Doner()
++    {
++        var (src, queue, _, _) = Make();
++        var itemId = Guid.NewGuid();
++        queue.Setup(q => q.GetNextItemAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new QueueItem { Id = itemId, Payload = "{ bozuk" });
++
++        var job = await src.DequeueAsync();
++
++        Assert.Null(job);
++        queue.Verify(q => q.FailAsync(itemId, It.IsAny<string>(), true, It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task RobotId_Yoksa_InvalidOperation_Firlatir()
++    {
++        var queue = new Mock<IQueueService>();
++        var src = new QueueAgentJobSource(queue.Object, new AgentState(),
++            Options.Create(new AgentOptions()), NullLogger<QueueAgentJobSource>.Instance);
++
++        await Assert.ThrowsAsync<InvalidOperationException>(() => src.DequeueAsync());
++    }
++
++    [Fact]
++    public async Task ReportSuccess_Complete_Cagirir()
++    {
++        var (src, queue, _, _) = Make();
++        var id = Guid.NewGuid();
++        await src.ReportSuccessAsync(id);
++        queue.Verify(q => q.CompleteAsync(id, It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task ReportFailure_Fail_Cagirir()
++    {
++        var (src, queue, _, _) = Make();
++        var id = Guid.NewGuid();
++        await src.ReportFailureAsync(id, "hata", isBusinessException: false);
++        queue.Verify(q => q.FailAsync(id, "hata", false, It.IsAny<CancellationToken>()), Times.Once);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj b/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj
+new file mode 100644
+index 0000000..e6b7ed1
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj
+@@ -0,0 +1,32 @@
++<Project Sdk="Microsoft.NET.Sdk">
++
++  <PropertyGroup>
++    <TargetFramework>net10.0</TargetFramework>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <Nullable>enable</Nullable>
++    <IsPackable>false</IsPackable>
++  </PropertyGroup>
++
++  <ItemGroup>
++    <PackageReference Include="coverlet.collector" Version="10.0.1">
++      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
++      <PrivateAssets>all</PrivateAssets>
++    </PackageReference>
++    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
++    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
++    <PackageReference Include="Moq" Version="4.20.72" />
++    <PackageReference Include="xunit" Version="2.9.3" />
++    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
++  </ItemGroup>
++
++  <ItemGroup>
++    <Using Include="Xunit" />
++  </ItemGroup>
++
++  <ItemGroup>
++    <ProjectReference Include="..\..\src\RPA.Agent\RPA.Agent.csproj" />
++    <ProjectReference Include="..\..\src\RPA.Domain\RPA.Domain.csproj" />
++    <ProjectReference Include="..\..\src\RPA.Infrastructure\RPA.Infrastructure.csproj" />
++  </ItemGroup>
++
++</Project>
+diff --git a/tests/RPA.Agent.Tests/RobotRegistrarTests.cs b/tests/RPA.Agent.Tests/RobotRegistrarTests.cs
+new file mode 100644
+index 0000000..06cdb78
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/RobotRegistrarTests.cs
+@@ -0,0 +1,55 @@
++namespace RPA.Agent.Tests;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Agent.Configuration;
++using RPA.Agent.Registration;
++using RPA.Agent.State;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++public class RobotRegistrarTests
++{
++    [Fact]
++    public async Task Kayit_RobotId_Durum_Icine_Yazar()
++    {
++        var robot = new Robot { Id = Guid.NewGuid(), MachineName = "RBT-01" };
++        var svc = new Mock<IRobotService>();
++        RobotRegistrationRequest? sent = null;
++        svc.Setup(s => s.RegisterAsync(It.IsAny<RobotRegistrationRequest>(), It.IsAny<CancellationToken>()))
++            .Callback<RobotRegistrationRequest, CancellationToken>((r, _) => sent = r)
++            .ReturnsAsync(robot);
++        var state = new AgentState();
++        var options = Options.Create(new AgentOptions { MachineName = "RBT-01", Mode = RobotMode.Attended, Tags = "sap", Capacity = 2 });
++        var registrar = new RobotRegistrar(svc.Object, state, options, NullLogger<RobotRegistrar>.Instance);
++
++        var id = await registrar.RegisterAsync();
++
++        Assert.Equal(robot.Id, id);
++        Assert.Equal(robot.Id, state.RobotId);
++        Assert.Equal(AgentActivity.Idle, state.Activity);
++        Assert.NotNull(sent);
++        Assert.Equal("RBT-01", sent!.MachineName);
++        Assert.Equal(RobotMode.Attended, sent.Mode);
++        Assert.Equal("sap", sent.Tags);
++        Assert.Equal(2, sent.Capacity);
++    }
++
++    [Fact]
++    public async Task MachineName_Bossa_Ortam_Adi_Kullanilir()
++    {
++        var svc = new Mock<IRobotService>();
++        RobotRegistrationRequest? sent = null;
++        svc.Setup(s => s.RegisterAsync(It.IsAny<RobotRegistrationRequest>(), It.IsAny<CancellationToken>()))
++            .Callback<RobotRegistrationRequest, CancellationToken>((r, _) => sent = r)
++            .ReturnsAsync(new Robot { Id = Guid.NewGuid() });
++        var registrar = new RobotRegistrar(svc.Object, new AgentState(),
++            Options.Create(new AgentOptions { MachineName = "" }), NullLogger<RobotRegistrar>.Instance);
++
++        await registrar.RegisterAsync();
++
++        Assert.Equal(System.Environment.MachineName, sent!.MachineName);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/TrayStatusPresenterTests.cs b/tests/RPA.Agent.Tests/TrayStatusPresenterTests.cs
+new file mode 100644
+index 0000000..58e1873
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/TrayStatusPresenterTests.cs
+@@ -0,0 +1,45 @@
++namespace RPA.Agent.Tests;
++
++using RPA.Agent.State;
++using RPA.Agent.Tray;
++
++public class TrayStatusPresenterTests
++{
++    [Fact]
++    public void Tooltip_RobotId_Ve_Sayaclari_Icerir()
++    {
++        var state = new AgentState();
++        state.SetRobotId(Guid.NewGuid());
++        state.RecordJobCompleted();
++        state.SetActivity(AgentActivity.Idle);
++        var presenter = new TrayStatusPresenter(state);
++
++        var tip = presenter.GetTooltip();
++
++        Assert.Contains("RPA Robot", tip);
++        Assert.Contains("Tamamlanan: 1", tip);
++        Assert.Contains("Boşta", tip);
++    }
++
++    [Fact]
++    public void Kayitsiz_Robot_Tooltip_Kayitsiz_Gosterir()
++    {
++        var presenter = new TrayStatusPresenter(new AgentState());
++        Assert.Contains("kayıtsız", presenter.GetTooltip());
++    }
++
++    [Fact]
++    public void TogglePause_Durumu_Degistirir_Ve_Caption_Guncellenir()
++    {
++        var state = new AgentState();
++        var presenter = new TrayStatusPresenter(state);
++        Assert.Equal("Duraklat", presenter.GetPauseResumeCaption());
++
++        presenter.TogglePause();
++        Assert.True(state.IsPaused);
++        Assert.Equal("Devam Et", presenter.GetPauseResumeCaption());
++
++        presenter.TogglePause();
++        Assert.False(state.IsPaused);
++    }
++}

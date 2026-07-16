@@ -1,0 +1,59 @@
+<h2>Döngü node'ları için ortak bağlantı modeli</h2>
+<p class="subtitle">While, For ve ForEach aynı port semantiğini kullanır. Fark yalnızca iterasyon ayarındadır.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Önerilen akış</div>
+  <div class="mockup-body" style="padding:28px; overflow:auto">
+    <div style="min-width:900px; display:grid; grid-template-columns:170px 80px 210px 90px 190px 90px 190px; grid-template-rows:110px 110px; align-items:center; text-align:center; gap:4px">
+      <div style="grid-column:1;grid-row:1 / span 2;padding:18px;border:2px solid #64748b;border-radius:12px;background:#f8fafc"><strong>Önceki Node</strong><br><small>standart out</small></div>
+      <div style="grid-column:2;grid-row:1 / span 2;font-size:28px">→</div>
+      <div style="grid-column:3;grid-row:1 / span 2;padding:18px;border:3px solid #7c3aed;border-radius:14px;background:#f5f3ff">
+        <strong>Loop Node</strong><br><span style="font-size:13px">While / For / ForEach</span>
+        <hr style="border:none;border-top:1px solid #c4b5fd;margin:12px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px"><span>● in</span><span>body ●</span></div>
+        <div style="display:flex;justify-content:flex-end;font-size:12px;margin-top:8px"><span>exit ●</span></div>
+      </div>
+      <div style="grid-column:4;grid-row:1;font-size:28px;color:#16a34a">→</div>
+      <div style="grid-column:5;grid-row:1;padding:18px;border:2px solid #16a34a;border-radius:12px;background:#f0fdf4"><strong>Gövde Başlangıcı</strong><br><small>koşul true / sırada eleman var</small></div>
+      <div style="grid-column:6;grid-row:1;font-size:28px">→</div>
+      <div style="grid-column:7;grid-row:1;padding:18px;border:2px solid #16a34a;border-radius:12px;background:#f0fdf4"><strong>Gövde Sonu</strong><br><small>loop-back çıkışı</small></div>
+      <div style="grid-column:4;grid-row:2;font-size:28px;color:#dc2626">↘</div>
+      <div style="grid-column:5;grid-row:2;padding:18px;border:2px solid #dc2626;border-radius:12px;background:#fef2f2"><strong>Döngü Sonrası</strong><br><small>exit: koşul false / koleksiyon bitti</small></div>
+      <div style="grid-column:6 / span 2;grid-row:2;color:#7c3aed;font-size:13px;border-top:3px dashed #7c3aed;padding-top:8px">↶ Gövde sonundan Loop Node'a geri dönüş</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Ortak port sözleşmesi</h3>
+  <div class="options">
+    <div class="option selected" data-choice="shared-loop-contract" onclick="toggleSelect(this)">
+      <div class="letter">✓</div>
+      <div class="content">
+        <h3>1 giriş + 2 çış + kontrollü geri dönüş</h3>
+        <p><strong>in</strong>: önceki akış • <strong>body</strong>: iterasyon gövdesi • <strong>exit</strong>: döngü sonrası • <strong>loop-back</strong>: yalnızca gövde sonundan loop node'a.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Node tipine özel ayar</div>
+    <div class="mockup-body">
+      <p><strong>While</strong> — condition</p>
+      <p><strong>For</strong> — start, end, step, indexVariable</p>
+      <p><strong>ForEach</strong> — items, itemVariable</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">Designer / Runner ortak davranışı</div>
+    <div class="mockup-body">
+      <p>Canvas aynı port renderer ve validasyonunu kullanır.</p>
+      <p>Runner aynı loop-body yürütme altyapısını kullanır.</p>
+      <p>Normal node'ların keyfi cycle oluşturması yine engellenir.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:22px">Bu semantik doğru mu? Onay için kartı seçebilir veya terminalde hangi noktayı değiştirmek istediğinizi yazabilirsiniz.</p>

@@ -1,0 +1,153 @@
+# Review package: 3581c20..785e37ef588fbe9d71d824725feb7748c5115423
+
+## Commits
+785e37e fix(vision): restore CCoeffNormed template matching, fix degenerate test fixtures
+b41b7ad feat(agent): OpenCvSharp template matcher (Paket F)
+
+## Files changed
+ src/RPA.Agent/RPA.Agent.csproj                     |  3 ++
+ src/RPA.Agent/Vision/TemplateMatcher.cs            | 48 ++++++++++++++++++++
+ .../RPA.Agent.Tests/Vision/TemplateMatcherTests.cs | 52 ++++++++++++++++++++++
+ 3 files changed, 103 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Agent/RPA.Agent.csproj b/src/RPA.Agent/RPA.Agent.csproj
+index b21435e..9ca9e2e 100644
+--- a/src/RPA.Agent/RPA.Agent.csproj
++++ b/src/RPA.Agent/RPA.Agent.csproj
+@@ -7,20 +7,23 @@
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <RootNamespace>RPA.Agent</RootNamespace>
+     <AssemblyName>RPA.Agent</AssemblyName>
+     <!-- Yerel geliştirici sırları için user-secrets (Development). Üretimde ortam değişkeni kullanın. -->
+     <UserSecretsId>rpa-agent-dev-secrets</UserSecretsId>
+   </PropertyGroup>
+ 
+   <ItemGroup>
+     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
++    <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
++    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
++    <PackageReference Include="Tesseract" Version="5.2.0" />
+     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+     <PackageReference Include="Serilog" Version="4.3.1" />
+     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+     <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
+     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+diff --git a/src/RPA.Agent/Vision/TemplateMatcher.cs b/src/RPA.Agent/Vision/TemplateMatcher.cs
+new file mode 100644
+index 0000000..dcdf6bf
+--- /dev/null
++++ b/src/RPA.Agent/Vision/TemplateMatcher.cs
+@@ -0,0 +1,48 @@
++namespace RPA.Agent.Vision;
++
++using System.Runtime.Versioning;
++using OpenCvSharp;
++using RPA.Domain.ValueObjects;
++
++/// <summary>
++/// OpenCvSharp tabanlı template matching. Anchor (Faz 2) için FindAll birden çok eşleşme
++/// döndürür; şu an aktiviteler yalnız FindBest'i kullanır. Çok-ölçekli tarama DPI toleransı
++/// sağlar.
++/// </summary>
++[SupportedOSPlatform("windows")]
++public static class TemplateMatcher
++{
++    private static readonly double[] Scales = { 1.0, 0.9, 1.1, 0.8, 1.25 };
++
++    public static VisionMatch? FindBest(Mat haystack, Mat needle, double confidence)
++    {
++        VisionMatch? best = null;
++        foreach (var scale in Scales)
++        {
++            using var scaled = scale == 1.0
++                ? needle.Clone()
++                : needle.Resize(default, scale, scale, InterpolationFlags.Area);
++            if (scaled.Width > haystack.Width || scaled.Height > haystack.Height)
++            {
++                continue;
++            }
++
++            using var result = new Mat();
++            Cv2.MatchTemplate(haystack, scaled, result, TemplateMatchModes.CCoeffNormed);
++            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
++
++            if (maxVal >= confidence && (best is null || maxVal > best.Score))
++            {
++                best = new VisionMatch(maxLoc.X, maxLoc.Y, scaled.Width, scaled.Height, maxVal);
++            }
++        }
++        return best;
++    }
++
++    public static IReadOnlyList<VisionMatch> FindAll(Mat haystack, Mat needle, double confidence)
++    {
++        // Faz 1: tek en iyi eşleşmeyi liste olarak döndür (anchor Faz 2'de genişletilecek).
++        var best = FindBest(haystack, needle, confidence);
++        return best is null ? Array.Empty<VisionMatch>() : new[] { best };
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs b/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs
+new file mode 100644
+index 0000000..3ed601e
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs
+@@ -0,0 +1,52 @@
++namespace RPA.Agent.Tests.Vision;
++
++using OpenCvSharp;
++using RPA.Agent.Vision;
++using Xunit;
++
++public class TemplateMatcherTests
++{
++    // Dokulu (sıfır olmayan varyanslı) 10x10 needle: siyah zemin + beyaz iç kare.
++    // Tekdüze renk DEĞİL — CCoeffNormed'in dejenere olmaması için gerekli.
++    private static Mat MakeNeedle()
++    {
++        var needle = new Mat(new Size(10, 10), MatType.CV_8UC3, Scalar.Black);
++        Cv2.Rectangle(needle, new Rect(2, 2, 6, 6), Scalar.White, thickness: -1);
++        return needle;
++    }
++
++    [Fact]
++    public void FindBest_LocatesNeedle_AtKnownPosition()
++    {
++        var box = new Rect(40, 30, 10, 10);
++        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, new Scalar(128, 128, 128));
++        using var needle = MakeNeedle();
++        // Needle'ı haystack'e piksel-birebir kopyala (bilinen konumda kesin eşleşme).
++        using (var roi = new Mat(haystack, box))
++        {
++            needle.CopyTo(roi);
++        }
++
++        var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.8);
++
++        Assert.NotNull(match);
++        Assert.InRange(match!.X, box.X - 2, box.X + 2);
++        Assert.InRange(match.Y, box.Y - 2, box.Y + 2);
++        Assert.True(match.Score >= 0.8);
++    }
++
++    [Fact]
++    public void FindBest_ReturnsNull_WhenBelowConfidence()
++    {
++        // Orta-gri zemin + needle'dan FARKLI iki şekil (renk/boyut farklı) — needle burada yok,
++        // ama zemin varyanslı (tekdüze değil) ki CCoeffNormed dejenere olmasın.
++        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, new Scalar(128, 128, 128));
++        Cv2.Circle(haystack, new Point(20, 20), 8, Scalar.White, thickness: -1);
++        Cv2.Rectangle(haystack, new Rect(70, 70, 15, 15), new Scalar(200, 50, 50), thickness: -1);
++        using var needle = MakeNeedle(); // haystack içinde yok
++
++        var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.95);
++
++        Assert.Null(match);
++    }
++}

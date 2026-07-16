@@ -1,0 +1,249 @@
+# Review package: d450318..HEAD
+
+## Commits
+baed01f feat(studio): node oluşturmada katalog DisplayName ve DefaultProperties kullanılıyor
+
+## Files changed
+ .../src/app/shared/models/activity.model.ts        |  2 ++
+ .../designer/canvas/canvas.component.spec.ts       | 11 ++++++++
+ .../app/studio/designer/canvas/canvas.component.ts | 14 +++++++++--
+ .../designer/toolbox/toolbox.component.spec.ts     | 29 +++++++++++++++++++++-
+ .../studio/designer/toolbox/toolbox.component.ts   |  7 +++++-
+ .../simplified-toolbox.component.spec.ts           |  4 ++-
+ .../simple-mode/simplified-toolbox.component.ts    |  6 ++++-
+ 7 files changed, 67 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/shared/models/activity.model.ts b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+index 3f3259c..fe4b433 100644
+--- a/src/RPA.Studio/src/app/shared/models/activity.model.ts
++++ b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+@@ -10,11 +10,13 @@ export interface ActivityPort {
+ }
+ 
+ export interface ActivityMetadata {
+   activityId: string;
+   displayName: string;
+   category?: string;
+   description?: string;
+   icon?: string;
+   inputs?: ActivityPort[];
+   outputs?: ActivityPort[];
++  /** Katalogda tanımlı başlangıç özellik değerleri (node oluşturmada kopyalanır). */
++  defaultProperties?: Record<string, unknown>;
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
+index 729355c..c722b4a 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
+@@ -186,20 +186,31 @@ describe('CanvasComponent', () => {
+     await component.clear();
+     expect(component.editor.getNodes().length).toBe(0);
+   });
+ 
+   it('throws when mutating a read-only canvas', async () => {
+     component.readOnly = true;
+     await ready();
+     await expect(component.addNode('A')).rejects.toThrow('read-only');
+   });
+ 
++  it('creates a node with the provided initial properties and label', async () => {
++    await ready();
++    const id = await component.addNode('Logic.Delay', {
++      label: 'Bekle',
++      properties: { durationMs: 1000 },
++    });
++    const node = component.editor.getNode(id)!;
++    expect(node.label).toBe('Bekle');
++    expect(node.properties).toEqual({ durationMs: 1000 });
++  });
++
+   describe('node click behaviour (regression: click must not delete)', () => {
+     it('keeps the node in the graph and emits nodeSelect when the card is clicked', async () => {
+       await ready();
+       const id = await component.addNode('Web.Click');
+       fixture.detectChanges();
+ 
+       const selections: (string | null)[] = [];
+       component.nodeSelect.subscribe((v) => selections.push(v));
+ 
+       const card: HTMLElement | null =
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
+index 6c87ee6..fd30e58 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
+@@ -364,26 +364,36 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+       x: view.position.x + node.width / 2,
+       y: view.position.y + (port === 'out' ? node.height : 0),
+     };
+   }
+ 
+   // --- public API ----------------------------------------------------------
+ 
+   /** Adds a node (activity by default) and returns its generated id. */
+   async addNode(
+     activityId: string,
+-    options: { type?: WorkflowNodeType; label?: string; position?: NodePosition } = {},
++    options: {
++      type?: WorkflowNodeType;
++      label?: string;
++      position?: NodePosition;
++      properties?: Record<string, unknown>;
++    } = {},
+   ): Promise<string> {
+     this.assertWritable();
+     const type = options.type ?? 'activity';
+     const label = options.label ?? activityId;
+-    const node = new FlowNode(label, type, type === 'activity' ? activityId : undefined);
++    const node = new FlowNode(
++      label,
++      type,
++      type === 'activity' ? activityId : undefined,
++      { ...(options.properties ?? {}) },
++    );
+     await this.editor.addNode(node);
+     const position = options.position ?? this.nextPosition();
+     await this.area.translate(node.id, position);
+     // Re-emit so subscribers observe the final position (the nodecreated
+     // signal fires before the node is translated into place).
+     this.emitChange();
+     return node.id;
+   }
+ 
+   /** Connects two nodes (source out → target in). Returns the connection id. */
+diff --git a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts
+index ee25e81..97c00ad 100644
+--- a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.spec.ts
+@@ -122,21 +122,48 @@ describe('ToolboxComponent', () => {
+   it('calls canvas.addNode when an activity is activated', async () => {
+     fixture.detectChanges();
+     flushActivities();
+     fixture.detectChanges();
+ 
+     const addNode = vi.fn().mockResolvedValue('node-1');
+     component.canvas = { addNode } as unknown as ToolboxComponent['canvas'];
+ 
+     await component.addActivity('Web.Click');
+ 
+-    expect(addNode).toHaveBeenCalledWith('Web.Click', {});
++    expect(addNode).toHaveBeenCalledWith('Web.Click', {
++      label: 'Click Element',
++    });
++  });
++
++  it('passes displayName and defaultProperties to the canvas when adding an activity', async () => {
++    const activitiesWithDefaults: ActivityMetadata[] = [
++      {
++        activityId: 'Logic.Delay',
++        displayName: 'Bekle',
++        category: 'Mantık',
++        description: 'Waits for a specified duration',
++        defaultProperties: { durationMs: 1000 },
++      },
++    ];
++    fixture.detectChanges();
++    flushActivities(activitiesWithDefaults);
++    fixture.detectChanges();
++
++    const addNode = vi.fn().mockResolvedValue('node-1');
++    component.canvas = { addNode } as unknown as ToolboxComponent['canvas'];
++
++    await component.addActivity('Logic.Delay');
++
++    expect(addNode).toHaveBeenCalledWith('Logic.Delay', {
++      label: 'Bekle',
++      properties: { durationMs: 1000 },
++    });
+   });
+ 
+   it('emits activityAdded when an activity is added', async () => {
+     fixture.detectChanges();
+     flushActivities();
+     fixture.detectChanges();
+ 
+     const emitted: { activityId: string }[] = [];
+     component.activityAdded.subscribe((event) => emitted.push(event));
+ 
+diff --git a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts
+index bb588cb..9904778 100644
+--- a/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/toolbox/toolbox.component.ts
+@@ -92,21 +92,26 @@ export class ToolboxComponent {
+   onSearchChange(term: string): void {
+     this.searchTerm.set(term);
+   }
+ 
+   selectCategory(category: string): void {
+     this.selectedCategory.set(category);
+   }
+ 
+   async addActivity(activityId: string, position?: { x: number; y: number }): Promise<void> {
+     if (this.canvas) {
+-      await this.canvas.addNode(activityId, position ? { position } : {});
++      const meta = this.activities().find((a) => a.activityId === activityId);
++      await this.canvas.addNode(activityId, {
++        ...(position ? { position } : {}),
++        ...(meta?.displayName ? { label: meta.displayName } : {}),
++        ...(meta?.defaultProperties ? { properties: { ...meta.defaultProperties } } : {}),
++      });
+     }
+     this.activityAdded.emit({ activityId, position });
+   }
+ 
+   onCanvasDrop(event: CdkDragDrop<ActivityMetadata[], unknown, string>): void {
+     const activityId = event.item.data as string;
+     void this.addActivity(activityId);
+   }
+ 
+   trackByActivityId(_index: number, activity: ActivityMetadata): string {
+diff --git a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts
+index 8a311f0..839d763 100644
+--- a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.spec.ts
+@@ -46,13 +46,15 @@ describe('SimplifiedToolboxComponent', () => {
+     const canvasStub = { addNode: vi.fn().mockResolvedValue('node-1') };
+     component.canvas = canvasStub as never;
+ 
+     fixture.detectChanges();
+     const req = httpMock.expectOne('/api/activities');
+     req.flush(ACTIVITIES);
+     fixture.detectChanges();
+ 
+     await component.addActivity('Web.Click');
+ 
+-    expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click');
++    expect(canvasStub.addNode).toHaveBeenCalledWith('Web.Click', {
++      label: 'Click Element',
++    });
+   });
+ });
+diff --git a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts
+index 5f08229..ac7ad67 100644
+--- a/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts
++++ b/src/RPA.Studio/src/app/studio/simple-mode/simplified-toolbox.component.ts
+@@ -75,19 +75,23 @@ export class SimplifiedToolboxComponent {
+       },
+       error: () => {
+         this.error.set(true);
+         this.loading.set(false);
+       },
+     });
+   }
+ 
+   async addActivity(activityId: string): Promise<void> {
+     if (this.canvas) {
+-      await this.canvas.addNode(activityId);
++      const meta = this.activities().find((a) => a.activityId === activityId);
++      await this.canvas.addNode(activityId, {
++        ...(meta?.displayName ? { label: meta.displayName } : {}),
++        ...(meta?.defaultProperties ? { properties: { ...meta.defaultProperties } } : {}),
++      });
+     }
+     this.activityAdded.emit({ activityId });
+   }
+ 
+   trackByActivityId(_index: number, activity: ActivityMetadata): string {
+     return activity.activityId;
+   }
+ }

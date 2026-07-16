@@ -1,0 +1,241 @@
+# Review package: e13cfb4..7b75b2e
+
+## Commits
+7b75b2e feat(studio): Zamanlamalar ekrani - job olustur/liste/fire, hedef ajan tag secimi
+
+## Files changed
+ src/RPA.Studio/src/app/app.routes.ts               |  6 ++
+ .../schedules/schedules.component.html             | 63 ++++++++++++++++
+ .../schedules/schedules.component.spec.ts          | 31 ++++++++
+ .../orchestrator/schedules/schedules.component.ts  | 85 ++++++++++++++++++++++
+ 4 files changed, 185 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/app.routes.ts b/src/RPA.Studio/src/app/app.routes.ts
+index 94755d9..72cd60b 100644
+--- a/src/RPA.Studio/src/app/app.routes.ts
++++ b/src/RPA.Studio/src/app/app.routes.ts
+@@ -43,20 +43,26 @@ export const routes: Routes = [
+     path: 'orchestrator',
+     canActivate: [authGuard],
+     loadComponent: () =>
+       import('./orchestrator/dashboard/orchestrator-dashboard.component').then((m) => m.OrchestratorDashboardComponent),
+   },
+   {
+     path: 'orchestrator/jobs',
+     canActivate: [authGuard],
+     loadComponent: () => import('./orchestrator/jobs/jobs.component').then((m) => m.JobsComponent),
+   },
++  {
++    path: 'orchestrator/schedules',
++    canActivate: [authGuard],
++    loadComponent: () =>
++      import('./orchestrator/schedules/schedules.component').then((m) => m.SchedulesComponent),
++  },
+   {
+     path: 'orchestrator/robots',
+     canActivate: [authGuard],
+     loadComponent: () => import('./orchestrator/robots/robots.component').then((m) => m.RobotsComponent),
+   },
+   {
+     path: 'orchestrator/queues',
+     canActivate: [authGuard],
+     loadComponent: () => import('./orchestrator/queues/queues.component').then((m) => m.QueuesComponent),
+   },
+diff --git a/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.html b/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.html
+new file mode 100644
+index 0000000..eeaa749
+--- /dev/null
++++ b/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.html
+@@ -0,0 +1,63 @@
++<app-back-home></app-back-home>
++<section class="schedules">
++  <header class="schedules__head">
++    <h1>Zamanlamalar</h1>
++    <button type="button" (click)="toggleForm()">{{ showForm() ? 'Vazgeç' : 'Yeni Job' }}</button>
++  </header>
++
++  @if (error()) {
++    <p class="schedules__error">{{ error() }}</p>
++  }
++
++  @if (showForm()) {
++    <form class="schedules__form" (ngSubmit)="save()">
++      <label>Workflow Versiyon Id
++        <input name="wv" [(ngModel)]="form.workflowVersionId" required />
++      </label>
++      <label>Proje Id
++        <input name="pid" [(ngModel)]="form.projectId" required />
++      </label>
++      <label>Ortam Id
++        <input name="env" [(ngModel)]="form.environmentId" required />
++      </label>
++      <label>Tetikleme Tipi
++        <select name="type" [(ngModel)]="form.type">
++          @for (t of triggerTypes; track t) { <option [value]="t">{{ t }}</option> }
++        </select>
++      </label>
++      <label>Hedef Robot Tag'leri (virgülle)
++        <input name="tags" [(ngModel)]="form.targetRobotTags" placeholder="prod-vm,sap" />
++      </label>
++      <label>Öncelik
++        <input name="prio" type="number" [(ngModel)]="form.priority" />
++      </label>
++      <button type="submit">Kaydet</button>
++    </form>
++  }
++
++  @if (loading()) {
++    <p>Yükleniyor…</p>
++  } @else {
++    <table class="schedules__table">
++      <thead>
++        <tr><th>Tip</th><th>Hedef Ajanlar</th><th>Öncelik</th><th>Aktif</th><th>İşlem</th></tr>
++      </thead>
++      <tbody>
++        @for (t of triggers(); track t.id) {
++          <tr>
++            <td>{{ t.type }}</td>
++            <td>{{ t.targetRobotTags || '(herhangi)' }}</td>
++            <td>{{ t.priority }}</td>
++            <td>{{ t.isActive ? 'Evet' : 'Hayır' }}</td>
++            <td>
++              <button type="button" (click)="runNow(t)">Şimdi çalıştır</button>
++              <button type="button" (click)="setActive(t, !t.isActive)">
++                {{ t.isActive ? 'Pasifleştir' : 'Aktifleştir' }}
++              </button>
++            </td>
++          </tr>
++        }
++      </tbody>
++    </table>
++  }
++</section>
+diff --git a/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.spec.ts b/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.spec.ts
+new file mode 100644
+index 0000000..79fa1e3
+--- /dev/null
++++ b/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.spec.ts
+@@ -0,0 +1,31 @@
++import { TestBed } from '@angular/core/testing';
++import { of } from 'rxjs';
++import { SchedulesComponent } from './schedules.component';
++import { OrchestratorService } from '../orchestrator.service';
++
++describe('SchedulesComponent', () => {
++  function setup(triggers: any[]) {
++    const svc = {
++      listTriggers: () => of(triggers),
++      listRobots: () => of([]),
++      createTrigger: () => of({}),
++      updateTrigger: () => of({}),
++      fireTrigger: () => of({}),
++    };
++    TestBed.configureTestingModule({
++      imports: [SchedulesComponent],
++      providers: [{ provide: OrchestratorService, useValue: svc }],
++    });
++    return TestBed.createComponent(SchedulesComponent);
++  }
++
++  it('yüklenince trigger listesini gösterir', () => {
++    const fixture = setup([
++      { id: 't1', type: 'Cron', targetRobotTags: 'prod-vm', isActive: true, priority: 0, configuration: '{}' },
++    ]);
++    fixture.detectChanges();
++    const cmp = fixture.componentInstance;
++    expect(cmp.triggers().length).toBe(1);
++    expect(cmp.triggers()[0].targetRobotTags).toBe('prod-vm');
++  });
++});
+diff --git a/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.ts b/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.ts
+new file mode 100644
+index 0000000..de07105
+--- /dev/null
++++ b/src/RPA.Studio/src/app/orchestrator/schedules/schedules.component.ts
+@@ -0,0 +1,85 @@
++import { CommonModule } from '@angular/common';
++import { Component, OnInit, inject, signal } from '@angular/core';
++import { FormsModule } from '@angular/forms';
++import { OrchestratorService } from '../orchestrator.service';
++import { CreateTriggerRequest, Robot, TriggerDefinition } from '../orchestrator.models';
++import { BackHomeComponent } from '../../shared/back-home/back-home.component';
++
++/**
++ * Orchestrator Zamanlamalar ekranı: job (Trigger) tanımlarını listeler, yeni job oluşturur,
++ * aktif/pasif değiştirir, manuel çalıştırır. Hangi ajanın koşacağı TargetRobotTags ile burada belirlenir.
++ */
++@Component({
++  selector: 'app-orchestrator-schedules',
++  standalone: true,
++  imports: [CommonModule, FormsModule, BackHomeComponent],
++  templateUrl: './schedules.component.html',
++})
++export class SchedulesComponent implements OnInit {
++  private readonly service = inject(OrchestratorService);
++
++  readonly triggers = signal<TriggerDefinition[]>([]);
++  readonly robots = signal<Robot[]>([]);
++  readonly loading = signal(true);
++  readonly error = signal<string | null>(null);
++  readonly showForm = signal(false);
++
++  readonly triggerTypes = ['Cron', 'ApiWebhook', 'Manual'];
++
++  form: CreateTriggerRequest = this.emptyForm();
++
++  ngOnInit(): void {
++    this.load();
++    this.service.listRobots().subscribe({ next: (r) => this.robots.set(r) });
++  }
++
++  load(): void {
++    this.loading.set(true);
++    this.error.set(null);
++    this.service.listTriggers().subscribe({
++      next: (t) => {
++        this.triggers.set(t);
++        this.loading.set(false);
++      },
++      error: () => {
++        this.error.set('Zamanlamalar yüklenemedi.');
++        this.loading.set(false);
++      },
++    });
++  }
++
++  toggleForm(): void {
++    this.showForm.update((v) => !v);
++    if (this.showForm()) this.form = this.emptyForm();
++  }
++
++  save(): void {
++    this.service.createTrigger(this.form).subscribe({
++      next: () => {
++        this.showForm.set(false);
++        this.load();
++      },
++      error: () => this.error.set('Job oluşturulamadı.'),
++    });
++  }
++
++  setActive(t: TriggerDefinition, isActive: boolean): void {
++    this.service.updateTrigger(t.id, { isActive }).subscribe({ next: () => this.load() });
++  }
++
++  runNow(t: TriggerDefinition): void {
++    this.service.fireTrigger(t.id).subscribe({ next: () => this.load() });
++  }
++
++  private emptyForm(): CreateTriggerRequest {
++    return {
++      projectId: '',
++      workflowVersionId: '',
++      type: 'Manual',
++      environmentId: '',
++      isActive: true,
++      targetRobotTags: '',
++      priority: 0,
++    };
++  }
++}

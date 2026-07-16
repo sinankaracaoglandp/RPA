@@ -1,0 +1,266 @@
+# Review package: cb202ed..0eb06c2
+
+## Commits
+0eb06c2 feat(studio): Vision image picker onizleme (Paket F)
+c7449db feat(agent): Vision kanali DI wiring + kontrat notu (Paket F)
+
+## Files changed
+ CLAUDE.md                                          | 25 ++++++++++++++++++++++
+ src/RPA.Agent/AgentServiceCollectionExtensions.cs  |  5 +++++
+ .../src/app/shared/models/activity.model.ts        |  2 +-
+ .../src/app/shared/services/spy.service.ts         |  5 ++++-
+ .../properties/generic-property.component.html     |  8 +++++++
+ .../properties/generic-property.component.scss     |  9 ++++++++
+ .../properties/generic-property.component.ts       |  8 +++++++
+ 7 files changed, 60 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 2faff8e..a0f72dc 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -302,20 +302,45 @@ Yeni aktivite ailesi **"Kod & Veri"** (`CatCode`) — kategori "Kod & Veri", cap
+   - **GÜVENLİK:** kod robot süreci yetkileriyle **sandbox'sız** çalışır — yalnız güvenilir
+     tasarımcılara açılmalı (yetki/rol kontrolü çağıran katmanda düşünülmeli).
+ - **Kayıt:** `WorkflowServiceCollectionExtensions` keyed `IActivity` (System.InvokeCode,
+   Data.ToDataTable, Data.FromDataTable); katalog `ActivityRegistry.RegisterCode`.
+ - **Paket:** Infrastructure'a `Microsoft.CodeAnalysis.CSharp.Scripting` 4.14.0 eklendi.
+ 
+ Etkilenen paket yok (yeni aile). Not: SAP/Excel satır çıktıları artık DataTable olarak da işlenebilir.
+ 
+ ---
+ 
++## Kontrat Değişikliği — 2026-07-12 (Paket F — Görüntü/OCR Fallback Otomasyonu)
++
++Erişilebilirlik ağacı olmayan uygulamalar için piksel + metin tabanlı otomasyon kanalı.
++
++- **Yeni arayüz:** `IVisionAutomationChannel` (`src/RPA.Domain/Interfaces/`) — template matching +
++  OCR. `IDesktopAutomationChannel` kardeşi. Metotlar: ClickImageAsync, WaitForImageAsync,
++  ImageExistsAsync, GetTextAsync, ClickTextAsync, TextExistsAsync. Yeni value object `VisionMatch`.
++- **Yeni aktivite ailesi:** `Vision.*` (kategori "Görüntü", capability `vision`) —
++  Click/WaitFor/Exists/GetText/ClickText/TextExists. Katalog `ActivityRegistry.RegisterVision`;
++  keyed DI `WorkflowServiceCollectionExtensions`. OCR çok dilli (`tur+eng+deu`).
++- **İmplementasyon:** `TesseractOpenCvVisionChannel` (`RPA.Agent/Vision/`) — OpenCvSharp4 (template)
++  + Tesseract (OCR) + GDI ekran yakalama + gerçek fare. Windows-only, `AddAgentCore`'da kayıtlı.
++  Non-agent süreçlerde `UnavailableVisionAutomationChannel` (TryAddSingleton).
++- **🎯 image picker:** `SpyElementMessage`'a `Kind="image"`, `ImageBase64`, `Region` + `FromImage`.
++  `ActivityParameter.PickerKind` yeni değer `"image"`. `StudioHub.StartSpy` `kind:"image"` kabul eder.
++  Yeni arayüz `IImageRegionPicker` / `GdiImageRegionPicker` (bölge seç → base64 PNG göm).
++  `SpySessionCoordinator` opsiyonel `IImageRegionPicker? imagePicker` parametresi aldı.
++- **Anchor Faz 2'ye ertelendi:** `TemplateMatcher.FindAll` çok-eşleşme döndürecek şekilde hazır.
++
++Etkilenen paketler: Studio picker metadata tüketicileri (yeni `image` kind), Agent UI Spy transport.
++SAP/Web/Desktop picker'lar etkilenmez (additive).
++Gerekçe: UIA/DOM sunmayan uygulamalar için (eski Win32, custom-render) otomasyon boşluğu.
++
++---
++
+ ## Kontrat Değişiklik Prosedürü
+ 
+ Arayüz / şema / enum değişikliği gerekirse:
+ 
+ 1. **Gerekçe:** Bu CLAUDE.md dosyasında `## Kontrat Değişikliği — [tarih]` başlığı ekle. Etkilenen paketleri listele.
+    ```
+    ## Kontrat Değişikliği — 2026-07-10
+ 
+    IActivity.ExecuteAsync: Timeout parametresi eklendi (CancellationToken zaten var ama explicit param).
+    Etkilenen paketler: WP-2.1 (katalog), WP-2.2 (BaseRunner), tüm aktivite implementasyonları (2.6–2.9).
+diff --git a/src/RPA.Agent/AgentServiceCollectionExtensions.cs b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+index be3781f..49d2d42 100644
+--- a/src/RPA.Agent/AgentServiceCollectionExtensions.cs
++++ b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+@@ -100,27 +100,32 @@ public static class AgentServiceCollectionExtensions
+             services.AddSingleton<ISpyElementTransport, SignalRSpyElementTransport>();
+             services.AddSingleton<SapGuiElementSender>();
+             services.AddSingleton<SapGuiSpyService>();
+             services.AddOptions<SpySessionOptions>()
+                 .Bind(configuration.GetSection(SpySessionOptions.SectionName));
+             services.AddSingleton<ISapGuiSinglePicker, SapGuiSinglePicker>();
+             // Paket E: DesktopSpy tek-seçim picker'ı (FlaUI/UIA). Koordinatör kind:"desktop" için kullanır.
+             services.AddSingleton<IDesktopSinglePicker, Desktop.FlaUiDesktopSinglePicker>();
+             // Paket D: WebSpy tek-seçim picker'ı (Playwright/DOM). Koordinatör kind:"web" için kullanır.
+             services.AddSingleton<IWebSinglePicker, PlaywrightWebSinglePicker>();
++            // Paket F: image bölge picker'ı. Koordinatör kind:"image" için kullanır.
++            services.AddSingleton<IImageRegionPicker, GdiImageRegionPicker>();
+             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
+             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
+ 
+             services.AddHostedService<UiSpyHostedService>();
+             services.AddHostedService<SpyHubCommandHostedService>();
+         }
+ 
+         // Paket E: Windows Masaüstü otomasyon kanalı (FlaUI/UIA3). Desktop.* aktiviteleri
+         // bu kanalı çalıştırma anında kullanır. Yalnız Windows'ta kayıtlıdır.
+         if (OperatingSystem.IsWindows())
+         {
+             services.AddSingleton<IDesktopAutomationChannel, Desktop.FlaUiDesktopAutomationChannel>();
++            // Paket F: Görüntü/OCR fallback otomasyon kanalı (OpenCvSharp4 + Tesseract). Infrastructure'daki
++            // UnavailableVisionAutomationChannel (TryAddSingleton) kaydını Windows'ta gerçek impl ile değiştirir.
++            services.AddSingleton<RPA.Domain.Interfaces.IVisionAutomationChannel, Vision.TesseractOpenCvVisionChannel>();
+         }
+ 
+         return services;
+     }
+ }
+diff --git a/src/RPA.Studio/src/app/shared/models/activity.model.ts b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+index 8c45489..a6d471b 100644
+--- a/src/RPA.Studio/src/app/shared/models/activity.model.ts
++++ b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+@@ -1,20 +1,20 @@
+ /**
+  * Activity metadata as returned by the catalog endpoint (GET /api/activities).
+  * Mirrors RPA.Domain ActivityMetadata (Spec Bölüm 2 — activity catalog).
+  */
+ export interface ActivityPort {
+   name: string;
+   type: string;
+   required?: boolean;
+   description?: string;
+-  pickerKind?: 'sap' | 'web' | 'desktop' | null;
++  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | null;
+   options?: string[];
+ }
+ 
+ export interface ActivityMetadata {
+   activityId: string;
+   displayName: string;
+   category?: string;
+   description?: string;
+   icon?: string;
+   inputs?: ActivityPort[];
+diff --git a/src/RPA.Studio/src/app/shared/services/spy.service.ts b/src/RPA.Studio/src/app/shared/services/spy.service.ts
+index 8c84d2a..5babe21 100644
+--- a/src/RPA.Studio/src/app/shared/services/spy.service.ts
++++ b/src/RPA.Studio/src/app/shared/services/spy.service.ts
+@@ -1,26 +1,29 @@
+ import { Injectable, InjectionToken, inject } from '@angular/core';
+ import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+ import { AuthService } from '../../auth/auth.service';
+ 
+-export type SpyKind = 'sap' | 'web' | 'desktop';
++export type SpyKind = 'sap' | 'web' | 'desktop' | 'image';
+ 
+ export interface SpyElement {
+   sessionId: string;
+   kind: SpyKind;
+   elementId: string;
+   type?: string;
+   text?: string;
+   enabled?: boolean;
+   changeable?: boolean;
+   x?: number;
+   y?: number;
++  // Paket F: image picker sonucu (kind === 'image') — base64 PNG + secilen bolge.
++  imageBase64?: string;
++  region?: { x: number; y: number; width: number; height: number };
+ }
+ 
+ export interface SpyHubConnection {
+   start(): Promise<void>;
+   stop(): Promise<void>;
+   on(methodName: string, handler: (...args: unknown[]) => void): void;
+   invoke(methodName: string, ...args: unknown[]): Promise<unknown>;
+ }
+ 
+ export type SpyHubConnectionFactory = (
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
+index a0f41ca..8ea7d8a 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
+@@ -145,20 +145,28 @@
+                     []
+                   </button>
+                 }
+                 @if (port.pickerKind && inputType(port) !== 'password') {
+                   <app-selector-picker-button
+                     [pickerKind]="port.pickerKind"
+                     (picked)="onPicked(port, $event)"
+                   ></app-selector-picker-button>
+                 }
+               </div>
++              @if (port.pickerKind === 'image' && imagePreviews[port.name]) {
++                <img
++                  class="generic-property__image-preview"
++                  [attr.data-testid]="'prop-' + port.name + '-image-preview'"
++                  [src]="'data:image/png;base64,' + imagePreviews[port.name]"
++                  alt="Secilen bolge onizlemesi"
++                />
++              }
+               @if (showModeSelector(port) && fieldMode(port) === 'expression' && expressionSuggestions(port).length > 0) {
+                 <div class="generic-property__suggest" [attr.data-testid]="'prop-' + port.name + '-suggest'">
+                   @for (variable of expressionSuggestions(port); track variable.name) {
+                     <button
+                       type="button"
+                       class="generic-property__suggest-item"
+                       (click)="applySuggestion(port, variable.name)"
+                     >{{ variable.name }}</button>
+                   }
+                 </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss
+index 6e16bd2..4cadd48 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss
+@@ -10,20 +10,29 @@
+   }
+ 
+   &__title {
+     margin: 0;
+     color: #162033;
+     font-size: 0.95rem;
+     font-weight: 750;
+     letter-spacing: 0;
+   }
+ 
++  &__image-preview {
++    max-width: 160px;
++    max-height: 90px;
++    margin-top: 0.35rem;
++    border: 1px solid #d7dee8;
++    border-radius: 4px;
++    object-fit: contain;
++  }
++
+   &__desc {
+     margin: 0.25rem 0 0;
+     font-size: 0.78rem;
+     color: #667085;
+     line-height: 1.45;
+   }
+ 
+   &__status {
+     font-size: 0.82rem;
+     color: #667085;
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+index 4665f19..61aa83a 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+@@ -252,21 +252,29 @@ export class GenericPropertyComponent {
+       const num = raw === '' || raw === null ? null : Number(raw);
+       next[port.name] = num;
+     } else {
+       next[port.name] = raw;
+     }
+     this.properties = next;
+     this.clearVariableError();
+     this.propertiesChange.emit(next);
+   }
+ 
++  // Paket F: image picker sonuclarinin onizlemesi (port.name -> base64 PNG).
++  readonly imagePreviews: Record<string, string> = {};
++
+   onPicked(port: ActivityPort, element: SpyElement): void {
++    if (element.kind === 'image') {
++      this.onValueChange(port, element.imageBase64 ?? '');
++      this.imagePreviews[port.name] = element.imageBase64 ?? '';
++      return;
++    }
+     this.onValueChange(port, element.elementId);
+   }
+ 
+   canOpenEditor(port: ActivityPort): boolean {
+     return (
+       this.inputType(port) !== 'checkbox' &&
+       (port.options?.length ?? 0) === 0 &&
+       !(this.isVariableField(port) && this.variables.length > 0)
+     );
+   }

@@ -1,0 +1,1876 @@
+# Review package: 9ac4466..0eb06c2
+
+## Commits
+0eb06c2 feat(studio): Vision image picker onizleme (Paket F)
+c7449db feat(agent): Vision kanali DI wiring + kontrat notu (Paket F)
+cb202ed feat(agent): image region picker + kind:image (Paket F)
+70f539a feat(agent): TesseractOpenCvVisionChannel (Paket F)
+785e37e fix(vision): restore CCoeffNormed template matching, fix degenerate test fixtures
+b41b7ad feat(agent): OpenCvSharp template matcher (Paket F)
+3581c20 feat(infrastructure): Vision.* katalog + DI kaydı (Paket F)
+beefa18 feat(infrastructure): Vision.* aktiviteleri (Paket F)
+c182462 feat(domain): IVisionAutomationChannel + VisionMatch (Paket F)
+
+## Files changed
+ CLAUDE.md                                          |  25 ++
+ src/RPA.Agent/AgentServiceCollectionExtensions.cs  |   5 +
+ src/RPA.Agent/RPA.Agent.csproj                     |   8 +
+ src/RPA.Agent/UISpy/GdiImageRegionPicker.cs        | 163 ++++++++++
+ src/RPA.Agent/UISpy/SpySessionCoordinator.cs       |  27 +-
+ src/RPA.Agent/Vision/OcrTextMatch.cs               |  30 ++
+ src/RPA.Agent/Vision/ScreenCapture.cs              |  34 +++
+ src/RPA.Agent/Vision/TemplateMatcher.cs            |  48 +++
+ .../Vision/TesseractOpenCvVisionChannel.cs         | 169 +++++++++++
+ .../Interfaces/IVisionAutomationChannel.cs         |  32 ++
+ src/RPA.Domain/ValueObjects/VisionMatch.cs         |  15 +
+ .../Vision/UnavailableVisionAutomationChannel.cs   |  23 ++
+ .../Activities/Vision/VisionActivities.cs          | 332 +++++++++++++++++++++
+ .../UISpy/SapGuiElementSender.cs                   |  18 ++
+ .../Workflow/ActivityRegistry.cs                   |  53 ++++
+ .../WorkflowServiceCollectionExtensions.cs         |  10 +
+ .../src/app/shared/models/activity.model.ts        |   2 +-
+ .../src/app/shared/services/spy.service.ts         |   5 +-
+ .../properties/generic-property.component.html     |   8 +
+ .../properties/generic-property.component.scss     |   9 +
+ .../properties/generic-property.component.ts       |   8 +
+ .../UISpy/SpySessionCoordinatorImageTests.cs       |  33 ++
+ tests/RPA.Agent.Tests/Vision/OcrTextMatchTests.cs  |  19 ++
+ .../RPA.Agent.Tests/Vision/TemplateMatcherTests.cs |  52 ++++
+ .../ValueObjects/VisionMatchTests.cs               |  17 ++
+ .../Activities/VisionActivitiesTests.cs            |  83 ++++++
+ .../UISpy/SpyElementMessageTests.cs                |  19 ++
+ .../Workflow/VisionCatalogTests.cs                 |  30 ++
+ 28 files changed, 1273 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 2faff8e..a0f72dc 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -302,20 +302,45 @@ Yeni aktivite ailesi **"Kod & Veri"** (`CatCode`) — kategori "Kod & Veri", cap
+   - **GÜVENLİK:** kod robot süreci yetkileriyle **sandbox'sız** çalışır — yalnız güvenilir
+     tasarımcılara açılmalı (yetki/rol kontrolü çağıran katmanda düşünülmeli).
+ - **Kayıt:** `WorkflowServiceCollectionExtensions` keyed `IActivity` (System.InvokeCode,
+   Data.ToDataTable, Data.FromDataTable); katalog `ActivityRegistry.RegisterCode`.
+ - **Paket:** Infrastructure'a `Microsoft.CodeAnalysis.CSharp.Scripting` 4.14.0 eklendi.
+ 
+ Etkilenen paket yok (yeni aile). Not: SAP/Excel satır çıktıları artık DataTable olarak da işlenebilir.
+ 
+ ---
+ 
++## Kontrat Değişikliği — 2026-07-12 (Paket F — Görüntü/OCR Fallback Otomasyonu)
++
++Erişilebilirlik ağacı olmayan uygulamalar için piksel + metin tabanlı otomasyon kanalı.
++
++- **Yeni arayüz:** `IVisionAutomationChannel` (`src/RPA.Domain/Interfaces/`) — template matching +
++  OCR. `IDesktopAutomationChannel` kardeşi. Metotlar: ClickImageAsync, WaitForImageAsync,
++  ImageExistsAsync, GetTextAsync, ClickTextAsync, TextExistsAsync. Yeni value object `VisionMatch`.
++- **Yeni aktivite ailesi:** `Vision.*` (kategori "Görüntü", capability `vision`) —
++  Click/WaitFor/Exists/GetText/ClickText/TextExists. Katalog `ActivityRegistry.RegisterVision`;
++  keyed DI `WorkflowServiceCollectionExtensions`. OCR çok dilli (`tur+eng+deu`).
++- **İmplementasyon:** `TesseractOpenCvVisionChannel` (`RPA.Agent/Vision/`) — OpenCvSharp4 (template)
++  + Tesseract (OCR) + GDI ekran yakalama + gerçek fare. Windows-only, `AddAgentCore`'da kayıtlı.
++  Non-agent süreçlerde `UnavailableVisionAutomationChannel` (TryAddSingleton).
++- **🎯 image picker:** `SpyElementMessage`'a `Kind="image"`, `ImageBase64`, `Region` + `FromImage`.
++  `ActivityParameter.PickerKind` yeni değer `"image"`. `StudioHub.StartSpy` `kind:"image"` kabul eder.
++  Yeni arayüz `IImageRegionPicker` / `GdiImageRegionPicker` (bölge seç → base64 PNG göm).
++  `SpySessionCoordinator` opsiyonel `IImageRegionPicker? imagePicker` parametresi aldı.
++- **Anchor Faz 2'ye ertelendi:** `TemplateMatcher.FindAll` çok-eşleşme döndürecek şekilde hazır.
++
++Etkilenen paketler: Studio picker metadata tüketicileri (yeni `image` kind), Agent UI Spy transport.
++SAP/Web/Desktop picker'lar etkilenmez (additive).
++Gerekçe: UIA/DOM sunmayan uygulamalar için (eski Win32, custom-render) otomasyon boşluğu.
++
++---
++
+ ## Kontrat Değişiklik Prosedürü
+ 
+ Arayüz / şema / enum değişikliği gerekirse:
+ 
+ 1. **Gerekçe:** Bu CLAUDE.md dosyasında `## Kontrat Değişikliği — [tarih]` başlığı ekle. Etkilenen paketleri listele.
+    ```
+    ## Kontrat Değişikliği — 2026-07-10
+ 
+    IActivity.ExecuteAsync: Timeout parametresi eklendi (CancellationToken zaten var ama explicit param).
+    Etkilenen paketler: WP-2.1 (katalog), WP-2.2 (BaseRunner), tüm aktivite implementasyonları (2.6–2.9).
+diff --git a/src/RPA.Agent/AgentServiceCollectionExtensions.cs b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+index be3781f..49d2d42 100644
+--- a/src/RPA.Agent/AgentServiceCollectionExtensions.cs
++++ b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+@@ -100,27 +100,32 @@ public static class AgentServiceCollectionExtensions
+             services.AddSingleton<ISpyElementTransport, SignalRSpyElementTransport>();
+             services.AddSingleton<SapGuiElementSender>();
+             services.AddSingleton<SapGuiSpyService>();
+             services.AddOptions<SpySessionOptions>()
+                 .Bind(configuration.GetSection(SpySessionOptions.SectionName));
+             services.AddSingleton<ISapGuiSinglePicker, SapGuiSinglePicker>();
+             // Paket E: DesktopSpy tek-seçim picker'ı (FlaUI/UIA). Koordinatör kind:"desktop" için kullanır.
+             services.AddSingleton<IDesktopSinglePicker, Desktop.FlaUiDesktopSinglePicker>();
+             // Paket D: WebSpy tek-seçim picker'ı (Playwright/DOM). Koordinatör kind:"web" için kullanır.
+             services.AddSingleton<IWebSinglePicker, PlaywrightWebSinglePicker>();
++            // Paket F: image bölge picker'ı. Koordinatör kind:"image" için kullanır.
++            services.AddSingleton<IImageRegionPicker, GdiImageRegionPicker>();
+             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
+             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
+ 
+             services.AddHostedService<UiSpyHostedService>();
+             services.AddHostedService<SpyHubCommandHostedService>();
+         }
+ 
+         // Paket E: Windows Masaüstü otomasyon kanalı (FlaUI/UIA3). Desktop.* aktiviteleri
+         // bu kanalı çalıştırma anında kullanır. Yalnız Windows'ta kayıtlıdır.
+         if (OperatingSystem.IsWindows())
+         {
+             services.AddSingleton<IDesktopAutomationChannel, Desktop.FlaUiDesktopAutomationChannel>();
++            // Paket F: Görüntü/OCR fallback otomasyon kanalı (OpenCvSharp4 + Tesseract). Infrastructure'daki
++            // UnavailableVisionAutomationChannel (TryAddSingleton) kaydını Windows'ta gerçek impl ile değiştirir.
++            services.AddSingleton<RPA.Domain.Interfaces.IVisionAutomationChannel, Vision.TesseractOpenCvVisionChannel>();
+         }
+ 
+         return services;
+     }
+ }
+diff --git a/src/RPA.Agent/RPA.Agent.csproj b/src/RPA.Agent/RPA.Agent.csproj
+index b21435e..b1a6ca9 100644
+--- a/src/RPA.Agent/RPA.Agent.csproj
++++ b/src/RPA.Agent/RPA.Agent.csproj
+@@ -7,20 +7,24 @@
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <RootNamespace>RPA.Agent</RootNamespace>
+     <AssemblyName>RPA.Agent</AssemblyName>
+     <!-- Yerel geliştirici sırları için user-secrets (Development). Üretimde ortam değişkeni kullanın. -->
+     <UserSecretsId>rpa-agent-dev-secrets</UserSecretsId>
+   </PropertyGroup>
+ 
+   <ItemGroup>
+     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
++    <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
++    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
++    <PackageReference Include="OpenCvSharp4.Extensions" Version="4.10.0.20241108" />
++    <PackageReference Include="Tesseract" Version="5.2.0" />
+     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+     <PackageReference Include="Serilog" Version="4.3.1" />
+     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+     <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
+     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+@@ -32,11 +36,15 @@
+     <ProjectReference Include="..\RPA.Application\RPA.Application.csproj" />
+     <ProjectReference Include="..\RPA.Infrastructure\RPA.Infrastructure.csproj" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+     <None Update="install-service.ps1" CopyToOutputDirectory="PreserveNewest" />
+     <None Update="uninstall-service.ps1" CopyToOutputDirectory="PreserveNewest" />
+   </ItemGroup>
+ 
++  <ItemGroup>
++    <None Include="tessdata\**\*.traineddata" CopyToOutputDirectory="PreserveNewest" />
++  </ItemGroup>
++
+ </Project>
+diff --git a/src/RPA.Agent/UISpy/GdiImageRegionPicker.cs b/src/RPA.Agent/UISpy/GdiImageRegionPicker.cs
+new file mode 100644
+index 0000000..18d307f
+--- /dev/null
++++ b/src/RPA.Agent/UISpy/GdiImageRegionPicker.cs
+@@ -0,0 +1,163 @@
++namespace RPA.Agent.UISpy;
++
++using System.Drawing;
++using System.Drawing.Drawing2D;
++using System.Runtime.Versioning;
++using System.Windows.Forms;
++using RPA.Agent.Vision;
++
++/// <summary>
++/// GDI overlay ile ekranda dikdörtgen bölge seçtiren image picker. Seçilen bölgenin PNG'sini
++/// base64 olarak ve {x,y,width,height} JSON'unu döndürür. Esc → iptal (null).
++/// </summary>
++[SupportedOSPlatform("windows")]
++public sealed class GdiImageRegionPicker : IImageRegionPicker
++{
++    public Task<ImagePick?> DetectOnceAsync(CancellationToken cancellationToken = default)
++    {
++        cancellationToken.ThrowIfCancellationRequested();
++        var rect = RegionOverlayForm.SelectRegion(cancellationToken); // null → iptal
++        if (rect is null)
++        {
++            return Task.FromResult<ImagePick?>(null);
++        }
++        var (x, y, w, h) = rect.Value;
++        using var mat = ScreenCapture.Capture(x, y, w, h);
++        var png = mat.ImEncode(".png");
++        var base64 = Convert.ToBase64String(png);
++        var regionJson = $"{{\"x\":{x},\"y\":{y},\"width\":{w},\"height\":{h}}}";
++        return Task.FromResult<ImagePick?>(new ImagePick(base64, regionJson));
++    }
++}
++
++/// <summary>
++/// Tam ekranı kaplayan, yarı saydam WinForms overlay — fareyle dikdörtgen çizip bırakınca
++/// seçimi onaylar; Esc iptal eder. STA thread gerektirir (FlaUiDesktopSinglePicker deseniyle
++/// aynı biçimde ayrı bir STA thread'de gösterilir).
++/// </summary>
++[SupportedOSPlatform("windows")]
++internal static class RegionOverlayForm
++{
++    public static (int X, int Y, int Width, int Height)? SelectRegion(CancellationToken cancellationToken)
++    {
++        (int X, int Y, int Width, int Height)? result = null;
++
++        var thread = new Thread(() =>
++        {
++            using var form = new OverlayForm();
++            using var reg = cancellationToken.Register(() =>
++            {
++                try
++                {
++                    if (form.IsHandleCreated)
++                    {
++                        form.BeginInvoke(new Action(form.Close));
++                    }
++                }
++                catch (ObjectDisposedException) { }
++                catch (InvalidOperationException) { }
++            });
++
++            Application.Run(form);
++            result = form.SelectedRegion;
++        });
++        thread.SetApartmentState(ApartmentState.STA);
++        thread.Start();
++        thread.Join();
++
++        return result;
++    }
++
++    private sealed class OverlayForm : Form
++    {
++        private Point _start;
++        private Point _current;
++        private bool _dragging;
++
++        public (int X, int Y, int Width, int Height)? SelectedRegion { get; private set; }
++
++        public OverlayForm()
++        {
++            FormBorderStyle = FormBorderStyle.None;
++            WindowState = FormWindowState.Maximized;
++            TopMost = true;
++            BackColor = Color.Black;
++            Opacity = 0.3;
++            DoubleBuffered = true;
++            Cursor = Cursors.Cross;
++            ShowInTaskbar = false;
++            KeyPreview = true;
++
++            MouseDown += OnMouseDown;
++            MouseMove += OnMouseMove;
++            MouseUp += OnMouseUp;
++            KeyDown += OnKeyDown;
++            Paint += OnPaint;
++        }
++
++        private void OnMouseDown(object? sender, MouseEventArgs e)
++        {
++            _start = e.Location;
++            _current = e.Location;
++            _dragging = true;
++            Invalidate();
++        }
++
++        private void OnMouseMove(object? sender, MouseEventArgs e)
++        {
++            if (!_dragging)
++            {
++                return;
++            }
++            _current = e.Location;
++            Invalidate();
++        }
++
++        private void OnMouseUp(object? sender, MouseEventArgs e)
++        {
++            if (!_dragging)
++            {
++                return;
++            }
++            _dragging = false;
++            _current = e.Location;
++
++            var rect = NormalizedRect(_start, _current);
++            if (rect.Width > 2 && rect.Height > 2)
++            {
++                SelectedRegion = (Left + rect.X, Top + rect.Y, rect.Width, rect.Height);
++            }
++            Close();
++        }
++
++        private void OnKeyDown(object? sender, KeyEventArgs e)
++        {
++            if (e.KeyCode == Keys.Escape)
++            {
++                SelectedRegion = null;
++                Close();
++            }
++        }
++
++        private void OnPaint(object? sender, PaintEventArgs e)
++        {
++            if (!_dragging)
++            {
++                return;
++            }
++            var rect = NormalizedRect(_start, _current);
++            using var pen = new Pen(Color.OrangeRed, 2);
++            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
++            e.Graphics.DrawRectangle(pen, rect);
++        }
++
++        private static Rectangle NormalizedRect(Point a, Point b)
++        {
++            var x = Math.Min(a.X, b.X);
++            var y = Math.Min(a.Y, b.Y);
++            var w = Math.Abs(a.X - b.X);
++            var h = Math.Abs(a.Y - b.Y);
++            return new Rectangle(x, y, w, h);
++        }
++    }
++}
+diff --git a/src/RPA.Agent/UISpy/SpySessionCoordinator.cs b/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
+index 72938a6..31222a2 100644
+--- a/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
++++ b/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
+@@ -16,85 +16,103 @@ public interface IDesktopSinglePicker
+ {
+     Task<DesktopUiElement?> DetectOnceAsync(CancellationToken cancellationToken = default);
+ }
+ 
+ /// <summary>Web (Playwright/DOM) tek-seçim picker'ı — tarayıcıda CTRL+Tık ile elementi seç.</summary>
+ public interface IWebSinglePicker
+ {
+     Task<WebUiElement?> DetectOnceAsync(CancellationToken cancellationToken = default);
+ }
+ 
++/// <summary>🎯 image bölge picker'ı — ekranda dikdörtgen çiz, PNG/koordinat döndür.</summary>
++public interface IImageRegionPicker
++{
++    Task<ImagePick?> DetectOnceAsync(CancellationToken cancellationToken = default);
++}
++
++/// <summary>Image picker sonucu: base64 PNG (image alanı için) ve/veya {x,y,width,height} JSON (region alanı için).</summary>
++public sealed record ImagePick(string? ImageBase64, string? RegionJson);
++
+ public sealed class SpySessionOptions
+ {
+     public const string SectionName = "SpySession";
+     public int TimeoutSeconds { get; set; } = 60;
+ }
+ 
+ public interface ISpySessionCoordinator
+ {
+     Task StartAsync(Guid sessionId, string kind, CancellationToken cancellationToken = default);
+     Task StopAsync(Guid sessionId, CancellationToken cancellationToken = default);
+ }
+ 
+ public sealed class SpySessionCoordinator : ISpySessionCoordinator
+ {
+     private readonly ISapGuiSinglePicker _sapPicker;
+     private readonly ISpyElementTransport _transport;
+     private readonly SpySessionOptions _options;
+     private readonly ILogger<SpySessionCoordinator> _logger;
+     private readonly IDesktopSinglePicker? _desktopPicker;
+     private readonly IWebSinglePicker? _webPicker;
++    private readonly IImageRegionPicker? _imagePicker;
+     private readonly object _gate = new();
+     private Guid _activeSessionId;
+     private CancellationTokenSource? _activeCts;
+ 
+     public SpySessionCoordinator(
+         ISapGuiSinglePicker sapPicker,
+         ISpyElementTransport transport,
+         IOptions<SpySessionOptions> options,
+         ILogger<SpySessionCoordinator> logger,
+         IDesktopSinglePicker? desktopPicker = null,
+-        IWebSinglePicker? webPicker = null)
++        IWebSinglePicker? webPicker = null,
++        IImageRegionPicker? imagePicker = null)
+     {
+         _sapPicker = sapPicker ?? throw new ArgumentNullException(nameof(sapPicker));
+         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+         _desktopPicker = desktopPicker;
+         _webPicker = webPicker;
++        _imagePicker = imagePicker;
+     }
+ 
+     public async Task StartAsync(Guid sessionId, string kind, CancellationToken cancellationToken = default)
+     {
+         if (sessionId == Guid.Empty)
+         {
+             throw new InvalidOperationException("SessionId zorunludur.");
+         }
+ 
+         var isSap = string.Equals(kind, "sap", StringComparison.OrdinalIgnoreCase);
+         var isDesktop = string.Equals(kind, "desktop", StringComparison.OrdinalIgnoreCase);
+         var isWeb = string.Equals(kind, "web", StringComparison.OrdinalIgnoreCase);
+-        if (!isSap && !isDesktop && !isWeb)
++        var isImage = string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase);
++        if (!isSap && !isDesktop && !isWeb && !isImage)
+         {
+             throw new InvalidOperationException($"Desteklenmeyen spy tipi: {kind}");
+         }
+ 
+         if (isDesktop && _desktopPicker is null)
+         {
+             throw new InvalidOperationException("Masaüstü picker bu ortamda kayıtlı değil (yalnız Windows).");
+         }
+ 
+         if (isWeb && _webPicker is null)
+         {
+             throw new InvalidOperationException("Web picker bu ortamda kayıtlı değil.");
+         }
+ 
++        if (isImage && _imagePicker is null)
++        {
++            throw new InvalidOperationException("Image picker bu ortamda kayıtlı değil (yalnız Windows).");
++        }
++
+         CancellationTokenSource linkedCts;
+         lock (_gate)
+         {
+             if (_activeCts is not null)
+             {
+                 throw new InvalidOperationException("Aktif UI Spy oturumu zaten var.");
+             }
+ 
+             _activeSessionId = sessionId;
+             _activeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+@@ -110,20 +128,25 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
+             if (isDesktop)
+             {
+                 var element = await _desktopPicker!.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.FromDesktop(element, sessionId);
+             }
+             else if (isWeb)
+             {
+                 var element = await _webPicker!.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.FromWeb(element, sessionId);
+             }
++            else if (isImage)
++            {
++                var pick = await _imagePicker!.DetectOnceAsync(linkedCts.Token);
++                message = pick is null ? null : SpyElementMessage.FromImage(pick.ImageBase64, pick.RegionJson, sessionId);
++            }
+             else
+             {
+                 var element = await _sapPicker.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.From(element, sessionId);
+             }
+ 
+             if (message is null)
+             {
+                 _logger.LogDebug("UI Spy: session {SessionId} ({Kind}) secim yapilmadan iptal edildi.", sessionId, kind);
+                 await NotifyCancelledSafeAsync(sessionId);
+diff --git a/src/RPA.Agent/Vision/OcrTextMatch.cs b/src/RPA.Agent/Vision/OcrTextMatch.cs
+new file mode 100644
+index 0000000..dfdba63
+--- /dev/null
++++ b/src/RPA.Agent/Vision/OcrTextMatch.cs
+@@ -0,0 +1,30 @@
++namespace RPA.Agent.Vision;
++
++using System.Globalization;
++
++/// <summary>OCR kelime kutuları ile aranan metni normalize ederek (boşluk/case, TR-duyarlı) eşleştirir.</summary>
++public static class OcrTextMatch
++{
++    public static bool Matches(string? ocrWord, string query, string matchMode)
++    {
++        var a = Normalize(ocrWord);
++        var b = Normalize(query);
++        if (b.Length == 0)
++        {
++            return false;
++        }
++        return string.Equals(matchMode, "exact", StringComparison.Ordinal)
++            ? string.Equals(a, b, StringComparison.Ordinal)
++            : a.Contains(b, StringComparison.Ordinal);
++    }
++
++    private static string Normalize(string? s)
++    {
++        if (string.IsNullOrWhiteSpace(s))
++        {
++            return string.Empty;
++        }
++        var collapsed = string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
++        return collapsed.ToLower(new CultureInfo("tr-TR")).Trim();
++    }
++}
+diff --git a/src/RPA.Agent/Vision/ScreenCapture.cs b/src/RPA.Agent/Vision/ScreenCapture.cs
+new file mode 100644
+index 0000000..4b25deb
+--- /dev/null
++++ b/src/RPA.Agent/Vision/ScreenCapture.cs
+@@ -0,0 +1,34 @@
++namespace RPA.Agent.Vision;
++
++using System.Drawing;
++using System.Drawing.Imaging;
++using System.Runtime.Versioning;
++using OpenCvSharp;
++using OpenCvSharp.Extensions;
++
++/// <summary>GDI ile tam ekran veya bölge yakalar ve OpenCv Mat'e dönüştürür (BGR).</summary>
++[SupportedOSPlatform("windows")]
++public static class ScreenCapture
++{
++    public static Mat Capture(int? x, int? y, int? width, int? height)
++    {
++        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
++        var rx = x ?? bounds.X;
++        var ry = y ?? bounds.Y;
++        var rw = width ?? bounds.Width;
++        var rh = height ?? bounds.Height;
++
++        using var bmp = new Bitmap(rw, rh, PixelFormat.Format24bppRgb);
++        using (var g = Graphics.FromImage(bmp))
++        {
++            g.CopyFromScreen(rx, ry, 0, 0, new System.Drawing.Size(rw, rh));
++        }
++        return BitmapConverter.ToMat(bmp);
++    }
++
++    public static Mat DecodeBase64Png(string base64)
++    {
++        var bytes = Convert.FromBase64String(base64);
++        return Cv2.ImDecode(bytes, ImreadModes.Color);
++    }
++}
+diff --git a/src/RPA.Agent/Vision/TemplateMatcher.cs b/src/RPA.Agent/Vision/TemplateMatcher.cs
+new file mode 100644
+index 0000000..dcdf6bf
+--- /dev/null
++++ b/src/RPA.Agent/Vision/TemplateMatcher.cs
+@@ -0,0 +1,48 @@
++namespace RPA.Agent.Vision;
++
++using System.Runtime.Versioning;
++using OpenCvSharp;
++using RPA.Domain.ValueObjects;
++
++/// <summary>
++/// OpenCvSharp tabanlı template matching. Anchor (Faz 2) için FindAll birden çok eşleşme
++/// döndürür; şu an aktiviteler yalnız FindBest'i kullanır. Çok-ölçekli tarama DPI toleransı
++/// sağlar.
++/// </summary>
++[SupportedOSPlatform("windows")]
++public static class TemplateMatcher
++{
++    private static readonly double[] Scales = { 1.0, 0.9, 1.1, 0.8, 1.25 };
++
++    public static VisionMatch? FindBest(Mat haystack, Mat needle, double confidence)
++    {
++        VisionMatch? best = null;
++        foreach (var scale in Scales)
++        {
++            using var scaled = scale == 1.0
++                ? needle.Clone()
++                : needle.Resize(default, scale, scale, InterpolationFlags.Area);
++            if (scaled.Width > haystack.Width || scaled.Height > haystack.Height)
++            {
++                continue;
++            }
++
++            using var result = new Mat();
++            Cv2.MatchTemplate(haystack, scaled, result, TemplateMatchModes.CCoeffNormed);
++            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
++
++            if (maxVal >= confidence && (best is null || maxVal > best.Score))
++            {
++                best = new VisionMatch(maxLoc.X, maxLoc.Y, scaled.Width, scaled.Height, maxVal);
++            }
++        }
++        return best;
++    }
++
++    public static IReadOnlyList<VisionMatch> FindAll(Mat haystack, Mat needle, double confidence)
++    {
++        // Faz 1: tek en iyi eşleşmeyi liste olarak döndür (anchor Faz 2'de genişletilecek).
++        var best = FindBest(haystack, needle, confidence);
++        return best is null ? Array.Empty<VisionMatch>() : new[] { best };
++    }
++}
+diff --git a/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs b/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
+new file mode 100644
+index 0000000..d6f865d
+--- /dev/null
++++ b/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
+@@ -0,0 +1,169 @@
++namespace RPA.Agent.Vision;
++
++using System.Diagnostics;
++using System.Runtime.InteropServices;
++using System.Runtime.Versioning;
++using Microsoft.Extensions.Logging;
++using OpenCvSharp;
++using RPA.Domain.Interfaces;
++using RPA.Domain.ValueObjects;
++using Tesseract;
++using SystemException = RPA.Domain.Exceptions.SystemException;
++
++/// <summary>
++/// IVisionAutomationChannel'ın OpenCvSharp (template) + Tesseract (OCR) implementasyonu.
++/// Etkileşimli masaüstü oturumu gerektirir. Bulunamadı/timeout → SystemException.
++/// </summary>
++[SupportedOSPlatform("windows")]
++public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
++{
++    private readonly ILogger<TesseractOpenCvVisionChannel> _logger;
++    private readonly string _tessdataPath;
++
++    public TesseractOpenCvVisionChannel(ILogger<TesseractOpenCvVisionChannel> logger)
++    {
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++        _tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
++    }
++
++    public async Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs)
++    {
++        var match = await PollForImageAsync(imageBase64, confidence, timeoutMs);
++        if (match is null)
++        {
++            throw new SystemException("Görüntü ekranda bulunamadı (timeout).");
++        }
++        DoClick(match.CenterX, match.CenterY, clickType);
++    }
++
++    public async Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs)
++    {
++        var match = await PollForImageAsync(imageBase64, confidence, Math.Max(timeoutMs, 1));
++        if (match is null)
++        {
++            throw new SystemException("Görüntü beklenirken zaman aşımı.");
++        }
++    }
++
++    public async Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs)
++        => await PollForImageAsync(imageBase64, confidence, timeoutMs) is not null;
++
++    public Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language)
++    {
++        using var region = ScreenCapture.Capture(x, y, width, height);
++        var (text, _) = RunOcr(region, language);
++        return Task.FromResult(text);
++    }
++
++    public async Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs)
++    {
++        var box = await PollForTextAsync(text, language, matchMode, timeoutMs);
++        if (box is null)
++        {
++            throw new SystemException($"Metin ekranda bulunamadı: '{text}' (timeout).");
++        }
++        DoClick(box.CenterX, box.CenterY, clickType);
++    }
++
++    public async Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs)
++        => await PollForTextAsync(text, language, matchMode, timeoutMs) is not null;
++
++    private async Task<VisionMatch?> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
++    {
++        using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
++        var sw = Stopwatch.StartNew();
++        do
++        {
++            using var screen = ScreenCapture.Capture(null, null, null, null);
++            var match = TemplateMatcher.FindBest(screen, needle, confidence);
++            if (match is not null)
++            {
++                return match;
++            }
++            if (sw.ElapsedMilliseconds >= timeoutMs)
++            {
++                break;
++            }
++            await Task.Delay(250);
++        }
++        while (sw.ElapsedMilliseconds < timeoutMs);
++        return null;
++    }
++
++    private async Task<VisionMatch?> PollForTextAsync(string text, string language, string matchMode, int timeoutMs)
++    {
++        var sw = Stopwatch.StartNew();
++        do
++        {
++            using var screen = ScreenCapture.Capture(null, null, null, null);
++            var (_, words) = RunOcr(screen, language);
++            var hit = words.FirstOrDefault(w => OcrTextMatch.Matches(w.Text, text, matchMode));
++            if (hit is not null)
++            {
++                return hit.Box;
++            }
++            if (sw.ElapsedMilliseconds >= timeoutMs)
++            {
++                break;
++            }
++            await Task.Delay(250);
++        }
++        while (sw.ElapsedMilliseconds < timeoutMs);
++        return null;
++    }
++
++    private (string Text, List<OcrWord> Words) RunOcr(Mat image, string language)
++    {
++        try
++        {
++            using var engine = new TesseractEngine(_tessdataPath, language, EngineMode.Default);
++            var bytes = image.ImEncode(".png");
++            using var pix = Pix.LoadFromMemory(bytes);
++            using var page = engine.Process(pix);
++            var full = page.GetText() ?? string.Empty;
++
++            var words = new List<OcrWord>();
++            using var iter = page.GetIterator();
++            iter.Begin();
++            do
++            {
++                if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
++                {
++                    var w = iter.GetText(PageIteratorLevel.Word);
++                    words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
++                }
++            }
++            while (iter.Next(PageIteratorLevel.Word));
++            return (full, words);
++        }
++        catch (Exception ex) when (ex is not RPA.Domain.Exceptions.SystemException)
++        {
++            throw new SystemException($"OCR başarısız: {ex.Message}", ex);
++        }
++    }
++
++    private void DoClick(int x, int y, string? clickType)
++    {
++        System.Windows.Forms.Cursor.Position = new System.Drawing.Point(x, y);
++        var kind = string.IsNullOrWhiteSpace(clickType) ? "left" : clickType.ToLowerInvariant();
++        MouseDownUp(kind == "right" ? RightDown : LeftDown, kind == "right" ? RightUp : LeftUp);
++        if (kind == "double")
++        {
++            MouseDownUp(LeftDown, LeftUp);
++        }
++        _logger.LogInformation("Vision tıklama: ({X},{Y}) {Kind}", x, y, kind);
++    }
++
++    private static void MouseDownUp(uint down, uint up)
++    {
++        mouse_event(down, 0, 0, 0, UIntPtr.Zero);
++        mouse_event(up, 0, 0, 0, UIntPtr.Zero);
++    }
++
++    private const uint LeftDown = 0x0002, LeftUp = 0x0004, RightDown = 0x0008, RightUp = 0x0010;
++
++    [DllImport("user32.dll")]
++    private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
++
++    private sealed record OcrWord(string Text, VisionMatch Box);
++}
+diff --git a/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+new file mode 100644
+index 0000000..2f31281
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+@@ -0,0 +1,32 @@
++namespace RPA.Domain.Interfaces;
++
++/// <summary>
++/// Erişilebilirlik ağacı (UIA/DOM) olmayan uygulamalar için piksel + metin tabanlı
++/// otomasyon kanalı (Spec Bölüm — Paket F, Görüntü/OCR Fallback). Template matching
++/// (OpenCvSharp) ve OCR (Tesseract) ile ekrandaki nesneyi bulur; gerçek fare/klavye
++/// ile etkileşir. Etkileşimli masaüstü oturumu gerektirir.
++///
++/// <para>Exception sınıflandırması: görüntü/metin bulunamadı / timeout →
++/// <c>SystemException</c> (teknik, retry edilebilir). Var-mı sorguları (<see cref="ImageExistsAsync"/>,
++/// <see cref="TextExistsAsync"/>) fırlatmaz, false döner.</para>
++/// </summary>
++public interface IVisionAutomationChannel
++{
++    /// <summary>Base64 PNG template'i ekranda bulur, merkezine tıklar. timeoutMs içinde bulunmazsa SystemException.</summary>
++    Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs);
++
++    /// <summary>Template ekranda görünene kadar bekler. Süre aşımı → SystemException.</summary>
++    Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs);
++
++    /// <summary>Template ekranda var mı? Fırlatmaz. timeoutMs 0 ise tek bakış.</summary>
++    Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs);
++
++    /// <summary>Bölgeden (null ise tam ekran) OCR ile metin okur. language örn. "tur+eng".</summary>
++    Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language);
++
++    /// <summary>OCR ile metni bulur, merkezine tıklar. matchMode "contains" (vars.) / "exact". Bulunmazsa SystemException.</summary>
++    Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs);
++
++    /// <summary>Metin ekranda var mı? Fırlatmaz.</summary>
++    Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs);
++}
+diff --git a/src/RPA.Domain/ValueObjects/VisionMatch.cs b/src/RPA.Domain/ValueObjects/VisionMatch.cs
+new file mode 100644
+index 0000000..2a7670c
+--- /dev/null
++++ b/src/RPA.Domain/ValueObjects/VisionMatch.cs
+@@ -0,0 +1,15 @@
++namespace RPA.Domain.ValueObjects;
++
++/// <summary>
++/// Ekranda bulunan bir görüntü/metin eşleşmesinin sınır kutusu ve güven skoru.
++/// Anchor (Faz 2) için matcher/OCR birden çok VisionMatch döndürür; aktiviteler
++/// şimdilik en yüksek skorlu tekini kullanır.
++/// </summary>
++public sealed record VisionMatch(int X, int Y, int Width, int Height, double Score)
++{
++    /// <summary>Eşleşmenin yatay merkezi (tıklama noktası).</summary>
++    public int CenterX => X + (Width / 2);
++
++    /// <summary>Eşleşmenin dikey merkezi (tıklama noktası).</summary>
++    public int CenterY => Y + (Height / 2);
++}
+diff --git a/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs b/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
+new file mode 100644
+index 0000000..255d769
+--- /dev/null
++++ b/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
+@@ -0,0 +1,23 @@
++namespace RPA.Infrastructure.Activities.Vision;
++
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Non-agent süreçlerde Vision.* aktivite kayıtlarının DI-geçerli kalması için yer tutucu kanal.
++/// Gerçek OpenCvSharp+Tesseract implementasyonu RPA.Agent tarafından Windows'ta kaydedilir.
++/// </summary>
++public sealed class UnavailableVisionAutomationChannel : IVisionAutomationChannel
++{
++    public Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs) => Unavailable();
++    public Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs) => Unavailable();
++    public Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs) => Unavailable<bool>();
++    public Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language) => Unavailable<string>();
++    public Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs) => Unavailable();
++    public Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs) => Unavailable<bool>();
++
++    private static Task Unavailable() => Task.FromException(new InvalidOperationException(Message));
++    private static Task<T> Unavailable<T>() => Task.FromException<T>(new InvalidOperationException(Message));
++
++    private const string Message =
++        "Vision automation channel is not available in this process. Run Vision.* activities through RPA.Agent on Windows.";
++}
+diff --git a/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs b/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
+new file mode 100644
+index 0000000..2034804
+--- /dev/null
++++ b/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
+@@ -0,0 +1,332 @@
++namespace RPA.Infrastructure.Activities.Vision;
++
++using RPA.Domain.Interfaces;
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++
++// Görüntü/OCR Fallback Otomasyonu — Vision.* aktivite ailesi (Paket F).
++// Her aktivite IVisionAutomationChannel üzerinden çalışır (OpenCvSharp+Tesseract impl.
++// RPA.Agent'ta yaşar). Platform-nötr; yalnız arayüzü çağırır → testlerde mock'lanır.
++// Parametre doğrulama → BusinessException. Bulunamadı/timeout kanalda SystemException.
++
++internal static class VisionMeta
++{
++    public const string Category = "Görüntü";
++    public const string Capability = "vision";
++    public const string DefaultLanguage = "tur+eng";
++    public const double DefaultConfidence = 0.8;
++
++    public static ActivityParameter Image() => new()
++    {
++        Name = "image", Type = "string", Required = true,
++        Description = "Ekranda aranacak görüntü (base64 PNG). 🎯 ile bölge seçin.",
++        PickerKind = "image",
++    };
++
++    public static ActivityParameter Confidence() => new()
++    {
++        Name = "confidence", Type = "double", Required = false,
++        Description = "Eşleşme güven eşiği (0-1).", DefaultValue = DefaultConfidence,
++    };
++
++    public static ActivityParameter Language() => new()
++    {
++        Name = "language", Type = "string", Required = false,
++        Description = "OCR dil(ler)i, örn. 'tur+eng+deu'.", DefaultValue = DefaultLanguage,
++    };
++
++    public static ActivityParameter MatchMode() => new()
++    {
++        Name = "matchMode", Type = "string", Required = false,
++        Description = "Metin eşleşme kipi.", Options = new() { "contains", "exact" }, DefaultValue = "contains",
++    };
++
++    public static ActivityParameter ClickType() => new()
++    {
++        Name = "clickType", Type = "string", Required = false,
++        Description = "Tıklama türü.", Options = new() { "left", "right", "double" }, DefaultValue = "left",
++    };
++
++    public static string RequireImage(IActivityExecutionContext context)
++    {
++        var image = context.GetVariable<string?>("image");
++        if (string.IsNullOrWhiteSpace(image))
++        {
++            throw new BusinessException("'image' parametresi boş olamaz.");
++        }
++        return image;
++    }
++
++    public static string RequireText(IActivityExecutionContext context)
++    {
++        var text = context.GetVariable<string?>("text");
++        if (string.IsNullOrWhiteSpace(text))
++        {
++            throw new BusinessException("'text' parametresi boş olamaz.");
++        }
++        return text;
++    }
++
++    public static double ConfidenceOrDefault(IActivityExecutionContext context)
++    {
++        var c = context.GetVariable<double>("confidence");
++        return c is > 0 and <= 1 ? c : DefaultConfidence;
++    }
++
++    public static string LanguageOrDefault(IActivityExecutionContext context)
++    {
++        var lang = context.GetVariable<string?>("language");
++        return string.IsNullOrWhiteSpace(lang) ? DefaultLanguage : lang;
++    }
++
++    public static string MatchModeOrDefault(IActivityExecutionContext context)
++    {
++        var m = context.GetVariable<string?>("matchMode");
++        return string.Equals(m, "exact", StringComparison.OrdinalIgnoreCase) ? "exact" : "contains";
++    }
++
++    public static string? ClickTypeOrNull(IActivityExecutionContext context)
++    {
++        var t = context.GetVariable<string?>("clickType");
++        return string.IsNullOrWhiteSpace(t) ? null : t;
++    }
++}
++
++/// <summary>Ekranda görüntüyü bulur ve merkezine tıklar.</summary>
++public sealed class VisionClickActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionClickActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.Click",
++        DisplayName = "Görüntüye Tıkla",
++        Category = VisionMeta.Category,
++        Description = "Ekranda bir görüntüyü bulur ve merkezine tıklar (erişilemeyen uygulamalar).",
++        Inputs = new()
++        {
++            VisionMeta.Image(),
++            VisionMeta.Confidence(),
++            VisionMeta.ClickType(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms).", DefaultValue = 5000 },
++        },
++        Outputs = new(),
++        RequiredCapabilities = new() { VisionMeta.Capability },
++        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var image = VisionMeta.RequireImage(context);
++        var confidence = VisionMeta.ConfidenceOrDefault(context);
++        var clickType = VisionMeta.ClickTypeOrNull(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        context.Log($"Görüntüye tıklanıyor (confidence {confidence}).");
++        await _channel.ClickImageAsync(image, confidence, clickType, timeoutMs);
++        return new();
++    }
++}
++
++/// <summary>Görüntü görünene kadar bekler.</summary>
++public sealed class VisionWaitForActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionWaitForActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.WaitFor",
++        DisplayName = "Görüntü Bekle",
++        Category = VisionMeta.Category,
++        Description = "Bir görüntü ekranda görünene kadar bekler (timeout → System).",
++        Inputs = new()
++        {
++            VisionMeta.Image(),
++            VisionMeta.Confidence(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms).", DefaultValue = 10000 },
++        },
++        Outputs = new(),
++        RequiredCapabilities = new() { VisionMeta.Capability },
++        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var image = VisionMeta.RequireImage(context);
++        var confidence = VisionMeta.ConfidenceOrDefault(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        context.Log("Görüntü bekleniyor.");
++        await _channel.WaitForImageAsync(image, confidence, timeoutMs);
++        return new();
++    }
++}
++
++/// <summary>Görüntü ekranda var mı? (fırlatmaz)</summary>
++public sealed class VisionExistsActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionExistsActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.Exists",
++        DisplayName = "Görüntü Var mı?",
++        Category = VisionMeta.Category,
++        Description = "Görüntü ekranda var mı kontrol eder; 'exists' (bool) döner, hata fırlatmaz.",
++        Inputs = new()
++        {
++            VisionMeta.Image(),
++            VisionMeta.Confidence(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms). 0 = tek bakış.", DefaultValue = 0 },
++        },
++        Outputs = new() { new ActivityParameter { Name = "exists", Type = "bool", Required = false, Description = "Görüntü bulundu mu." } },
++        RequiredCapabilities = new() { VisionMeta.Capability },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var image = VisionMeta.RequireImage(context);
++        var confidence = VisionMeta.ConfidenceOrDefault(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        var exists = await _channel.ImageExistsAsync(image, confidence, timeoutMs);
++        context.SetVariable("exists", exists);
++        return new() { ["exists"] = exists };
++    }
++}
++
++/// <summary>Bölgeden OCR ile metin okur.</summary>
++public sealed class VisionGetTextActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionGetTextActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.GetText",
++        DisplayName = "Görüntüden Metin Oku (OCR)",
++        Category = VisionMeta.Category,
++        Description = "Bir ekran bölgesinden (boşsa tam ekran) OCR ile metin okur.",
++        Inputs = new()
++        {
++            new ActivityParameter { Name = "region", Type = "string", Required = false, Description = "Bölge {x,y,width,height} (boşsa tam ekran). 🎯 ile seçin.", PickerKind = "image" },
++            VisionMeta.Language(),
++        },
++        Outputs = new() { new ActivityParameter { Name = "text", Type = "string", Required = false, Description = "Okunan metin." } },
++        RequiredCapabilities = new() { VisionMeta.Capability },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var region = VisionRegion.Parse(context.GetVariable<string?>("region"));
++        var language = VisionMeta.LanguageOrDefault(context);
++        context.Log($"OCR ile metin okunuyor (dil {language}).");
++        var text = await _channel.GetTextAsync(region.X, region.Y, region.Width, region.Height, language);
++        context.SetVariable("text", text);
++        return new() { ["text"] = text };
++    }
++}
++
++/// <summary>OCR ile metni bulur ve tıklar.</summary>
++public sealed class VisionClickTextActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionClickTextActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.ClickText",
++        DisplayName = "Metne Tıkla (OCR)",
++        Category = VisionMeta.Category,
++        Description = "OCR ile bir metni ekranda bulur ve üstüne tıklar (timeout → System).",
++        Inputs = new()
++        {
++            new ActivityParameter { Name = "text", Type = "string", Required = true, Description = "Aranacak metin." },
++            VisionMeta.Language(),
++            VisionMeta.MatchMode(),
++            VisionMeta.ClickType(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms).", DefaultValue = 5000 },
++        },
++        Outputs = new(),
++        RequiredCapabilities = new() { VisionMeta.Capability },
++        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var text = VisionMeta.RequireText(context);
++        var language = VisionMeta.LanguageOrDefault(context);
++        var matchMode = VisionMeta.MatchModeOrDefault(context);
++        var clickType = VisionMeta.ClickTypeOrNull(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        context.Log($"Metne tıklanıyor: '{text}' (dil {language}).");
++        await _channel.ClickTextAsync(text, language, matchMode, clickType, timeoutMs);
++        return new();
++    }
++}
++
++/// <summary>Metin ekranda var mı? (fırlatmaz)</summary>
++public sealed class VisionTextExistsActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionTextExistsActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.TextExists",
++        DisplayName = "Metin Var mı? (OCR)",
++        Category = VisionMeta.Category,
++        Description = "Metin ekranda var mı kontrol eder; 'exists' (bool) döner, hata fırlatmaz.",
++        Inputs = new()
++        {
++            new ActivityParameter { Name = "text", Type = "string", Required = true, Description = "Aranacak metin." },
++            VisionMeta.Language(),
++            VisionMeta.MatchMode(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms). 0 = tek bakış.", DefaultValue = 0 },
++        },
++        Outputs = new() { new ActivityParameter { Name = "exists", Type = "bool", Required = false, Description = "Metin bulundu mu." } },
++        RequiredCapabilities = new() { VisionMeta.Capability },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var text = VisionMeta.RequireText(context);
++        var language = VisionMeta.LanguageOrDefault(context);
++        var matchMode = VisionMeta.MatchModeOrDefault(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        var exists = await _channel.TextExistsAsync(text, language, matchMode, timeoutMs);
++        context.SetVariable("exists", exists);
++        return new() { ["exists"] = exists };
++    }
++}
++
++/// <summary>region parametresini {x,y,width,height} JSON'undan çözer; boşsa null bileşenler (tam ekran).</summary>
++internal readonly record struct VisionRegion(int? X, int? Y, int? Width, int? Height)
++{
++    public static VisionRegion Parse(string? json)
++    {
++        if (string.IsNullOrWhiteSpace(json))
++        {
++            return new VisionRegion(null, null, null, null);
++        }
++        try
++        {
++            using var doc = System.Text.Json.JsonDocument.Parse(json);
++            var r = doc.RootElement;
++            return new VisionRegion(
++                r.TryGetProperty("x", out var x) ? x.GetInt32() : null,
++                r.TryGetProperty("y", out var y) ? y.GetInt32() : null,
++                r.TryGetProperty("width", out var w) ? w.GetInt32() : null,
++                r.TryGetProperty("height", out var h) ? h.GetInt32() : null);
++        }
++        catch (System.Text.Json.JsonException)
++        {
++            return new VisionRegion(null, null, null, null);
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs b/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
+index 08c84e1..085f15c 100644
+--- a/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
++++ b/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
+@@ -38,20 +38,22 @@ public sealed record SpyElementMessage
+     public int Y { get; init; }
+     public string? Selector { get; init; }
+     public string? TagName { get; init; }
+     public string? InnerTextPreview { get; init; }
+     public string? PageUrl { get; init; }
+     public string? AutomationId { get; init; }
+     public string? ControlType { get; init; }
+     public string? Name { get; init; }
+     public string? UiaPath { get; init; }
+     public string? ProcessName { get; init; }
++    public string? ImageBase64 { get; init; }
++    public string? Region { get; init; }
+ 
+     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
+     public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
+ 
+     public static SpyElementMessage From(SapGuiElement element, Guid sessionId)
+     {
+         ArgumentNullException.ThrowIfNull(element);
+         return new SpyElementMessage
+         {
+             SessionId = sessionId,
+@@ -102,20 +104,36 @@ public sealed record SpyElementMessage
+             Name = element.Name,
+             ProcessName = element.ProcessName,
+             Type = element.ControlType,
+             Text = element.Name,
+             Enabled = true,
+             Changeable = true,
+             X = element.X,
+             Y = element.Y,
+         };
+     }
++
++    /// <summary>🎯 image picker'dan gelen bölge/görüntü seçiminden mesaj oluşturur.</summary>
++    public static SpyElementMessage FromImage(string? imageBase64, string? regionJson, Guid sessionId)
++    {
++        return new SpyElementMessage
++        {
++            SessionId = sessionId,
++            Kind = "image",
++            ElementId = "image",
++            ImageBase64 = imageBase64,
++            Region = regionJson,
++            Selector = imageBase64 ?? regionJson,
++            Enabled = true,
++            Changeable = true,
++        };
++    }
+ }
+ 
+ /// <summary>
+ /// Tespit edilen SAP GUI elementini Studio'ya (SignalR köprüsü) gönderen bileşen (Spec Bölüm 6).
+ /// Elementi <see cref="SpyElementMessage"/>'e biçimlendirir ve <see cref="ISpyElementTransport"/>
+ /// üzerinden StudioHub'a iletir. Windows-only (tespit yalnızca Windows'ta üretilir).
+ /// </summary>
+ [SupportedOSPlatform("windows")]
+ public sealed class SapGuiElementSender
+ {
+diff --git a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+index 49f193a..718c015 100644
+--- a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
++++ b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+@@ -17,37 +17,39 @@ public static class ActivityRegistry
+     public const string CatSapNco = "SAP NCo";
+     public const string CatWeb = "Web";
+     public const string CatApi = "API";
+     public const string CatExcel = "Excel";
+     public const string CatCsv = "CSV";
+     public const string CatEmail = "E-posta";
+     public const string CatOtp = "OTP";
+     public const string CatFile = "Dosya";
+     public const string CatDesktop = "Masaüstü";
+     public const string CatCode = "Kod & Veri";
++    public const string CatVision = "Görüntü";
+ 
+     /// <summary>Tüm MVP aktivitelerini kaydeder ve immutable katalog döndürür.</summary>
+     public static IReadOnlyDictionary<string, ActivityMetadata> BuildCatalog()
+     {
+         var b = new ActivityCatalogBuilder();
+ 
+         RegisterLogic(b);
+         RegisterSapGui(b);
+         RegisterSapNco(b);
+         RegisterWeb(b);
+         RegisterApi(b);
+         RegisterExcelCsv(b);
+         RegisterEmail(b);
+         RegisterOtp(b);
+         RegisterFile(b);
+         RegisterDesktop(b);
+         RegisterCode(b);
++        RegisterVision(b);
+ 
+         return b.Build();
+     }
+ 
+     // ---- Mantık ----
+     private static void RegisterLogic(ActivityCatalogBuilder b)
+     {
+         b.Activity("Logic.Assign").DisplayName("Değişkene Ata").Category(CatLogic)
+             .Description("Bir değişkene ifade veya literal değer atar.")
+             .Input("variableName", "string").Input("value", "JSON");
+@@ -400,11 +402,62 @@ public static class ActivityRegistry
+             .Input("code", "string");
+ 
+         b.Activity("Data.ToDataTable").DisplayName("DataTable'a Çevir").Category(CatCode)
+             .Description("Satır listesini (sütun-değer) gerçek System.Data.DataTable'a dönüştürür.")
+             .Input("rows", "JSON").Output("table", "DataTable");
+ 
+         b.Activity("Data.FromDataTable").DisplayName("DataTable'dan Satırlar").Category(CatCode)
+             .Description("DataTable'ı satır listesine (sütun-değer) dönüştürür.")
+             .Input("table", "DataTable").Output("rows", "JSON");
+     }
++
++    // ---- Görüntü/OCR Fallback (Vision.*) — Paket F ----
++    private static void RegisterVision(ActivityCatalogBuilder b)
++    {
++        const string cap = "vision";
++
++        b.Activity("Vision.Click").DisplayName("Görüntüye Tıkla").Category(CatVision).Capability(cap)
++            .Description("Ekranda bir görüntüyü bulur ve merkezine tıklar.")
++            .Input("image", "string", pickerKind: "image", description: "Aranacak görüntü (base64 PNG).")
++            .Input("confidence", "number", required: false, defaultValue: 0.8)
++            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
++        b.Activity("Vision.WaitFor").DisplayName("Görüntü Bekle").Category(CatVision).Capability(cap)
++            .Description("Bir görüntü ekranda görünene kadar bekler (timeout → System).")
++            .Input("image", "string", pickerKind: "image")
++            .Input("confidence", "number", required: false, defaultValue: 0.8)
++            .Input("timeoutMs", "int", required: false, defaultValue: 10000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
++        b.Activity("Vision.Exists").DisplayName("Görüntü Var mı?").Category(CatVision).Capability(cap)
++            .Description("Görüntü ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
++            .Input("image", "string", pickerKind: "image")
++            .Input("confidence", "number", required: false, defaultValue: 0.8)
++            .Input("timeoutMs", "int", required: false, defaultValue: 0)
++            .Output("exists", "bool");
++
++        b.Activity("Vision.GetText").DisplayName("Görüntüden Metin Oku (OCR)").Category(CatVision).Capability(cap)
++            .Description("Bir ekran bölgesinden (boşsa tam ekran) OCR ile metin okur.")
++            .Input("region", "string", required: false, pickerKind: "image", description: "Bölge {x,y,width,height}.")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Output("text", "string");
++
++        b.Activity("Vision.ClickText").DisplayName("Metne Tıkla (OCR)").Category(CatVision).Capability(cap)
++            .Description("OCR ile bir metni bulur ve tıklar (timeout → System).")
++            .Input("text", "string")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
++            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
++        b.Activity("Vision.TextExists").DisplayName("Metin Var mı? (OCR)").Category(CatVision).Capability(cap)
++            .Description("Metin ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
++            .Input("text", "string")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 0)
++            .Output("exists", "bool");
++    }
+ }
+diff --git a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+index 945b84d..9f1cffd 100644
+--- a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
++++ b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+@@ -54,20 +54,30 @@ public static class WorkflowServiceCollectionExtensions
+         services.AddKeyedTransient<IActivity, DesktopSelectItemActivity>("Desktop.SelectItem");
+         services.AddKeyedTransient<IActivity, DesktopSendKeysActivity>("Desktop.SendKeys");
+         services.AddKeyedTransient<IActivity, DesktopWaitForActivity>("Desktop.WaitFor");
+         services.AddKeyedTransient<IActivity, DesktopScreenshotActivity>("Desktop.Screenshot");
+ 
+         // Kod & Veri: C# kod aktivitesi (Roslyn) + DataTable dönüşümleri.
+         services.AddKeyedTransient<IActivity, Activities.Code.InvokeCsharpActivity>("System.InvokeCode");
+         services.AddKeyedTransient<IActivity, Activities.Code.DataToDataTableActivity>("Data.ToDataTable");
+         services.AddKeyedTransient<IActivity, Activities.Code.DataFromDataTableActivity>("Data.FromDataTable");
+ 
++        // Paket F: Görüntü/OCR fallback aktiviteleri (Vision.*). IVisionAutomationChannel
++        // implementasyonu Agent sürecinde kayıtlıdır; aktiviteler yalnız arayüze bağlıdır.
++        services.TryAddSingleton<IVisionAutomationChannel, RPA.Infrastructure.Activities.Vision.UnavailableVisionAutomationChannel>();
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickActivity>("Vision.Click");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionWaitForActivity>("Vision.WaitFor");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionExistsActivity>("Vision.Exists");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionGetTextActivity>("Vision.GetText");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextActivity>("Vision.ClickText");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionTextExistsActivity>("Vision.TextExists");
++
+         services.AddSingleton<IActivityFactory>(sp =>
+             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
+ 
+         services.AddTransient<IWorkflowRunner, BaseRunner>();
+ 
+         // Task 4.5: Component publish/approve governance (Spec Bölüm 9).
+         // Bellek-içi depo — DB persistansı ayrı bir görev kapsamındadır.
+         services.AddSingleton<InMemoryComponentPublishRepository>();
+         services.AddSingleton<IComponentPublishRepository>(sp => sp.GetRequiredService<InMemoryComponentPublishRepository>());
+         services.AddSingleton<IComponentStore>(sp => sp.GetRequiredService<InMemoryComponentPublishRepository>());
+diff --git a/src/RPA.Studio/src/app/shared/models/activity.model.ts b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+index 8c45489..a6d471b 100644
+--- a/src/RPA.Studio/src/app/shared/models/activity.model.ts
++++ b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+@@ -1,20 +1,20 @@
+ /**
+  * Activity metadata as returned by the catalog endpoint (GET /api/activities).
+  * Mirrors RPA.Domain ActivityMetadata (Spec Bölüm 2 — activity catalog).
+  */
+ export interface ActivityPort {
+   name: string;
+   type: string;
+   required?: boolean;
+   description?: string;
+-  pickerKind?: 'sap' | 'web' | 'desktop' | null;
++  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | null;
+   options?: string[];
+ }
+ 
+ export interface ActivityMetadata {
+   activityId: string;
+   displayName: string;
+   category?: string;
+   description?: string;
+   icon?: string;
+   inputs?: ActivityPort[];
+diff --git a/src/RPA.Studio/src/app/shared/services/spy.service.ts b/src/RPA.Studio/src/app/shared/services/spy.service.ts
+index 8c84d2a..5babe21 100644
+--- a/src/RPA.Studio/src/app/shared/services/spy.service.ts
++++ b/src/RPA.Studio/src/app/shared/services/spy.service.ts
+@@ -1,26 +1,29 @@
+ import { Injectable, InjectionToken, inject } from '@angular/core';
+ import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+ import { AuthService } from '../../auth/auth.service';
+ 
+-export type SpyKind = 'sap' | 'web' | 'desktop';
++export type SpyKind = 'sap' | 'web' | 'desktop' | 'image';
+ 
+ export interface SpyElement {
+   sessionId: string;
+   kind: SpyKind;
+   elementId: string;
+   type?: string;
+   text?: string;
+   enabled?: boolean;
+   changeable?: boolean;
+   x?: number;
+   y?: number;
++  // Paket F: image picker sonucu (kind === 'image') — base64 PNG + secilen bolge.
++  imageBase64?: string;
++  region?: { x: number; y: number; width: number; height: number };
+ }
+ 
+ export interface SpyHubConnection {
+   start(): Promise<void>;
+   stop(): Promise<void>;
+   on(methodName: string, handler: (...args: unknown[]) => void): void;
+   invoke(methodName: string, ...args: unknown[]): Promise<unknown>;
+ }
+ 
+ export type SpyHubConnectionFactory = (
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
+index a0f41ca..8ea7d8a 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
+@@ -145,20 +145,28 @@
+                     []
+                   </button>
+                 }
+                 @if (port.pickerKind && inputType(port) !== 'password') {
+                   <app-selector-picker-button
+                     [pickerKind]="port.pickerKind"
+                     (picked)="onPicked(port, $event)"
+                   ></app-selector-picker-button>
+                 }
+               </div>
++              @if (port.pickerKind === 'image' && imagePreviews[port.name]) {
++                <img
++                  class="generic-property__image-preview"
++                  [attr.data-testid]="'prop-' + port.name + '-image-preview'"
++                  [src]="'data:image/png;base64,' + imagePreviews[port.name]"
++                  alt="Secilen bolge onizlemesi"
++                />
++              }
+               @if (showModeSelector(port) && fieldMode(port) === 'expression' && expressionSuggestions(port).length > 0) {
+                 <div class="generic-property__suggest" [attr.data-testid]="'prop-' + port.name + '-suggest'">
+                   @for (variable of expressionSuggestions(port); track variable.name) {
+                     <button
+                       type="button"
+                       class="generic-property__suggest-item"
+                       (click)="applySuggestion(port, variable.name)"
+                     >{{ variable.name }}</button>
+                   }
+                 </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss
+index 6e16bd2..4cadd48 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.scss
+@@ -10,20 +10,29 @@
+   }
+ 
+   &__title {
+     margin: 0;
+     color: #162033;
+     font-size: 0.95rem;
+     font-weight: 750;
+     letter-spacing: 0;
+   }
+ 
++  &__image-preview {
++    max-width: 160px;
++    max-height: 90px;
++    margin-top: 0.35rem;
++    border: 1px solid #d7dee8;
++    border-radius: 4px;
++    object-fit: contain;
++  }
++
+   &__desc {
+     margin: 0.25rem 0 0;
+     font-size: 0.78rem;
+     color: #667085;
+     line-height: 1.45;
+   }
+ 
+   &__status {
+     font-size: 0.82rem;
+     color: #667085;
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+index 4665f19..61aa83a 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+@@ -252,21 +252,29 @@ export class GenericPropertyComponent {
+       const num = raw === '' || raw === null ? null : Number(raw);
+       next[port.name] = num;
+     } else {
+       next[port.name] = raw;
+     }
+     this.properties = next;
+     this.clearVariableError();
+     this.propertiesChange.emit(next);
+   }
+ 
++  // Paket F: image picker sonuclarinin onizlemesi (port.name -> base64 PNG).
++  readonly imagePreviews: Record<string, string> = {};
++
+   onPicked(port: ActivityPort, element: SpyElement): void {
++    if (element.kind === 'image') {
++      this.onValueChange(port, element.imageBase64 ?? '');
++      this.imagePreviews[port.name] = element.imageBase64 ?? '';
++      return;
++    }
+     this.onValueChange(port, element.elementId);
+   }
+ 
+   canOpenEditor(port: ActivityPort): boolean {
+     return (
+       this.inputType(port) !== 'checkbox' &&
+       (port.options?.length ?? 0) === 0 &&
+       !(this.isVariableField(port) && this.variables.length > 0)
+     );
+   }
+diff --git a/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorImageTests.cs b/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorImageTests.cs
+new file mode 100644
+index 0000000..17887aa
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorImageTests.cs
+@@ -0,0 +1,33 @@
++namespace RPA.Agent.Tests.UISpy;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Agent.UISpy;
++using RPA.Infrastructure.UISpy;
++using Xunit;
++
++public class SpySessionCoordinatorImageTests
++{
++    [Fact]
++    public async Task Start_ImageKind_SendsImageMessage()
++    {
++        var sessionId = Guid.NewGuid();
++        var transport = new Mock<ISpyElementTransport>();
++        var imagePicker = new Mock<IImageRegionPicker>();
++        imagePicker.Setup(p => p.DetectOnceAsync(It.IsAny<CancellationToken>()))
++                   .ReturnsAsync(new ImagePick("BASE64", null));
++        var options = Options.Create(new SpySessionOptions { TimeoutSeconds = 5 });
++
++        var coordinator = new SpySessionCoordinator(
++            Mock.Of<ISapGuiSinglePicker>(), transport.Object, options,
++            NullLogger<SpySessionCoordinator>.Instance,
++            imagePicker: imagePicker.Object);
++
++        await coordinator.StartAsync(sessionId, "image");
++
++        transport.Verify(t => t.SendAsync(
++            It.Is<SpyElementMessage>(m => m.Kind == "image" && m.ImageBase64 == "BASE64"),
++            It.IsAny<CancellationToken>()), Times.Once);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Vision/OcrTextMatchTests.cs b/tests/RPA.Agent.Tests/Vision/OcrTextMatchTests.cs
+new file mode 100644
+index 0000000..8247827
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Vision/OcrTextMatchTests.cs
+@@ -0,0 +1,19 @@
++namespace RPA.Agent.Tests.Vision;
++
++using RPA.Agent.Vision;
++using Xunit;
++
++public class OcrTextMatchTests
++{
++    [Theory]
++    [InlineData("  Kaydet  ", "kaydet", "contains", true)]
++    [InlineData("Kaydet ve Kapat", "kaydet", "contains", true)]
++    [InlineData("Kaydet ve Kapat", "kaydet", "exact", false)]
++    [InlineData("Kaydet", "kaydet", "exact", true)]
++    [InlineData("İptal", "iptal", "contains", true)]  // TR büyük İ / küçük i toleransı
++    [InlineData("Save", "kaydet", "contains", false)]
++    public void Matches_NormalizesWhitespaceAndCase(string ocrWord, string query, string mode, bool expected)
++    {
++        Assert.Equal(expected, OcrTextMatch.Matches(ocrWord, query, mode));
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs b/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs
+new file mode 100644
+index 0000000..3ed601e
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Vision/TemplateMatcherTests.cs
+@@ -0,0 +1,52 @@
++namespace RPA.Agent.Tests.Vision;
++
++using OpenCvSharp;
++using RPA.Agent.Vision;
++using Xunit;
++
++public class TemplateMatcherTests
++{
++    // Dokulu (sıfır olmayan varyanslı) 10x10 needle: siyah zemin + beyaz iç kare.
++    // Tekdüze renk DEĞİL — CCoeffNormed'in dejenere olmaması için gerekli.
++    private static Mat MakeNeedle()
++    {
++        var needle = new Mat(new Size(10, 10), MatType.CV_8UC3, Scalar.Black);
++        Cv2.Rectangle(needle, new Rect(2, 2, 6, 6), Scalar.White, thickness: -1);
++        return needle;
++    }
++
++    [Fact]
++    public void FindBest_LocatesNeedle_AtKnownPosition()
++    {
++        var box = new Rect(40, 30, 10, 10);
++        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, new Scalar(128, 128, 128));
++        using var needle = MakeNeedle();
++        // Needle'ı haystack'e piksel-birebir kopyala (bilinen konumda kesin eşleşme).
++        using (var roi = new Mat(haystack, box))
++        {
++            needle.CopyTo(roi);
++        }
++
++        var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.8);
++
++        Assert.NotNull(match);
++        Assert.InRange(match!.X, box.X - 2, box.X + 2);
++        Assert.InRange(match.Y, box.Y - 2, box.Y + 2);
++        Assert.True(match.Score >= 0.8);
++    }
++
++    [Fact]
++    public void FindBest_ReturnsNull_WhenBelowConfidence()
++    {
++        // Orta-gri zemin + needle'dan FARKLI iki şekil (renk/boyut farklı) — needle burada yok,
++        // ama zemin varyanslı (tekdüze değil) ki CCoeffNormed dejenere olmasın.
++        using var haystack = new Mat(new Size(100, 100), MatType.CV_8UC3, new Scalar(128, 128, 128));
++        Cv2.Circle(haystack, new Point(20, 20), 8, Scalar.White, thickness: -1);
++        Cv2.Rectangle(haystack, new Rect(70, 70, 15, 15), new Scalar(200, 50, 50), thickness: -1);
++        using var needle = MakeNeedle(); // haystack içinde yok
++
++        var match = TemplateMatcher.FindBest(haystack, needle, confidence: 0.95);
++
++        Assert.Null(match);
++    }
++}
+diff --git a/tests/RPA.Domain.Tests/ValueObjects/VisionMatchTests.cs b/tests/RPA.Domain.Tests/ValueObjects/VisionMatchTests.cs
+new file mode 100644
+index 0000000..43fe9f7
+--- /dev/null
++++ b/tests/RPA.Domain.Tests/ValueObjects/VisionMatchTests.cs
+@@ -0,0 +1,17 @@
++namespace RPA.Domain.Tests.ValueObjects;
++
++using RPA.Domain.ValueObjects;
++using Xunit;
++
++public class VisionMatchTests
++{
++    [Fact]
++    public void Center_IsComputedFromBoundingBox()
++    {
++        var match = new VisionMatch(X: 100, Y: 200, Width: 40, Height: 20, Score: 0.95);
++
++        Assert.Equal(120, match.CenterX);
++        Assert.Equal(210, match.CenterY);
++        Assert.Equal(0.95, match.Score);
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs b/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
+new file mode 100644
+index 0000000..deba947
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
+@@ -0,0 +1,83 @@
++namespace RPA.Infrastructure.Tests.Activities;
++
++using Moq;
++using RPA.Domain.Exceptions;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Activities.Vision;
++using Xunit;
++
++public class VisionActivitiesTests
++{
++    private static Mock<IActivityExecutionContext> Ctx(Dictionary<string, object?> vars)
++    {
++        var ctx = new Mock<IActivityExecutionContext>();
++        ctx.Setup(c => c.GetVariable<string?>(It.IsAny<string>()))
++           .Returns((string n) => vars.TryGetValue(n, out var v) ? (string?)v : null);
++        ctx.Setup(c => c.GetVariable<double>(It.IsAny<string>()))
++           .Returns((string n) => vars.TryGetValue(n, out var v) && v is double d ? d : 0d);
++        ctx.Setup(c => c.GetVariable<int>(It.IsAny<string>()))
++           .Returns((string n) => vars.TryGetValue(n, out var v) && v is int i ? i : 0);
++        return ctx;
++    }
++
++    [Fact]
++    public async Task Click_EmptyImage_ThrowsBusiness()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickActivity(channel.Object);
++        var ctx = Ctx(new() { ["image"] = "" });
++
++        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
++    }
++
++    [Fact]
++    public async Task Click_ValidImage_CallsChannelWithDefaults()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickActivity(channel.Object);
++        var ctx = Ctx(new() { ["image"] = "BASE64", ["confidence"] = 0d, ["timeoutMs"] = 0 });
++
++        await activity.ExecuteAsync(ctx.Object);
++
++        // confidence 0 → varsayılan 0.8, clickType null → "left" kanala bırakılır
++        channel.Verify(c => c.ClickImageAsync("BASE64", 0.8, null, 0), Times.Once);
++    }
++
++    [Fact]
++    public async Task Exists_NotFound_ReturnsFalse_NoThrow()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        channel.Setup(c => c.ImageExistsAsync(It.IsAny<string>(), It.IsAny<double>(), It.IsAny<int>()))
++               .ReturnsAsync(false);
++        var activity = new VisionExistsActivity(channel.Object);
++        var ctx = Ctx(new() { ["image"] = "BASE64" });
++
++        var result = await activity.ExecuteAsync(ctx.Object);
++
++        Assert.Equal(false, result["exists"]);
++    }
++
++    [Fact]
++    public async Task GetText_DefaultLanguage_IsTurEng()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        channel.Setup(c => c.GetTextAsync(null, null, null, null, "tur+eng")).ReturnsAsync("okunan");
++        var activity = new VisionGetTextActivity(channel.Object);
++        var ctx = Ctx(new());
++
++        var result = await activity.ExecuteAsync(ctx.Object);
++
++        Assert.Equal("okunan", result["text"]);
++        channel.Verify(c => c.GetTextAsync(null, null, null, null, "tur+eng"), Times.Once);
++    }
++
++    [Fact]
++    public async Task ClickText_EmptyText_ThrowsBusiness()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextActivity(channel.Object);
++        var ctx = Ctx(new() { ["text"] = "  " });
++
++        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs b/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
+new file mode 100644
+index 0000000..852873a
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
+@@ -0,0 +1,19 @@
++namespace RPA.Infrastructure.Tests.UISpy;
++
++using RPA.Infrastructure.UISpy;
++using Xunit;
++
++public class SpyElementMessageTests
++{
++    [Fact]
++    public void FromImage_SetsKindAndPayload()
++    {
++        var sessionId = Guid.NewGuid();
++        var msg = SpyElementMessage.FromImage("BASE64PNG", "{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", sessionId);
++
++        Assert.Equal("image", msg.Kind);
++        Assert.Equal(sessionId, msg.SessionId);
++        Assert.Equal("BASE64PNG", msg.ImageBase64);
++        Assert.Equal("{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", msg.Region);
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+new file mode 100644
+index 0000000..38566f9
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+@@ -0,0 +1,30 @@
++namespace RPA.Infrastructure.Tests.Workflow;
++
++using System.Linq;
++using RPA.Infrastructure.Workflow;
++using Xunit;
++
++public class VisionCatalogTests
++{
++    [Theory]
++    [InlineData("Vision.Click")]
++    [InlineData("Vision.WaitFor")]
++    [InlineData("Vision.Exists")]
++    [InlineData("Vision.GetText")]
++    [InlineData("Vision.ClickText")]
++    [InlineData("Vision.TextExists")]
++    public void Catalog_ContainsVisionActivity(string activityId)
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        Assert.Contains(catalog, a => a.Key == activityId);
++    }
++
++    [Fact]
++    public void VisionActivities_HaveVisionCapability()
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        var vision = catalog.Where(a => a.Key.StartsWith("Vision.")).ToList();
++        Assert.Equal(6, vision.Count);
++        Assert.All(vision, a => Assert.Contains("vision", a.Value.RequiredCapabilities));
++    }
++}

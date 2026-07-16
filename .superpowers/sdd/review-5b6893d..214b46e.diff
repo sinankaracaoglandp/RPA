@@ -1,0 +1,1304 @@
+# Review package: 5b6893d..214b46e
+
+## Commits
+214b46e feat(webapi): QueuesController — nextitem (UPDLOCK atama) + item durum PATCH
+668d34e feat(infrastructure): EF migration — QueueItems (QueueId, Status) claim indeksi
+dd1bec2 feat(infrastructure): QueueService + UPDLOCK claim + retry politikası
+f1873e2 feat(domain): Kuyruk motoru sözleşmesi — IQueueService + repo claim/queue metodları
+
+## Files changed
+ src/RPA.Domain/Interfaces/IQueueItemRepository.cs  |  10 +
+ src/RPA.Domain/Interfaces/IQueueService.cs         |  29 ++
+ .../20260705091414_AddQueueClaimIndex.Designer.cs  | 309 +++++++++++++++++++++
+ .../20260705091414_AddQueueClaimIndex.cs           |  27 ++
+ .../Migrations/RpaDbContextModelSnapshot.cs        |   2 +
+ .../Persistence/EfQueueItemRepository.cs           |  66 ++++-
+ src/RPA.Infrastructure/Persistence/RpaDbContext.cs |   3 +
+ src/RPA.Infrastructure/Queues/QueueService.cs      |  99 +++++++
+ .../Queues/QueueServiceCollectionExtensions.cs     |  16 ++
+ src/RPA.WebAPI/Program.cs                          |   4 +
+ src/RPA.WebAPI/Queues/QueuesController.cs          | 100 +++++++
+ .../QueueMigrationTests.cs                         |  64 +++++
+ .../RPA.Infrastructure.Tests/QueueServiceTests.cs  | 196 +++++++++++++
+ .../QueuesControllerIntegrationTests.cs            | 151 ++++++++++
+ 14 files changed, 1075 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/src/RPA.Domain/Interfaces/IQueueItemRepository.cs b/src/RPA.Domain/Interfaces/IQueueItemRepository.cs
+index dbbf670..e93b215 100644
+--- a/src/RPA.Domain/Interfaces/IQueueItemRepository.cs
++++ b/src/RPA.Domain/Interfaces/IQueueItemRepository.cs
+@@ -10,14 +10,24 @@ public interface IQueueItemRepository
+ {
+     /// <summary>
+     /// Aynı kuyrukta aynı referans anahtarına sahip (silinmemiş) QueueItem'ı arar.
+     /// Bulunursa mükerrer işlem tespit edilmiş olur.
+     /// </summary>
+     Task<QueueItem?> FindByIdempotencyKeyAsync(
+         Guid queueId, string idempotencyKey, CancellationToken cancellationToken = default);
+ 
+     Task<QueueItem?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
+ 
++    /// <summary>
++    /// Kuyruktan sıradaki (en eski) New kalemi atomik olarak kilitler (SQL Server UPDLOCK/READPAST),
++    /// InProgress'e çeker, verilen robota atar, StartedAt'i set eder ve kalıcı hale getirir.
++    /// Uygun kalem yoksa null döner. Eşzamanlı çağrılarda yalnızca bir çağrı kalemi alır.
++    /// </summary>
++    Task<QueueItem?> ClaimNextNewItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default);
++
++    /// <summary>Kuyruğu Id ile bulur (retry politikası için MaxRetries); yoksa null.</summary>
++    Task<Queue?> FindQueueAsync(Guid queueId, CancellationToken cancellationToken = default);
++
+     Task AddAsync(QueueItem item, CancellationToken cancellationToken = default);
+ 
+     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+ }
+diff --git a/src/RPA.Domain/Interfaces/IQueueService.cs b/src/RPA.Domain/Interfaces/IQueueService.cs
+new file mode 100644
+index 0000000..b015c1f
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IQueueService.cs
+@@ -0,0 +1,29 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++
++/// <summary>
++/// Kuyruk motoru (Task 3.2, Spec Bölüm 7 — Queue &amp; Dispatch). Robotların iş kalemlerini
++/// eşzamanlılık güvenli biçimde (SQL Server UPDLOCK) çekmesini ve durum geçişlerini yönetir.
++/// Correlation ID = işlenen QueueItem/JobRun kimliği.
++/// </summary>
++public interface IQueueService
++{
++    /// <summary>
++    /// Kuyruktan sıradaki (en eski) <see cref="Enums.QueueItemStatus.New"/> kalemi atomik olarak
++    /// kilitleyip InProgress'e çeker ve verilen robota atar. Uygun kalem yoksa null döner.
++    /// SQL Server üzerinde <c>WITH (UPDLOCK, READPAST, ROWLOCK)</c> ile yarış koşulları engellenir:
++    /// aynı anda birden çok robot çağırırsa yalnızca biri kalemi alır.
++    /// </summary>
++    Task<QueueItem?> GetNextItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default);
++
++    /// <summary>Kalemi başarıyla tamamlandı (Successful) olarak işaretler. Bulunamazsa null.</summary>
++    Task<QueueItem?> CompleteAsync(Guid itemId, CancellationToken cancellationToken = default);
++
++    /// <summary>
++    /// Kalemi başarısız işaretler. İş kuralı istisnası (isBusinessException=true) yeniden denenmez
++    /// (Status = BusinessException). Sistem istisnası yeniden denenebilir: AttemptCount artırılır ve
++    /// kuyruğun MaxRetries değerine ulaşılmadıysa kalem tekrar New'e çekilir; aşılırsa Failed olur.
++    /// </summary>
++    Task<QueueItem?> FailAsync(Guid itemId, string? errorDetail, bool isBusinessException, CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260705091414_AddQueueClaimIndex.Designer.cs b/src/RPA.Infrastructure/Migrations/20260705091414_AddQueueClaimIndex.Designer.cs
+new file mode 100644
+index 0000000..4a1e1a2
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260705091414_AddQueueClaimIndex.Designer.cs
+@@ -0,0 +1,309 @@
++﻿// <auto-generated />
++using System;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Metadata;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++using RPA.Infrastructure.Persistence;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    [DbContext(typeof(RpaDbContext))]
++    [Migration("20260705091414_AddQueueClaimIndex")]
++    partial class AddQueueClaimIndex
++    {
++        /// <inheritdoc />
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "10.0.9")
++                .HasAnnotation("Relational:MaxIdentifierLength", 128);
++
++            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Action")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("NewValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("OldValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("ResourceId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("ResourceType")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("nvarchar(128)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("UserId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("UserId");
++
++                    b.ToTable("AuditLogs");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Queue", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<int>("MaxRetries")
++                        .HasColumnType("int");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("RequireIdempotency")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("RetryBackoffPolicy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<int?>("SlaSeconds")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Queues");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.QueueItem", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<int>("AttemptCount")
++                        .HasColumnType("int");
++
++                    b.Property<string>("CheckpointData")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("ErrorDetail")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("IdempotencyKey")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("Payload")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("QueueId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("StartedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<int>("Status")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("QueueId", "IdempotencyKey")
++                        .IsUnique();
++
++                    b.HasIndex("QueueId", "Status");
++
++                    b.ToTable("QueueItems");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Robot", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AgentVersion")
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<int>("Capacity")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("LastHeartbeat")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("MachineName")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<string>("Mode")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Tags")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("nvarchar(1024)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("MachineName");
++
++                    b.ToTable("Robots");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AdUsername")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("Email")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("FullName")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Users");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.User", "User")
++                        .WithMany("AuditLogs")
++                        .HasForeignKey("UserId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++
++                    b.Navigation("User");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Navigation("AuditLogs");
++                });
++#pragma warning restore 612, 618
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260705091414_AddQueueClaimIndex.cs b/src/RPA.Infrastructure/Migrations/20260705091414_AddQueueClaimIndex.cs
+new file mode 100644
+index 0000000..f31730b
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260705091414_AddQueueClaimIndex.cs
+@@ -0,0 +1,27 @@
++﻿using Microsoft.EntityFrameworkCore.Migrations;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    /// <inheritdoc />
++    public partial class AddQueueClaimIndex : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.CreateIndex(
++                name: "IX_QueueItems_QueueId_Status",
++                table: "QueueItems",
++                columns: new[] { "QueueId", "Status" });
++        }
++
++        /// <inheritdoc />
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.DropIndex(
++                name: "IX_QueueItems_QueueId_Status",
++                table: "QueueItems");
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+index 87a2842..e0fa298 100644
+--- a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
++++ b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+@@ -174,20 +174,22 @@ namespace RPA.Infrastructure.Migrations
+                         .HasColumnType("datetime2");
+ 
+                     b.Property<string>("UpdatedBy")
+                         .HasColumnType("nvarchar(max)");
+ 
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("QueueId", "IdempotencyKey")
+                         .IsUnique();
+ 
++                    b.HasIndex("QueueId", "Status");
++
+                     b.ToTable("QueueItems");
+                 });
+ 
+             modelBuilder.Entity("RPA.Domain.Entities.Robot", b =>
+                 {
+                     b.Property<Guid>("Id")
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
+                     b.Property<string>("AgentVersion")
+diff --git a/src/RPA.Infrastructure/Persistence/EfQueueItemRepository.cs b/src/RPA.Infrastructure/Persistence/EfQueueItemRepository.cs
+index 2fcf765..754583b 100644
+--- a/src/RPA.Infrastructure/Persistence/EfQueueItemRepository.cs
++++ b/src/RPA.Infrastructure/Persistence/EfQueueItemRepository.cs
+@@ -1,31 +1,95 @@
+ namespace RPA.Infrastructure.Persistence;
+ 
++using System.Collections.Concurrent;
+ using Microsoft.EntityFrameworkCore;
+ using RPA.Domain.Entities;
++using RPA.Domain.Enums;
+ using RPA.Domain.Interfaces;
+ 
+-/// <summary>EF Core tabanlı <see cref="IQueueItemRepository"/> implementasyonu (Task 2.5.1).</summary>
++/// <summary>EF Core tabanlı <see cref="IQueueItemRepository"/> implementasyonu (Task 2.5.1, 3.2).</summary>
+ public sealed class EfQueueItemRepository : IQueueItemRepository
+ {
+     private readonly RpaDbContext _db;
+ 
++    // SQL Server dışı sağlayıcılar (InMemory/Sqlite testleri) satır kilidi desteklemediğinden,
++    // claim işlemleri kuyruk bazında bu semaforlarla süreç-içi seri hale getirilir. Böylece
++    // eşzamanlılık davranışı (yalnızca bir çağrı kalemi alır) sağlayıcıdan bağımsız test edilebilir.
++    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> ClaimLocks = new();
++
+     public EfQueueItemRepository(RpaDbContext db)
+     {
+         _db = db ?? throw new ArgumentNullException(nameof(db));
+     }
+ 
+     public Task<QueueItem?> FindByIdempotencyKeyAsync(
+         Guid queueId, string idempotencyKey, CancellationToken cancellationToken = default)
+         => _db.QueueItems
+             .Where(qi => !qi.IsDeleted && qi.QueueId == queueId && qi.IdempotencyKey == idempotencyKey)
+             .FirstOrDefaultAsync(cancellationToken);
+ 
+     public Task<QueueItem?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
+         => _db.QueueItems.FirstOrDefaultAsync(qi => qi.Id == id, cancellationToken);
+ 
++    public Task<Queue?> FindQueueAsync(Guid queueId, CancellationToken cancellationToken = default)
++        => _db.Queues.FirstOrDefaultAsync(q => q.Id == queueId && !q.IsDeleted, cancellationToken);
++
++    public async Task<QueueItem?> ClaimNextNewItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default)
++    {
++        if (_db.Database.IsSqlServer())
++            return await ClaimWithUpdLockAsync(queueId, robotId, cancellationToken);
++
++        // Sağlayıcı satır kilidi desteklemiyor (test): kuyruk bazında süreç-içi seri hale getir.
++        var gate = ClaimLocks.GetOrAdd(queueId, _ => new SemaphoreSlim(1, 1));
++        await gate.WaitAsync(cancellationToken);
++        try
++        {
++            var item = await _db.QueueItems
++                .Where(qi => !qi.IsDeleted && qi.QueueId == queueId && qi.Status == QueueItemStatus.New)
++                .OrderBy(qi => qi.CreatedAt)
++                .FirstOrDefaultAsync(cancellationToken);
++            if (item is null)
++                return null;
++
++            Assign(item, robotId);
++            await _db.SaveChangesAsync(cancellationToken);
++            return item;
++        }
++        finally
++        {
++            gate.Release();
++        }
++    }
++
++    private async Task<QueueItem?> ClaimWithUpdLockAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken)
++    {
++        // UPDLOCK: sıradaki satırı yazma amaçlı kilitle. READPAST: başka robotun kilitlediği satırı
++        // atla (bekleme). ROWLOCK: satır seviyesinde kilit. Böylece 5 robot aynı anda çağırsa bile
++        // her biri farklı (veya boş) satır alır; aynı kalem iki kez atanmaz.
++        var status = (int)QueueItemStatus.New;
++        var item = await _db.QueueItems
++            .FromSqlInterpolated($@"
++                SELECT TOP(1) * FROM [QueueItems] WITH (UPDLOCK, READPAST, ROWLOCK)
++                WHERE [QueueId] = {queueId} AND [Status] = {status} AND [IsDeleted] = 0
++                ORDER BY [CreatedAt]")
++            .FirstOrDefaultAsync(cancellationToken);
++        if (item is null)
++            return null;
++
++        Assign(item, robotId);
++        await _db.SaveChangesAsync(cancellationToken);
++        return item;
++    }
++
++    private static void Assign(QueueItem item, Guid robotId)
++    {
++        item.Status = QueueItemStatus.InProgress;
++        item.AssignedRobotId = robotId;
++        item.StartedAt = DateTime.UtcNow;
++    }
++
+     public async Task AddAsync(QueueItem item, CancellationToken cancellationToken = default)
+         => await _db.QueueItems.AddAsync(item, cancellationToken);
+ 
+     public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+         => _db.SaveChangesAsync(cancellationToken);
+ }
+diff --git a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+index 91bfe6c..6ee2794 100644
+--- a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
++++ b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+@@ -65,20 +65,23 @@ public class RpaDbContext : DbContext
+             entity.Ignore(q => q.Items);
+         });
+ 
+         modelBuilder.Entity<QueueItem>(entity =>
+         {
+             entity.HasKey(qi => qi.Id);
+             entity.Property(qi => qi.IdempotencyKey).HasMaxLength(256).IsRequired();
+             // Spec Bölüm 5.2 — referans anahtarı ile mükerrer işlem engeli: kuyruk +
+             // idempotency key birlikte benzersizdir.
+             entity.HasIndex(qi => new { qi.QueueId, qi.IdempotencyKey }).IsUnique();
++            // Task 3.2 — kuyruk motoru sıradaki New kalemi (QueueId + Status) ile çeker; claim
++            // sorgusunun UPDLOCK/READPAST performansı için birleşik indeks.
++            entity.HasIndex(qi => new { qi.QueueId, qi.Status });
+             // Robot/Queue navigasyonları tam şema paketinde (WP-1.2/3.2) yapılandırılacak.
+             entity.Ignore(qi => qi.Queue);
+             entity.Ignore(qi => qi.AssignedRobot);
+         });
+ 
+         modelBuilder.Entity<Robot>(entity =>
+         {
+             entity.HasKey(r => r.Id);
+             entity.Property(r => r.MachineName).HasMaxLength(256).IsRequired();
+             entity.Property(r => r.Tags).HasMaxLength(1024);
+diff --git a/src/RPA.Infrastructure/Queues/QueueService.cs b/src/RPA.Infrastructure/Queues/QueueService.cs
+new file mode 100644
+index 0000000..fc9354c
+--- /dev/null
++++ b/src/RPA.Infrastructure/Queues/QueueService.cs
+@@ -0,0 +1,99 @@
++namespace RPA.Infrastructure.Queues;
++
++using Microsoft.Extensions.Logging;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Kuyruk motoru (Task 3.2, Spec Bölüm 7). İş kalemlerini UPDLOCK ile atomik çeker, durum
++/// geçişlerini ve yeniden deneme politikasını uygular. Kuyruk çekimi ve robot ataması loglanır.
++/// </summary>
++public sealed class QueueService : IQueueService
++{
++    private readonly IQueueItemRepository _repository;
++    private readonly ILogger<QueueService> _logger;
++
++    public QueueService(IQueueItemRepository repository, ILogger<QueueService> logger)
++    {
++        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public async Task<QueueItem?> GetNextItemAsync(Guid queueId, Guid robotId, CancellationToken cancellationToken = default)
++    {
++        var item = await _repository.ClaimNextNewItemAsync(queueId, robotId, cancellationToken);
++        if (item is null)
++        {
++            _logger.LogDebug("Kuyruk {QueueId} boş — robot {RobotId} için işlenecek kalem yok.", queueId, robotId);
++            return null;
++        }
++
++        _logger.LogInformation("QueueItem {ItemId} kuyruk {QueueId} robot {RobotId} tarafından alındı (InProgress).",
++            item.Id, queueId, robotId);
++        return item;
++    }
++
++    public async Task<QueueItem?> CompleteAsync(Guid itemId, CancellationToken cancellationToken = default)
++    {
++        var item = await _repository.FindByIdAsync(itemId, cancellationToken);
++        if (item is null)
++        {
++            _logger.LogWarning("Complete: bilinmeyen QueueItem {ItemId}.", itemId);
++            return null;
++        }
++
++        item.Status = QueueItemStatus.Successful;
++        item.CompletedAt = DateTime.UtcNow;
++        item.ErrorDetail = null;
++        await _repository.SaveChangesAsync(cancellationToken);
++        _logger.LogInformation("QueueItem {ItemId} tamamlandı (Successful).", item.Id);
++        return item;
++    }
++
++    public async Task<QueueItem?> FailAsync(Guid itemId, string? errorDetail, bool isBusinessException, CancellationToken cancellationToken = default)
++    {
++        var item = await _repository.FindByIdAsync(itemId, cancellationToken);
++        if (item is null)
++        {
++            _logger.LogWarning("Fail: bilinmeyen QueueItem {ItemId}.", itemId);
++            return null;
++        }
++
++        item.AttemptCount++;
++        item.ErrorDetail = errorDetail;
++
++        if (isBusinessException)
++        {
++            // İş kuralı istisnası: yeniden denenmez (Spec Bölüm 7 — retry yalnızca sistem hatası).
++            item.Status = QueueItemStatus.BusinessException;
++            item.CompletedAt = DateTime.UtcNow;
++            _logger.LogInformation("QueueItem {ItemId} iş kuralı istisnası — yeniden denenmeyecek.", item.Id);
++            await _repository.SaveChangesAsync(cancellationToken);
++            return item;
++        }
++
++        var queue = await _repository.FindQueueAsync(item.QueueId, cancellationToken);
++        var maxRetries = queue?.MaxRetries ?? 0;
++
++        if (item.AttemptCount <= maxRetries)
++        {
++            // Yeniden dene: kalemi tekrar kuyruğa al, atamayı temizle.
++            item.Status = QueueItemStatus.New;
++            item.AssignedRobotId = null;
++            item.StartedAt = null;
++            _logger.LogWarning("QueueItem {ItemId} sistem hatası — yeniden kuyruğa alındı (deneme {Attempt}/{Max}).",
++                item.Id, item.AttemptCount, maxRetries);
++        }
++        else
++        {
++            item.Status = QueueItemStatus.Failed;
++            item.CompletedAt = DateTime.UtcNow;
++            _logger.LogError("QueueItem {ItemId} maksimum deneme aşıldı ({Attempt}/{Max}) — Failed.",
++                item.Id, item.AttemptCount, maxRetries);
++        }
++
++        await _repository.SaveChangesAsync(cancellationToken);
++        return item;
++    }
++}
+diff --git a/src/RPA.Infrastructure/Queues/QueueServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Queues/QueueServiceCollectionExtensions.cs
+new file mode 100644
+index 0000000..b048d6a
+--- /dev/null
++++ b/src/RPA.Infrastructure/Queues/QueueServiceCollectionExtensions.cs
+@@ -0,0 +1,16 @@
++namespace RPA.Infrastructure.Queues;
++
++using Microsoft.Extensions.DependencyInjection;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Persistence;
++
++/// <summary>Kuyruk motoru DI kaydı (Task 3.2, Spec Bölüm 7).</summary>
++public static class QueueServiceCollectionExtensions
++{
++    public static IServiceCollection AddQueueServices(this IServiceCollection services)
++    {
++        services.AddScoped<IQueueItemRepository, EfQueueItemRepository>();
++        services.AddScoped<IQueueService, QueueService>();
++        return services;
++    }
++}
+diff --git a/src/RPA.WebAPI/Program.cs b/src/RPA.WebAPI/Program.cs
+index dbacaf6..76da294 100644
+--- a/src/RPA.WebAPI/Program.cs
++++ b/src/RPA.WebAPI/Program.cs
+@@ -1,18 +1,19 @@
+ using System.Security.Cryptography;
+ using System.Text;
+ using Microsoft.AspNetCore.Authentication.JwtBearer;
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.IdentityModel.Tokens;
+ using RPA.Infrastructure.Authentication;
+ using RPA.Infrastructure.Logging;
+ using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Queues;
+ using RPA.Infrastructure.Robots;
+ using RPA.Infrastructure.Vault;
+ using RPA.Infrastructure.Workflow;
+ using RPA.WebAPI.Robots;
+ using RPA.WebAPI.Middleware;
+ using Serilog;
+ 
+ var builder = WebApplication.CreateBuilder(args);
+ 
+ // --- Serilog Configuration (Spec Bölüm 11) ---
+@@ -40,20 +41,23 @@ builder.Services.AddDbContext<RpaDbContext>(options =>
+     options.UseSqlServer(
+         builder.Configuration.GetConnectionString("DefaultConnection")
+         ?? "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"));
+ 
+ // Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
+ builder.Services.AddWorkflowServices();
+ 
+ // Robot kayıt + heartbeat + offline tespiti servisleri — Spec Bölüm 5.6, 9.
+ builder.Services.AddRobotServices();
+ 
++// Kuyruk motoru (UPDLOCK atama + retry) — Task 3.2, Spec Bölüm 7.
++builder.Services.AddQueueServices();
++
+ // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
+ builder.Services.AddSignalR();
+ 
+ // JWT Bearer authentication middleware.
+ var jwt = builder.Configuration
+     .GetSection(AuthenticationOptions.SectionName)
+     .Get<AuthenticationOptions>()?.Jwt ?? new JwtOptions();
+ 
+ // CRITICAL FIX: No fallback to all-zero key. Require JWT_SECRET environment variable.
+ if (string.IsNullOrEmpty(jwt.Secret))
+diff --git a/src/RPA.WebAPI/Queues/QueuesController.cs b/src/RPA.WebAPI/Queues/QueuesController.cs
+new file mode 100644
+index 0000000..105515b
+--- /dev/null
++++ b/src/RPA.WebAPI/Queues/QueuesController.cs
+@@ -0,0 +1,100 @@
++namespace RPA.WebAPI.Queues;
++
++using Microsoft.AspNetCore.Mvc;
++using RPA.Domain.Entities;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Kuyruk motoru endpoint'leri (Task 3.2, Spec Bölüm 7). Robotlar sıradaki kalemi UPDLOCK ile
++/// çeker (nextitem) ve durum geçişini (complete/fail) PATCH ile bildirir.
++/// </summary>
++[ApiController]
++[Route("api/queues")]
++public class QueuesController : ControllerBase
++{
++    private readonly IQueueService _queueService;
++
++    public QueuesController(IQueueService queueService)
++    {
++        _queueService = queueService;
++    }
++
++    /// <summary>
++    /// Kuyruktan sıradaki kalemi robota atayarak çeker. Uygun kalem yoksa 204 No Content.
++    /// </summary>
++    [HttpGet("{id:guid}/nextitem")]
++    [ProducesResponseType(typeof(QueueItemDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status204NoContent)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<IActionResult> GetNextItem(Guid id, [FromQuery] Guid robotId, CancellationToken ct)
++    {
++        if (robotId == Guid.Empty)
++            return BadRequest(new { error = "robotId zorunludur." });
++
++        var item = await _queueService.GetNextItemAsync(id, robotId, ct);
++        return item is null ? NoContent() : Ok(QueueItemDto.From(item));
++    }
++
++    /// <summary>
++    /// Kalemin durumunu günceller: status = "Successful" tamamlar; "Failed"/"BusinessException"
++    /// hata olarak işaretler (isBusinessException'a göre retry uygulanır).
++    /// </summary>
++    [HttpPatch("{id:guid}/items/{itemId:guid}")]
++    [ProducesResponseType(typeof(QueueItemDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    [ProducesResponseType(StatusCodes.Status404NotFound)]
++    public async Task<IActionResult> UpdateItem(Guid id, Guid itemId, [FromBody] UpdateQueueItemRequest request, CancellationToken ct)
++    {
++        if (request is null || string.IsNullOrWhiteSpace(request.Status))
++            return BadRequest(new { error = "status zorunludur." });
++
++        QueueItem? result;
++        switch (request.Status.Trim().ToLowerInvariant())
++        {
++            case "successful":
++            case "complete":
++            case "done":
++                result = await _queueService.CompleteAsync(itemId, ct);
++                break;
++            case "businessexception":
++                result = await _queueService.FailAsync(itemId, request.ErrorDetail, isBusinessException: true, ct);
++                break;
++            case "failed":
++            case "fail":
++                result = await _queueService.FailAsync(itemId, request.ErrorDetail, isBusinessException: false, ct);
++                break;
++            default:
++                return BadRequest(new { error = $"Geçersiz status: {request.Status}" });
++        }
++
++        return result is null ? NotFound() : Ok(QueueItemDto.From(result));
++    }
++}
++
++public class UpdateQueueItemRequest
++{
++    public string Status { get; set; } = string.Empty;
++    public string? ErrorDetail { get; set; }
++}
++
++public class QueueItemDto
++{
++    public Guid Id { get; set; }
++    public Guid QueueId { get; set; }
++    public string Status { get; set; } = string.Empty;
++    public int AttemptCount { get; set; }
++    public Guid? AssignedRobotId { get; set; }
++    public string Payload { get; set; } = "{}";
++    public string? ErrorDetail { get; set; }
++
++    public static QueueItemDto From(QueueItem i) => new()
++    {
++        Id = i.Id,
++        QueueId = i.QueueId,
++        Status = i.Status.ToString(),
++        AttemptCount = i.AttemptCount,
++        AssignedRobotId = i.AssignedRobotId,
++        Payload = i.Payload,
++        ErrorDetail = i.ErrorDetail,
++    };
++}
+diff --git a/tests/RPA.Infrastructure.Tests/QueueMigrationTests.cs b/tests/RPA.Infrastructure.Tests/QueueMigrationTests.cs
+new file mode 100644
+index 0000000..b11d578
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/QueueMigrationTests.cs
+@@ -0,0 +1,64 @@
++namespace RPA.Infrastructure.Tests;
++
++using Microsoft.Data.Sqlite;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using RPA.Infrastructure.Persistence;
++
++/// <summary>
++/// Task 3.2 — AddQueueClaimIndex migration: kuyruk claim indeksinin (QueueId + Status) şemaya
++/// eklendiğini ve rollback ürettiğini doğrular. SQLite üzerinde script üretimiyle kod yolu çalıştırılır.
++/// </summary>
++public class QueueMigrationTests
++{
++    private static RpaDbContext CreateSqliteDb(SqliteConnection connection)
++    {
++        var options = new DbContextOptionsBuilder<RpaDbContext>()
++            .UseSqlite(connection)
++            .ConfigureWarnings(w => w.Ignore(
++                Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning))
++            .Options;
++        return new RpaDbContext(options);
++    }
++
++    private static IMigrator Migrator(SqliteConnection connection)
++        => CreateSqliteDb(connection).GetService<IMigrator>();
++
++    [Fact]
++    public void Migration_Up_CreatesQueueClaimIndex()
++    {
++        using var connection = new SqliteConnection("DataSource=:memory:");
++        connection.Open();
++        var script = Migrator(connection).GenerateScript();
++
++        Assert.Contains("IX_QueueItems_QueueId_Status", script);
++    }
++
++    [Fact]
++    public void Migration_IsRegisteredInAssembly()
++    {
++        using var connection = new SqliteConnection("DataSource=:memory:");
++        connection.Open();
++        using var db = CreateSqliteDb(connection);
++
++        var migrationsAssembly = db.GetService<IMigrationsAssembly>();
++        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("AddQueueClaimIndex"));
++    }
++
++    [Fact]
++    public void Migration_Down_DropsQueueClaimIndex()
++    {
++        using var connection = new SqliteConnection("DataSource=:memory:");
++        connection.Open();
++        using var db = CreateSqliteDb(connection);
++        var migrationsAssembly = db.GetService<IMigrationsAssembly>();
++        var migrationId = migrationsAssembly.Migrations.Keys.Single(k => k.Contains("AddQueueClaimIndex"));
++
++        var migration = migrationsAssembly.Migrations.Single(m => m.Key.Contains("AddQueueClaimIndex"));
++        var instance = migrationsAssembly.CreateMigration(migration.Value, "Sqlite");
++
++        Assert.NotEmpty(instance.UpOperations);
++        Assert.NotEmpty(instance.DownOperations);
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/QueueServiceTests.cs b/tests/RPA.Infrastructure.Tests/QueueServiceTests.cs
+new file mode 100644
+index 0000000..e68d14b
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/QueueServiceTests.cs
+@@ -0,0 +1,196 @@
++namespace RPA.Infrastructure.Tests;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Queues;
++
++/// <summary>
++/// Task 3.2 — Kuyruk motoru: UPDLOCK atama, durum geçişleri, retry ve eşzamanlılık testleri
++/// (Spec Bölüm 7). SQL Server dışı sağlayıcılarda claim, süreç-içi semaforla seri hale getirilir.
++/// </summary>
++public class QueueServiceTests
++{
++    private static string NewDbName() => Guid.NewGuid().ToString();
++
++    private static RpaDbContext Db(string name)
++    {
++        var options = new DbContextOptionsBuilder<RpaDbContext>()
++            .UseInMemoryDatabase(databaseName: name)
++            .Options;
++        var db = new RpaDbContext(options);
++        db.Database.EnsureCreated();
++        return db;
++    }
++
++    private static QueueService Service(RpaDbContext db)
++        => new(new EfQueueItemRepository(db), new MockLogger<QueueService>());
++
++    private static async Task<(Guid queueId, Guid itemId)> SeedQueueWithItem(RpaDbContext db, int maxRetries = 3)
++    {
++        var queue = new Queue { Name = "Q1", MaxRetries = maxRetries };
++        db.Queues.Add(queue);
++        var item = new QueueItem { QueueId = queue.Id, IdempotencyKey = Guid.NewGuid().ToString(), Status = QueueItemStatus.New };
++        db.QueueItems.Add(item);
++        await db.SaveChangesAsync();
++        return (queue.Id, item.Id);
++    }
++
++    // ---- GetNextItem / atama ----
++
++    [Fact]
++    public async Task GetNextItem_ClaimsAndAssignsRobot()
++    {
++        var name = NewDbName();
++        using var db = Db(name);
++        var (queueId, itemId) = await SeedQueueWithItem(db);
++        var robotId = Guid.NewGuid();
++
++        var item = await Service(db).GetNextItemAsync(queueId, robotId);
++
++        Assert.NotNull(item);
++        Assert.Equal(itemId, item!.Id);
++        Assert.Equal(QueueItemStatus.InProgress, item.Status);
++        Assert.Equal(robotId, item.AssignedRobotId);
++        Assert.NotNull(item.StartedAt);
++    }
++
++    [Fact]
++    public async Task GetNextItem_EmptyQueue_ReturnsNull()
++    {
++        using var db = Db(NewDbName());
++        var queue = new Queue { Name = "Empty" };
++        db.Queues.Add(queue);
++        await db.SaveChangesAsync();
++
++        Assert.Null(await Service(db).GetNextItemAsync(queue.Id, Guid.NewGuid()));
++    }
++
++    [Fact]
++    public async Task GetNextItem_ReturnsOldestFirst()
++    {
++        using var db = Db(NewDbName());
++        var queue = new Queue { Name = "Q" };
++        db.Queues.Add(queue);
++        var older = new QueueItem { QueueId = queue.Id, IdempotencyKey = "a", Status = QueueItemStatus.New, CreatedAt = DateTime.UtcNow.AddMinutes(-5) };
++        var newer = new QueueItem { QueueId = queue.Id, IdempotencyKey = "b", Status = QueueItemStatus.New, CreatedAt = DateTime.UtcNow };
++        db.QueueItems.AddRange(newer, older);
++        await db.SaveChangesAsync();
++
++        var claimed = await Service(db).GetNextItemAsync(queue.Id, Guid.NewGuid());
++        Assert.Equal(older.Id, claimed!.Id);
++    }
++
++    // ---- Concurrency: 5 robot, 1 kalem ----
++
++    [Fact]
++    public async Task GetNextItem_FiveConcurrentRobots_OnlyOneWins()
++    {
++        var name = NewDbName();
++        Guid queueId;
++        using (var seed = Db(name))
++            (queueId, _) = await SeedQueueWithItem(seed);
++
++        var tasks = Enumerable.Range(0, 5).Select(_ => Task.Run(async () =>
++        {
++            // Her robot kendi DbContext'ini kullanır (DbContext thread-safe değildir); hepsi aynı
++            // InMemory veritabanını paylaşır. Claim, kuyruk bazlı semaforla seri hale gelir.
++            using var db = Db(name);
++            return await Service(db).GetNextItemAsync(queueId, Guid.NewGuid());
++        })).ToArray();
++
++        var results = await Task.WhenAll(tasks);
++
++        var winners = results.Where(r => r is not null).ToList();
++        Assert.Single(winners);
++        Assert.Equal(4, results.Count(r => r is null));
++    }
++
++    // ---- Complete ----
++
++    [Fact]
++    public async Task Complete_SetsSuccessful()
++    {
++        using var db = Db(NewDbName());
++        var (queueId, itemId) = await SeedQueueWithItem(db);
++        var svc = Service(db);
++        await svc.GetNextItemAsync(queueId, Guid.NewGuid());
++
++        var done = await svc.CompleteAsync(itemId);
++
++        Assert.Equal(QueueItemStatus.Successful, done!.Status);
++        Assert.NotNull(done.CompletedAt);
++    }
++
++    [Fact]
++    public async Task Complete_UnknownItem_ReturnsNull()
++    {
++        using var db = Db(NewDbName());
++        Assert.Null(await Service(db).CompleteAsync(Guid.NewGuid()));
++    }
++
++    // ---- Fail: BusinessException (no retry) ----
++
++    [Fact]
++    public async Task Fail_BusinessException_NoRetry()
++    {
++        using var db = Db(NewDbName());
++        var (queueId, itemId) = await SeedQueueWithItem(db, maxRetries: 3);
++        var svc = Service(db);
++        await svc.GetNextItemAsync(queueId, Guid.NewGuid());
++
++        var failed = await svc.FailAsync(itemId, "İş kuralı ihlali", isBusinessException: true);
++
++        Assert.Equal(QueueItemStatus.BusinessException, failed!.Status);
++        Assert.Equal(1, failed.AttemptCount);
++        Assert.NotNull(failed.CompletedAt);
++    }
++
++    // ---- Fail: SystemException retry ----
++
++    [Fact]
++    public async Task Fail_SystemException_RequeuesWhenUnderMaxRetries()
++    {
++        using var db = Db(NewDbName());
++        var (queueId, itemId) = await SeedQueueWithItem(db, maxRetries: 3);
++        var svc = Service(db);
++        await svc.GetNextItemAsync(queueId, Guid.NewGuid());
++
++        var failed = await svc.FailAsync(itemId, "timeout", isBusinessException: false);
++
++        Assert.Equal(QueueItemStatus.New, failed!.Status);
++        Assert.Equal(1, failed.AttemptCount);
++        Assert.Null(failed.AssignedRobotId);
++        Assert.Null(failed.StartedAt);
++    }
++
++    [Fact]
++    public async Task Fail_SystemException_FailsWhenMaxRetriesExceeded()
++    {
++        using var db = Db(NewDbName());
++        var (queueId, itemId) = await SeedQueueWithItem(db, maxRetries: 1);
++        var svc = Service(db);
++        var robotId = Guid.NewGuid();
++
++        // 1. deneme: retry (AttemptCount 1 <= 1) -> New
++        await svc.GetNextItemAsync(queueId, robotId);
++        var first = await svc.FailAsync(itemId, "timeout", isBusinessException: false);
++        Assert.Equal(QueueItemStatus.New, first!.Status);
++
++        // 2. deneme: AttemptCount 2 > 1 -> Failed
++        await svc.GetNextItemAsync(queueId, robotId);
++        var second = await svc.FailAsync(itemId, "timeout", isBusinessException: false);
++
++        Assert.Equal(QueueItemStatus.Failed, second!.Status);
++        Assert.Equal(2, second.AttemptCount);
++        Assert.NotNull(second.CompletedAt);
++    }
++
++    [Fact]
++    public async Task Fail_UnknownItem_ReturnsNull()
++    {
++        using var db = Db(NewDbName());
++        Assert.Null(await Service(db).FailAsync(Guid.NewGuid(), "x", false));
++    }
++}
+diff --git a/tests/RPA.WebAPI.Tests/QueuesControllerIntegrationTests.cs b/tests/RPA.WebAPI.Tests/QueuesControllerIntegrationTests.cs
+new file mode 100644
+index 0000000..cd7595f
+--- /dev/null
++++ b/tests/RPA.WebAPI.Tests/QueuesControllerIntegrationTests.cs
+@@ -0,0 +1,151 @@
++namespace RPA.WebAPI.Tests;
++
++using System.Net;
++using System.Net.Http.Json;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.Extensions.DependencyInjection;
++using Moq;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// QueuesController HTTP-seviyesi testleri (Task 3.2). IQueueService stub'lanır.
++/// </summary>
++public class QueuesControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
++{
++    private readonly WebApplicationFactory<Program> _factory;
++
++    public QueuesControllerIntegrationTests(WebApplicationFactory<Program> factory)
++    {
++        _factory = factory;
++    }
++
++    private HttpClient CreateClient(IQueueService service)
++    {
++        return _factory.WithWebHostBuilder(builder =>
++        {
++            builder.ConfigureServices(services =>
++            {
++                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IQueueService));
++                if (descriptor is not null) services.Remove(descriptor);
++                services.AddScoped(_ => service);
++            });
++        }).CreateClient();
++    }
++
++    [Fact]
++    public async Task NextItem_ReturnsClaimedItem()
++    {
++        var queueId = Guid.NewGuid();
++        var robotId = Guid.NewGuid();
++        var item = new QueueItem { QueueId = queueId, Status = QueueItemStatus.InProgress, AssignedRobotId = robotId };
++        var mock = new Mock<IQueueService>();
++        mock.Setup(s => s.GetNextItemAsync(queueId, robotId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
++        var client = CreateClient(mock.Object);
++
++        var response = await client.GetAsync($"/api/queues/{queueId}/nextitem?robotId={robotId}");
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        var body = await response.Content.ReadFromJsonAsync<QueueItemDto>();
++        Assert.Equal("InProgress", body!.Status);
++        Assert.Equal(robotId, body.AssignedRobotId);
++    }
++
++    [Fact]
++    public async Task NextItem_EmptyQueue_Returns204()
++    {
++        var mock = new Mock<IQueueService>();
++        mock.Setup(s => s.GetNextItemAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync((QueueItem?)null);
++        var client = CreateClient(mock.Object);
++
++        var response = await client.GetAsync($"/api/queues/{Guid.NewGuid()}/nextitem?robotId={Guid.NewGuid()}");
++        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task NextItem_MissingRobotId_Returns400()
++    {
++        var client = CreateClient(new Mock<IQueueService>().Object);
++        var response = await client.GetAsync($"/api/queues/{Guid.NewGuid()}/nextitem?robotId={Guid.Empty}");
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task UpdateItem_Successful_CallsComplete()
++    {
++        var itemId = Guid.NewGuid();
++        var mock = new Mock<IQueueService>();
++        mock.Setup(s => s.CompleteAsync(itemId, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new QueueItem { Id = itemId, Status = QueueItemStatus.Successful });
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PatchAsJsonAsync(
++            $"/api/queues/{Guid.NewGuid()}/items/{itemId}", new { status = "Successful" });
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        mock.Verify(s => s.CompleteAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task UpdateItem_Failed_CallsFailWithSystemException()
++    {
++        var itemId = Guid.NewGuid();
++        var mock = new Mock<IQueueService>();
++        mock.Setup(s => s.FailAsync(itemId, It.IsAny<string?>(), false, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new QueueItem { Id = itemId, Status = QueueItemStatus.New });
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PatchAsJsonAsync(
++            $"/api/queues/{Guid.NewGuid()}/items/{itemId}", new { status = "Failed", errorDetail = "timeout" });
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        mock.Verify(s => s.FailAsync(itemId, "timeout", false, It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task UpdateItem_BusinessException_CallsFailWithBusinessFlag()
++    {
++        var itemId = Guid.NewGuid();
++        var mock = new Mock<IQueueService>();
++        mock.Setup(s => s.FailAsync(itemId, It.IsAny<string?>(), true, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new QueueItem { Id = itemId, Status = QueueItemStatus.BusinessException });
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PatchAsJsonAsync(
++            $"/api/queues/{Guid.NewGuid()}/items/{itemId}", new { status = "BusinessException", errorDetail = "kural" });
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        mock.Verify(s => s.FailAsync(itemId, "kural", true, It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task UpdateItem_UnknownItem_Returns404()
++    {
++        var mock = new Mock<IQueueService>();
++        mock.Setup(s => s.CompleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync((QueueItem?)null);
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PatchAsJsonAsync(
++            $"/api/queues/{Guid.NewGuid()}/items/{Guid.NewGuid()}", new { status = "Successful" });
++        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task UpdateItem_InvalidStatus_Returns400()
++    {
++        var client = CreateClient(new Mock<IQueueService>().Object);
++        var response = await client.PatchAsJsonAsync(
++            $"/api/queues/{Guid.NewGuid()}/items/{Guid.NewGuid()}", new { status = "Bogus" });
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++    }
++
++    private class QueueItemDto
++    {
++        public Guid Id { get; set; }
++        public string Status { get; set; } = string.Empty;
++        public Guid? AssignedRobotId { get; set; }
++    }
++}

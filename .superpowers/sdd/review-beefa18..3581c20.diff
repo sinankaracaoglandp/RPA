@@ -1,0 +1,190 @@
+# Review package: beefa18..3581c20
+
+## Commits
+3581c20 feat(infrastructure): Vision.* katalog + DI kaydı (Paket F)
+
+## Files changed
+ .../Workflow/ActivityRegistry.cs                   | 53 ++++++++++++++++++++++
+ .../WorkflowServiceCollectionExtensions.cs         | 10 ++++
+ .../Workflow/VisionCatalogTests.cs                 | 30 ++++++++++++
+ 3 files changed, 93 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+index 49f193a..718c015 100644
+--- a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
++++ b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+@@ -17,37 +17,39 @@ public static class ActivityRegistry
+     public const string CatSapNco = "SAP NCo";
+     public const string CatWeb = "Web";
+     public const string CatApi = "API";
+     public const string CatExcel = "Excel";
+     public const string CatCsv = "CSV";
+     public const string CatEmail = "E-posta";
+     public const string CatOtp = "OTP";
+     public const string CatFile = "Dosya";
+     public const string CatDesktop = "Masaüstü";
+     public const string CatCode = "Kod & Veri";
++    public const string CatVision = "Görüntü";
+ 
+     /// <summary>Tüm MVP aktivitelerini kaydeder ve immutable katalog döndürür.</summary>
+     public static IReadOnlyDictionary<string, ActivityMetadata> BuildCatalog()
+     {
+         var b = new ActivityCatalogBuilder();
+ 
+         RegisterLogic(b);
+         RegisterSapGui(b);
+         RegisterSapNco(b);
+         RegisterWeb(b);
+         RegisterApi(b);
+         RegisterExcelCsv(b);
+         RegisterEmail(b);
+         RegisterOtp(b);
+         RegisterFile(b);
+         RegisterDesktop(b);
+         RegisterCode(b);
++        RegisterVision(b);
+ 
+         return b.Build();
+     }
+ 
+     // ---- Mantık ----
+     private static void RegisterLogic(ActivityCatalogBuilder b)
+     {
+         b.Activity("Logic.Assign").DisplayName("Değişkene Ata").Category(CatLogic)
+             .Description("Bir değişkene ifade veya literal değer atar.")
+             .Input("variableName", "string").Input("value", "JSON");
+@@ -400,11 +402,62 @@ public static class ActivityRegistry
+             .Input("code", "string");
+ 
+         b.Activity("Data.ToDataTable").DisplayName("DataTable'a Çevir").Category(CatCode)
+             .Description("Satır listesini (sütun-değer) gerçek System.Data.DataTable'a dönüştürür.")
+             .Input("rows", "JSON").Output("table", "DataTable");
+ 
+         b.Activity("Data.FromDataTable").DisplayName("DataTable'dan Satırlar").Category(CatCode)
+             .Description("DataTable'ı satır listesine (sütun-değer) dönüştürür.")
+             .Input("table", "DataTable").Output("rows", "JSON");
+     }
++
++    // ---- Görüntü/OCR Fallback (Vision.*) — Paket F ----
++    private static void RegisterVision(ActivityCatalogBuilder b)
++    {
++        const string cap = "vision";
++
++        b.Activity("Vision.Click").DisplayName("Görüntüye Tıkla").Category(CatVision).Capability(cap)
++            .Description("Ekranda bir görüntüyü bulur ve merkezine tıklar.")
++            .Input("image", "string", pickerKind: "image", description: "Aranacak görüntü (base64 PNG).")
++            .Input("confidence", "number", required: false, defaultValue: 0.8)
++            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
++        b.Activity("Vision.WaitFor").DisplayName("Görüntü Bekle").Category(CatVision).Capability(cap)
++            .Description("Bir görüntü ekranda görünene kadar bekler (timeout → System).")
++            .Input("image", "string", pickerKind: "image")
++            .Input("confidence", "number", required: false, defaultValue: 0.8)
++            .Input("timeoutMs", "int", required: false, defaultValue: 10000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
++        b.Activity("Vision.Exists").DisplayName("Görüntü Var mı?").Category(CatVision).Capability(cap)
++            .Description("Görüntü ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
++            .Input("image", "string", pickerKind: "image")
++            .Input("confidence", "number", required: false, defaultValue: 0.8)
++            .Input("timeoutMs", "int", required: false, defaultValue: 0)
++            .Output("exists", "bool");
++
++        b.Activity("Vision.GetText").DisplayName("Görüntüden Metin Oku (OCR)").Category(CatVision).Capability(cap)
++            .Description("Bir ekran bölgesinden (boşsa tam ekran) OCR ile metin okur.")
++            .Input("region", "string", required: false, pickerKind: "image", description: "Bölge {x,y,width,height}.")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Output("text", "string");
++
++        b.Activity("Vision.ClickText").DisplayName("Metne Tıkla (OCR)").Category(CatVision).Capability(cap)
++            .Description("OCR ile bir metni bulur ve tıklar (timeout → System).")
++            .Input("text", "string")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
++            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
++        b.Activity("Vision.TextExists").DisplayName("Metin Var mı? (OCR)").Category(CatVision).Capability(cap)
++            .Description("Metin ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
++            .Input("text", "string")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 0)
++            .Output("exists", "bool");
++    }
+ }
+diff --git a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+index 945b84d..9f1cffd 100644
+--- a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
++++ b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+@@ -54,20 +54,30 @@ public static class WorkflowServiceCollectionExtensions
+         services.AddKeyedTransient<IActivity, DesktopSelectItemActivity>("Desktop.SelectItem");
+         services.AddKeyedTransient<IActivity, DesktopSendKeysActivity>("Desktop.SendKeys");
+         services.AddKeyedTransient<IActivity, DesktopWaitForActivity>("Desktop.WaitFor");
+         services.AddKeyedTransient<IActivity, DesktopScreenshotActivity>("Desktop.Screenshot");
+ 
+         // Kod & Veri: C# kod aktivitesi (Roslyn) + DataTable dönüşümleri.
+         services.AddKeyedTransient<IActivity, Activities.Code.InvokeCsharpActivity>("System.InvokeCode");
+         services.AddKeyedTransient<IActivity, Activities.Code.DataToDataTableActivity>("Data.ToDataTable");
+         services.AddKeyedTransient<IActivity, Activities.Code.DataFromDataTableActivity>("Data.FromDataTable");
+ 
++        // Paket F: Görüntü/OCR fallback aktiviteleri (Vision.*). IVisionAutomationChannel
++        // implementasyonu Agent sürecinde kayıtlıdır; aktiviteler yalnız arayüze bağlıdır.
++        services.TryAddSingleton<IVisionAutomationChannel, RPA.Infrastructure.Activities.Vision.UnavailableVisionAutomationChannel>();
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickActivity>("Vision.Click");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionWaitForActivity>("Vision.WaitFor");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionExistsActivity>("Vision.Exists");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionGetTextActivity>("Vision.GetText");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextActivity>("Vision.ClickText");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionTextExistsActivity>("Vision.TextExists");
++
+         services.AddSingleton<IActivityFactory>(sp =>
+             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
+ 
+         services.AddTransient<IWorkflowRunner, BaseRunner>();
+ 
+         // Task 4.5: Component publish/approve governance (Spec Bölüm 9).
+         // Bellek-içi depo — DB persistansı ayrı bir görev kapsamındadır.
+         services.AddSingleton<InMemoryComponentPublishRepository>();
+         services.AddSingleton<IComponentPublishRepository>(sp => sp.GetRequiredService<InMemoryComponentPublishRepository>());
+         services.AddSingleton<IComponentStore>(sp => sp.GetRequiredService<InMemoryComponentPublishRepository>());
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+new file mode 100644
+index 0000000..38566f9
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+@@ -0,0 +1,30 @@
++namespace RPA.Infrastructure.Tests.Workflow;
++
++using System.Linq;
++using RPA.Infrastructure.Workflow;
++using Xunit;
++
++public class VisionCatalogTests
++{
++    [Theory]
++    [InlineData("Vision.Click")]
++    [InlineData("Vision.WaitFor")]
++    [InlineData("Vision.Exists")]
++    [InlineData("Vision.GetText")]
++    [InlineData("Vision.ClickText")]
++    [InlineData("Vision.TextExists")]
++    public void Catalog_ContainsVisionActivity(string activityId)
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        Assert.Contains(catalog, a => a.Key == activityId);
++    }
++
++    [Fact]
++    public void VisionActivities_HaveVisionCapability()
++    {
++        var catalog = ActivityRegistry.BuildCatalog();
++        var vision = catalog.Where(a => a.Key.StartsWith("Vision.")).ToList();
++        Assert.Equal(6, vision.Count);
++        Assert.All(vision, a => Assert.Contains("vision", a.Value.RequiredCapabilities));
++    }
++}

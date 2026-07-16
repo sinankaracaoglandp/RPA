@@ -1,0 +1,1853 @@
+# Review package: 23f2867..6e0d881
+
+## Commits
+6e0d881 feat(infrastructure): EF migration — Robots şeması + MachineName index (Task 3.1)
+0a1bc5e test(webapi): RobotHub SignalR kimlik doğrulama + register akışı (Task 3.1)
+5c48fc4 feat(webapi): Robot REST endpoint'leri + RobotHub SignalR kanalı (Task 3.1)
+37113c8 feat(infrastructure): Robot kayıt + heartbeat + offline tespiti servisi (Task 3.1)
+
+## Files changed
+ .superpowers/sdd/progress.md                       |  19 +-
+ src/RPA.Domain/Interfaces/IRobotRepository.cs      |  25 ++
+ src/RPA.Domain/Interfaces/IRobotService.cs         |  42 +++
+ .../Migrations/20260705075927_AddRobot.Designer.cs | 307 +++++++++++++++++++++
+ .../Migrations/20260705075927_AddRobot.cs          | 168 +++++++++++
+ .../Migrations/RpaDbContextModelSnapshot.cs        | 304 ++++++++++++++++++++
+ .../Persistence/EfRobotRepository.cs               |  39 +++
+ src/RPA.Infrastructure/Persistence/RpaDbContext.cs |  16 ++
+ src/RPA.Infrastructure/Robots/RobotService.cs      |  92 ++++++
+ .../Robots/RobotServiceCollectionExtensions.cs     |  16 ++
+ src/RPA.WebAPI/Program.cs                          |  25 ++
+ src/RPA.WebAPI/Robots/RobotHub.cs                  |  67 +++++
+ src/RPA.WebAPI/Robots/RobotsController.cs          |  95 +++++++
+ .../RPA.Infrastructure.Tests/RobotServiceTests.cs  | 139 ++++++++++
+ tests/RPA.WebAPI.Tests/RPA.WebAPI.Tests.csproj     |   1 +
+ tests/RPA.WebAPI.Tests/RobotHubTests.cs            | 105 +++++++
+ .../RobotsControllerIntegrationTests.cs            | 118 ++++++++
+ 17 files changed, 1576 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/.superpowers/sdd/progress.md b/.superpowers/sdd/progress.md
+index 43a9633..d8dfae6 100644
+--- a/.superpowers/sdd/progress.md
++++ b/.superpowers/sdd/progress.md
+@@ -42,14 +42,29 @@
+ - Code review (high effort, Opus critical path 2.1–2.4):
+   - Reviewer: agent aa48750c6c9c8d338
+   - Findings: 10 (2 CONFIRMED, 8 PLAUSIBLE)
+   - Fix subagent: agent a05593b98ad440ae4 (4 critical fixes):
+     - BaseRunner ComponentId null coalesce (error message clarity)
+     - BaseRunner resumeVariables empty dict (state import separation)
+     - ExpressionEvaluator operator precedence (comparison > equality)
+     - RetryHandler OperationCanceledException (unconditional catch)
+   - Test results: Domain 4/4, Infrastructure 164/164, WebAPI 12/12 = **180/180 passing**
+ 
+-- Security review: pending (auth 1.3.1, vault 1.5.1, exception 2.3.1, component 2.4.1, email 2.8.1)
++- Security review: COMPLETE (agent a9fe9fc6a885caf99)
++  - 5 vulnerabilities fixed (JWT fallback CRITICAL, SMTP/IMAP/LDAP/expression/key-derivation HIGH)
++  - 190/190 tests passing (Domain 4, Infrastructure 171, WebAPI 15)
++  - Commit: 23f2867 (all security fixes committed)
++  - Details: JWT no fallback, password clearing in email/LDAP, expression whitelist, PBKDF2 key derivation
+ 
+-## Faz 3–6: TBD (20 task)
++## Faz 3: Robot Agent & Orchestrator (6 WP = 6 task)
++
++### Tasks (SDD execution order)
++
++- [ ] Task 3.1: Robot kayıt + SignalR dağıtım (Opus) — implementer a73509ae6836a48a4 in progress
++- [ ] Task 3.2: Kuyruk motoru + UPDLOCK atama (Opus) — blocked on 3.1
++- [ ] Task 3.3: Zamanlayıcı + tetikleyiciler (Sonnet) — blocked on 3.1-3.2
++- [ ] Task 3.4: Agent çekirdeği (Windows Service + tray) (Opus) — blocked on 3.1-3.3
++- [ ] Task 3.5: SessionManager (RDP/AutoLogon/tscon) (Opus) — blocked on 3.1-3.4
++- [ ] Task 3.6: Attended UX (tray, akış listesi, UserPrompt) (Sonnet) — blocked on 3.1-3.5
++
++## Faz 4–6: TBD (11 task)
+ 
+diff --git a/src/RPA.Domain/Interfaces/IRobotRepository.cs b/src/RPA.Domain/Interfaces/IRobotRepository.cs
+new file mode 100644
+index 0000000..a13afb6
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IRobotRepository.cs
+@@ -0,0 +1,25 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++
++/// <summary>
++/// Robot varlığı için kalıcılık erişimi (Spec Bölüm 5.6). Robot kayıt/heartbeat/offline
++/// tespiti servislerinin veri erişim sözleşmesi.
++/// </summary>
++public interface IRobotRepository
++{
++    /// <summary>Verilen makine adına sahip (soft-delete edilmemiş) robotu bulur; yoksa null.</summary>
++    Task<Robot?> FindByMachineNameAsync(string machineName, CancellationToken cancellationToken = default);
++
++    /// <summary>Id ile robotu bulur; yoksa null.</summary>
++    Task<Robot?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
++
++    /// <summary>Son heartbeat'i verilen eşikten (UTC) daha eski olan Offline olmayan robotları döner.</summary>
++    Task<IReadOnlyList<Robot>> FindStaleAsync(DateTime olderThanUtc, CancellationToken cancellationToken = default);
++
++    /// <summary>Yeni robot ekler (henüz kalıcı değil; SaveChangesAsync gerekir).</summary>
++    Task AddAsync(Robot robot, CancellationToken cancellationToken = default);
++
++    /// <summary>Bekleyen değişiklikleri kalıcı hale getirir.</summary>
++    Task SaveChangesAsync(CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Domain/Interfaces/IRobotService.cs b/src/RPA.Domain/Interfaces/IRobotService.cs
+new file mode 100644
+index 0000000..e9abf0d
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IRobotService.cs
+@@ -0,0 +1,42 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++
++/// <summary>
++/// Robot yaşam döngüsü servisi (Spec Bölüm 5.6, 9): kayıt, sorgulama, heartbeat ve
++/// offline tespiti. Orchestrator, robot ajanlarının durumunu bu servis üzerinden yönetir.
++/// </summary>
++public interface IRobotService
++{
++    /// <summary>
++    /// Robotu kaydeder. Aynı makine adı zaten varsa mevcut kayıt güncellenir (idempotent),
++    /// aksi halde yeni bir Robot (Status = Online) oluşturulur.
++    /// </summary>
++    Task<Robot> RegisterAsync(RobotRegistrationRequest request, CancellationToken cancellationToken = default);
++
++    /// <summary>Id ile robot döner; yoksa null.</summary>
++    Task<Robot?> GetAsync(Guid id, CancellationToken cancellationToken = default);
++
++    /// <summary>
++    /// Robotun heartbeat'ini kaydeder: LastHeartbeat = şimdi (UTC), Status = Online.
++    /// Robot bulunamazsa null döner.
++    /// </summary>
++    Task<Robot?> RecordHeartbeatAsync(Guid robotId, CancellationToken cancellationToken = default);
++
++    /// <summary>
++    /// Son heartbeat'i verilen zaman aşımından daha eski olan robotları Offline işaretler.
++    /// Offline'a çekilen robot sayısını döner (Spec Bölüm 9 — heartbeat timeout = 5 dk).
++    /// </summary>
++    Task<int> DetectOfflineRobotsAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
++}
++
++/// <summary>Robot kayıt isteği (Spec Bölüm 5.6).</summary>
++public sealed class RobotRegistrationRequest
++{
++    public string MachineName { get; set; } = "";
++    public RobotMode Mode { get; set; } = RobotMode.Unattended;
++    public string Tags { get; set; } = "";
++    public string? AgentVersion { get; set; }
++    public int Capacity { get; set; } = 1;
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260705075927_AddRobot.Designer.cs b/src/RPA.Infrastructure/Migrations/20260705075927_AddRobot.Designer.cs
+new file mode 100644
+index 0000000..1e8af9d
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260705075927_AddRobot.Designer.cs
+@@ -0,0 +1,307 @@
++﻿// <auto-generated />
++using System;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Metadata;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++using RPA.Infrastructure.Persistence;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    [DbContext(typeof(RpaDbContext))]
++    [Migration("20260705075927_AddRobot")]
++    partial class AddRobot
++    {
++        /// <inheritdoc />
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "10.0.9")
++                .HasAnnotation("Relational:MaxIdentifierLength", 128);
++
++            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Action")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("NewValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("OldValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("ResourceId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("ResourceType")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("nvarchar(128)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("UserId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("UserId");
++
++                    b.ToTable("AuditLogs");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Queue", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<int>("MaxRetries")
++                        .HasColumnType("int");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("RequireIdempotency")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("RetryBackoffPolicy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<int?>("SlaSeconds")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Queues");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.QueueItem", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<int>("AttemptCount")
++                        .HasColumnType("int");
++
++                    b.Property<string>("CheckpointData")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("ErrorDetail")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("IdempotencyKey")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("Payload")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("QueueId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("StartedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<int>("Status")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("QueueId", "IdempotencyKey")
++                        .IsUnique();
++
++                    b.ToTable("QueueItems");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Robot", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AgentVersion")
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<int>("Capacity")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("LastHeartbeat")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("MachineName")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<string>("Mode")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Tags")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("nvarchar(1024)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("MachineName");
++
++                    b.ToTable("Robots");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AdUsername")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("Email")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("FullName")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Users");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.User", "User")
++                        .WithMany("AuditLogs")
++                        .HasForeignKey("UserId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++
++                    b.Navigation("User");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Navigation("AuditLogs");
++                });
++#pragma warning restore 612, 618
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260705075927_AddRobot.cs b/src/RPA.Infrastructure/Migrations/20260705075927_AddRobot.cs
+new file mode 100644
+index 0000000..bbf072d
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260705075927_AddRobot.cs
+@@ -0,0 +1,168 @@
++﻿using System;
++using Microsoft.EntityFrameworkCore.Migrations;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    /// <inheritdoc />
++    public partial class AddRobot : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.CreateTable(
++                name: "QueueItems",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    QueueId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    IdempotencyKey = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
++                    Payload = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    Status = table.Column<int>(type: "int", nullable: false),
++                    AttemptCount = table.Column<int>(type: "int", nullable: false),
++                    AssignedRobotId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
++                    StartedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    ErrorDetail = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    CheckpointData = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_QueueItems", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "Queues",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    ProjectId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    Name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
++                    MaxRetries = table.Column<int>(type: "int", nullable: false),
++                    RetryBackoffPolicy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    SlaSeconds = table.Column<int>(type: "int", nullable: true),
++                    RequireIdempotency = table.Column<bool>(type: "bit", nullable: false),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_Queues", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "Robots",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    MachineName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
++                    Mode = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
++                    Tags = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: false),
++                    Status = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
++                    LastHeartbeat = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    AgentVersion = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
++                    Capacity = table.Column<int>(type: "int", nullable: false),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_Robots", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "Users",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    AdUsername = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
++                    FullName = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    Email = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_Users", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "AuditLogs",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    Action = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
++                    ResourceType = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
++                    ResourceId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    OldValue = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    NewValue = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_AuditLogs", x => x.Id);
++                    table.ForeignKey(
++                        name: "FK_AuditLogs_Users_UserId",
++                        column: x => x.UserId,
++                        principalTable: "Users",
++                        principalColumn: "Id",
++                        onDelete: ReferentialAction.Cascade);
++                });
++
++            migrationBuilder.CreateIndex(
++                name: "IX_AuditLogs_UserId",
++                table: "AuditLogs",
++                column: "UserId");
++
++            migrationBuilder.CreateIndex(
++                name: "IX_QueueItems_QueueId_IdempotencyKey",
++                table: "QueueItems",
++                columns: new[] { "QueueId", "IdempotencyKey" },
++                unique: true);
++
++            migrationBuilder.CreateIndex(
++                name: "IX_Robots_MachineName",
++                table: "Robots",
++                column: "MachineName");
++        }
++
++        /// <inheritdoc />
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.DropTable(
++                name: "AuditLogs");
++
++            migrationBuilder.DropTable(
++                name: "QueueItems");
++
++            migrationBuilder.DropTable(
++                name: "Queues");
++
++            migrationBuilder.DropTable(
++                name: "Robots");
++
++            migrationBuilder.DropTable(
++                name: "Users");
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+new file mode 100644
+index 0000000..87a2842
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+@@ -0,0 +1,304 @@
++﻿// <auto-generated />
++using System;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Metadata;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++using RPA.Infrastructure.Persistence;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    [DbContext(typeof(RpaDbContext))]
++    partial class RpaDbContextModelSnapshot : ModelSnapshot
++    {
++        protected override void BuildModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "10.0.9")
++                .HasAnnotation("Relational:MaxIdentifierLength", 128);
++
++            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Action")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("NewValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("OldValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("ResourceId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("ResourceType")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("nvarchar(128)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("UserId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("UserId");
++
++                    b.ToTable("AuditLogs");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Queue", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<int>("MaxRetries")
++                        .HasColumnType("int");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("RequireIdempotency")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("RetryBackoffPolicy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<int?>("SlaSeconds")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Queues");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.QueueItem", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<int>("AttemptCount")
++                        .HasColumnType("int");
++
++                    b.Property<string>("CheckpointData")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("ErrorDetail")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("IdempotencyKey")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("Payload")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("QueueId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("StartedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<int>("Status")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("QueueId", "IdempotencyKey")
++                        .IsUnique();
++
++                    b.ToTable("QueueItems");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Robot", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AgentVersion")
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<int>("Capacity")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("LastHeartbeat")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("MachineName")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<string>("Mode")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Tags")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("nvarchar(1024)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("MachineName");
++
++                    b.ToTable("Robots");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AdUsername")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("Email")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("FullName")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Users");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.User", "User")
++                        .WithMany("AuditLogs")
++                        .HasForeignKey("UserId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++
++                    b.Navigation("User");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Navigation("AuditLogs");
++                });
++#pragma warning restore 612, 618
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Persistence/EfRobotRepository.cs b/src/RPA.Infrastructure/Persistence/EfRobotRepository.cs
+new file mode 100644
+index 0000000..c94add1
+--- /dev/null
++++ b/src/RPA.Infrastructure/Persistence/EfRobotRepository.cs
+@@ -0,0 +1,39 @@
++namespace RPA.Infrastructure.Persistence;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>EF Core tabanlı <see cref="IRobotRepository"/> implementasyonu (Task 3.1).</summary>
++public sealed class EfRobotRepository : IRobotRepository
++{
++    private readonly RpaDbContext _db;
++
++    public EfRobotRepository(RpaDbContext db)
++    {
++        _db = db ?? throw new ArgumentNullException(nameof(db));
++    }
++
++    public Task<Robot?> FindByMachineNameAsync(string machineName, CancellationToken cancellationToken = default)
++        => _db.Robots
++            .Where(r => !r.IsDeleted && r.MachineName == machineName)
++            .FirstOrDefaultAsync(cancellationToken);
++
++    public Task<Robot?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
++        => _db.Robots.FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted, cancellationToken);
++
++    public async Task<IReadOnlyList<Robot>> FindStaleAsync(DateTime olderThanUtc, CancellationToken cancellationToken = default)
++        => await _db.Robots
++            .Where(r => !r.IsDeleted
++                        && r.Status != RobotStatus.Offline
++                        && r.LastHeartbeat != null
++                        && r.LastHeartbeat < olderThanUtc)
++            .ToListAsync(cancellationToken);
++
++    public async Task AddAsync(Robot robot, CancellationToken cancellationToken = default)
++        => await _db.Robots.AddAsync(robot, cancellationToken);
++
++    public Task SaveChangesAsync(CancellationToken cancellationToken = default)
++        => _db.SaveChangesAsync(cancellationToken);
++}
+diff --git a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+index fa43681..91bfe6c 100644
+--- a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
++++ b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+@@ -23,20 +23,23 @@ public class RpaDbContext : DbContext
+     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+ 
+     public DbSet<User> Users => Set<User>();
+ 
+     /// <summary>Task 2.5.1 — Idempotency/Checkpoint için minimal Queue/QueueItem eşlemesi.
+     /// Tam Queue şeması (Project ilişkisi dahil) WP-1.2 tam DbContext paketinde tamamlanacaktır.</summary>
+     public DbSet<Queue> Queues => Set<Queue>();
+ 
+     public DbSet<QueueItem> QueueItems => Set<QueueItem>();
+ 
++    /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
++    public DbSet<Robot> Robots => Set<Robot>();
++
+     protected override void OnModelCreating(ModelBuilder modelBuilder)
+     {
+         base.OnModelCreating(modelBuilder);
+ 
+         modelBuilder.Entity<AuditLog>(entity =>
+         {
+             entity.HasKey(a => a.Id);
+             entity.Property(a => a.Action).HasMaxLength(64).IsRequired();
+             entity.Property(a => a.ResourceType).HasMaxLength(128).IsRequired();
+         });
+@@ -66,12 +69,25 @@ public class RpaDbContext : DbContext
+         {
+             entity.HasKey(qi => qi.Id);
+             entity.Property(qi => qi.IdempotencyKey).HasMaxLength(256).IsRequired();
+             // Spec Bölüm 5.2 — referans anahtarı ile mükerrer işlem engeli: kuyruk +
+             // idempotency key birlikte benzersizdir.
+             entity.HasIndex(qi => new { qi.QueueId, qi.IdempotencyKey }).IsUnique();
+             // Robot/Queue navigasyonları tam şema paketinde (WP-1.2/3.2) yapılandırılacak.
+             entity.Ignore(qi => qi.Queue);
+             entity.Ignore(qi => qi.AssignedRobot);
+         });
++
++        modelBuilder.Entity<Robot>(entity =>
++        {
++            entity.HasKey(r => r.Id);
++            entity.Property(r => r.MachineName).HasMaxLength(256).IsRequired();
++            entity.Property(r => r.Tags).HasMaxLength(1024);
++            entity.Property(r => r.AgentVersion).HasMaxLength(64);
++            entity.Property(r => r.Mode).HasConversion<string>().HasMaxLength(32);
++            entity.Property(r => r.Status).HasConversion<string>().HasMaxLength(32);
++            entity.HasIndex(r => r.MachineName);
++            // QueueItems navigasyonu QueueItem tarafında Ignore edildi (tam şema WP-1.2/3.2).
++            entity.Ignore(r => r.QueueItems);
++        });
+     }
+ }
+diff --git a/src/RPA.Infrastructure/Robots/RobotService.cs b/src/RPA.Infrastructure/Robots/RobotService.cs
+new file mode 100644
+index 0000000..aa8ec91
+--- /dev/null
++++ b/src/RPA.Infrastructure/Robots/RobotService.cs
+@@ -0,0 +1,92 @@
++namespace RPA.Infrastructure.Robots;
++
++using Microsoft.Extensions.Logging;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Robot yaşam döngüsü servisi (Spec Bölüm 5.6, 9). Kayıt, sorgulama, heartbeat ve
++/// offline tespiti sağlar. Correlation ID = robot heartbeat oturumu (robot Id).
++/// </summary>
++public sealed class RobotService : IRobotService
++{
++    private readonly IRobotRepository _repository;
++    private readonly ILogger<RobotService> _logger;
++
++    public RobotService(IRobotRepository repository, ILogger<RobotService> logger)
++    {
++        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public async Task<Robot> RegisterAsync(RobotRegistrationRequest request, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(request);
++        if (string.IsNullOrWhiteSpace(request.MachineName))
++            throw new ArgumentException("MachineName zorunludur.", nameof(request));
++
++        var existing = await _repository.FindByMachineNameAsync(request.MachineName, cancellationToken);
++        if (existing is not null)
++        {
++            existing.Mode = request.Mode;
++            existing.Tags = request.Tags;
++            existing.AgentVersion = request.AgentVersion;
++            existing.Capacity = request.Capacity;
++            existing.Status = RobotStatus.Online;
++            existing.LastHeartbeat = DateTime.UtcNow;
++            await _repository.SaveChangesAsync(cancellationToken);
++            _logger.LogInformation("Robot {RobotId} ({MachineName}) yeniden kaydedildi.", existing.Id, existing.MachineName);
++            return existing;
++        }
++
++        var robot = new Robot
++        {
++            MachineName = request.MachineName,
++            Mode = request.Mode,
++            Tags = request.Tags,
++            AgentVersion = request.AgentVersion,
++            Capacity = request.Capacity,
++            Status = RobotStatus.Online,
++            LastHeartbeat = DateTime.UtcNow,
++        };
++        await _repository.AddAsync(robot, cancellationToken);
++        await _repository.SaveChangesAsync(cancellationToken);
++        _logger.LogInformation("Robot {RobotId} ({MachineName}) kaydedildi.", robot.Id, robot.MachineName);
++        return robot;
++    }
++
++    public Task<Robot?> GetAsync(Guid id, CancellationToken cancellationToken = default)
++        => _repository.FindByIdAsync(id, cancellationToken);
++
++    public async Task<Robot?> RecordHeartbeatAsync(Guid robotId, CancellationToken cancellationToken = default)
++    {
++        var robot = await _repository.FindByIdAsync(robotId, cancellationToken);
++        if (robot is null)
++        {
++            _logger.LogWarning("Heartbeat: bilinmeyen robot {RobotId}.", robotId);
++            return null;
++        }
++
++        robot.LastHeartbeat = DateTime.UtcNow;
++        robot.Status = RobotStatus.Online;
++        await _repository.SaveChangesAsync(cancellationToken);
++        return robot;
++    }
++
++    public async Task<int> DetectOfflineRobotsAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
++    {
++        var threshold = DateTime.UtcNow - timeout;
++        var stale = await _repository.FindStaleAsync(threshold, cancellationToken);
++        foreach (var robot in stale)
++        {
++            robot.Status = RobotStatus.Offline;
++            _logger.LogWarning("Robot {RobotId} ({MachineName}) heartbeat zaman aşımı — Offline.", robot.Id, robot.MachineName);
++        }
++
++        if (stale.Count > 0)
++            await _repository.SaveChangesAsync(cancellationToken);
++
++        return stale.Count;
++    }
++}
+diff --git a/src/RPA.Infrastructure/Robots/RobotServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Robots/RobotServiceCollectionExtensions.cs
+new file mode 100644
+index 0000000..359a978
+--- /dev/null
++++ b/src/RPA.Infrastructure/Robots/RobotServiceCollectionExtensions.cs
+@@ -0,0 +1,16 @@
++namespace RPA.Infrastructure.Robots;
++
++using Microsoft.Extensions.DependencyInjection;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Persistence;
++
++/// <summary>Robot servisi DI kaydı (Task 3.1, Spec Bölüm 5.6, 9).</summary>
++public static class RobotServiceCollectionExtensions
++{
++    public static IServiceCollection AddRobotServices(this IServiceCollection services)
++    {
++        services.AddScoped<IRobotRepository, EfRobotRepository>();
++        services.AddScoped<IRobotService, RobotService>();
++        return services;
++    }
++}
+diff --git a/src/RPA.WebAPI/Program.cs b/src/RPA.WebAPI/Program.cs
+index f583a26..dbacaf6 100644
+--- a/src/RPA.WebAPI/Program.cs
++++ b/src/RPA.WebAPI/Program.cs
+@@ -1,20 +1,22 @@
+ using System.Security.Cryptography;
+ using System.Text;
+ using Microsoft.AspNetCore.Authentication.JwtBearer;
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.IdentityModel.Tokens;
+ using RPA.Infrastructure.Authentication;
+ using RPA.Infrastructure.Logging;
+ using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Robots;
+ using RPA.Infrastructure.Vault;
+ using RPA.Infrastructure.Workflow;
++using RPA.WebAPI.Robots;
+ using RPA.WebAPI.Middleware;
+ using Serilog;
+ 
+ var builder = WebApplication.CreateBuilder(args);
+ 
+ // --- Serilog Configuration (Spec Bölüm 11) ---
+ // Configure Serilog from appsettings.json and register the CorrelationIdEnricher.
+ Log.Logger = new LoggerConfiguration()
+     .ReadFrom.Configuration(builder.Configuration)
+     .Enrich.With<CorrelationIdEnricher>()
+@@ -35,20 +37,26 @@ builder.Services.AddVaultServices(builder.Configuration);
+ // Persistence: RpaDbContext (kuyruk/idempotency repository'lerinin bağımlılığı) — Spec Bölüm 4.
+ // AddWorkflowServices IQueueItemRepository/IIdempotencyService kaydeder; bunlar RpaDbContext'e muhtaç.
+ builder.Services.AddDbContext<RpaDbContext>(options =>
+     options.UseSqlServer(
+         builder.Configuration.GetConnectionString("DefaultConnection")
+         ?? "Server=(localdb)\\mssqllocaldb;Database=RPA_Dev;Trusted_Connection=true;"));
+ 
+ // Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
+ builder.Services.AddWorkflowServices();
+ 
++// Robot kayıt + heartbeat + offline tespiti servisleri — Spec Bölüm 5.6, 9.
++builder.Services.AddRobotServices();
++
++// SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
++builder.Services.AddSignalR();
++
+ // JWT Bearer authentication middleware.
+ var jwt = builder.Configuration
+     .GetSection(AuthenticationOptions.SectionName)
+     .Get<AuthenticationOptions>()?.Jwt ?? new JwtOptions();
+ 
+ // CRITICAL FIX: No fallback to all-zero key. Require JWT_SECRET environment variable.
+ if (string.IsNullOrEmpty(jwt.Secret))
+ {
+     throw new InvalidOperationException(
+         "JWT secret not configured. Set Authentication:Jwt:Secret in appsettings or JWT_SECRET environment variable. " +
+@@ -65,20 +73,36 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+         {
+             ValidateIssuer = true,
+             ValidateAudience = true,
+             ValidateLifetime = true,
+             ValidateIssuerSigningKey = true,
+             ValidIssuer = jwt.Issuer,
+             ValidAudience = jwt.Audience,
+             IssuerSigningKey = new SymmetricSecurityKey(derivedKey),
+             ClockSkew = TimeSpan.FromMinutes(1),
+         };
++
++        // SignalR: WebSocket handshake Authorization header taşıyamadığından,
++        // hub yolları için access_token query parametresinden JWT okunur (Spec Bölüm 9).
++        options.Events = new JwtBearerEvents
++        {
++            OnMessageReceived = context =>
++            {
++                var accessToken = context.Request.Query["access_token"];
++                var path = context.HttpContext.Request.Path;
++                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
++                {
++                    context.Token = accessToken;
++                }
++                return Task.CompletedTask;
++            }
++        };
+     });
+ 
+ builder.Services.AddAuthorization();
+ 
+ // CORS: SPA (Angular) kaynağına izin ver.
+ const string CorsPolicy = "RpaCors";
+ var allowedOrigins = builder.Configuration
+     .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "http://localhost:4200" };
+ 
+ builder.Services.AddCors(options =>
+@@ -94,20 +118,21 @@ var app = builder.Build();
+ // --- Middleware pipeline ---
+ // CorrelationIdMiddleware must be early (before other middlewares that might log)
+ app.UseMiddleware<CorrelationIdMiddleware>();
+ 
+ app.UseCors(CorsPolicy);
+ app.UseAuthentication();
+ app.UseAuthorization();
+ 
+ app.MapGet("/", () => "RPA Platform API");
+ app.MapControllers();
++app.MapHub<RobotHub>("/hubs/robot");
+ 
+ app.Run();
+ 
+ // Helper method to derive a cryptographically strong key from JWT secret using PBKDF2.
+ static byte[] DeriveKeyFromSecret(string secret)
+ {
+     // Use PBKDF2 to derive a 32-byte key from the secret.
+     // This strengthens the key against low-entropy input and provides proper key derivation.
+     var secretBytes = Encoding.UTF8.GetBytes(secret);
+     var saltBytes = Encoding.UTF8.GetBytes("RPA.JwtTokenService.v1"); // Fixed salt for consistency
+diff --git a/src/RPA.WebAPI/Robots/RobotHub.cs b/src/RPA.WebAPI/Robots/RobotHub.cs
+new file mode 100644
+index 0000000..c9cb9b2
+--- /dev/null
++++ b/src/RPA.WebAPI/Robots/RobotHub.cs
+@@ -0,0 +1,67 @@
++namespace RPA.WebAPI.Robots;
++
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.SignalR;
++using Microsoft.Extensions.Logging;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Robot ajanları ile çift yönlü SignalR kanalı (Task 3.1, Spec Bölüm 9).
++/// Yalnızca kimliği doğrulanmış (JWT) bağlantılar kabul edilir. Robot register/heartbeat
++/// sinyalleri ve workflow olay yayınları bu hub üzerinden akar.
++/// </summary>
++[Authorize]
++public class RobotHub : Hub
++{
++    private readonly IRobotService _robotService;
++    private readonly ILogger<RobotHub> _logger;
++
++    public RobotHub(IRobotService robotService, ILogger<RobotHub> logger)
++    {
++        _robotService = robotService;
++        _logger = logger;
++    }
++
++    public override async Task OnConnectedAsync()
++    {
++        _logger.LogInformation("Robot SignalR bağlantısı kuruldu: {ConnectionId}", Context.ConnectionId);
++        await base.OnConnectedAsync();
++    }
++
++    public override async Task OnDisconnectedAsync(Exception? exception)
++    {
++        _logger.LogInformation("Robot SignalR bağlantısı kesildi: {ConnectionId}", Context.ConnectionId);
++        await base.OnDisconnectedAsync(exception);
++    }
++
++    /// <summary>Robot ajanı kaydını hub üzerinden yapar; grup üyeliği robot Id'sidir.</summary>
++    public async Task Register(RegisterRobotRequest request)
++    {
++        var mode = Enum.TryParse<Domain.Enums.RobotMode>(request.Mode, ignoreCase: true, out var m)
++            ? m : Domain.Enums.RobotMode.Unattended;
++        var robot = await _robotService.RegisterAsync(new RobotRegistrationRequest
++        {
++            MachineName = request.MachineName,
++            Mode = mode,
++            Tags = request.Tags ?? "",
++            AgentVersion = request.AgentVersion,
++            Capacity = request.Capacity <= 0 ? 1 : request.Capacity,
++        });
++
++        await Groups.AddToGroupAsync(Context.ConnectionId, robot.Id.ToString());
++        await Clients.Caller.SendAsync("Registered", RobotDto.From(robot));
++    }
++
++    /// <summary>Robot ajanı heartbeat sinyali gönderir.</summary>
++    public async Task Heartbeat(Guid robotId)
++    {
++        var robot = await _robotService.RecordHeartbeatAsync(robotId);
++        if (robot is null)
++        {
++            await Clients.Caller.SendAsync("HeartbeatRejected", robotId);
++            return;
++        }
++
++        await Clients.Caller.SendAsync("HeartbeatAck", robot.LastHeartbeat);
++    }
++}
+diff --git a/src/RPA.WebAPI/Robots/RobotsController.cs b/src/RPA.WebAPI/Robots/RobotsController.cs
+new file mode 100644
+index 0000000..bb528e5
+--- /dev/null
++++ b/src/RPA.WebAPI/Robots/RobotsController.cs
+@@ -0,0 +1,95 @@
++namespace RPA.WebAPI.Robots;
++
++using Microsoft.AspNetCore.Mvc;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Robot kayıt ve yaşam döngüsü endpoint'leri (Task 3.1, Spec Bölüm 5.6, 9, 12).
++/// </summary>
++[ApiController]
++[Route("api/robots")]
++public class RobotsController : ControllerBase
++{
++    private readonly IRobotService _robotService;
++
++    public RobotsController(IRobotService robotService)
++    {
++        _robotService = robotService;
++    }
++
++    /// <summary>Robotu kaydeder (idempotent — mevcut makine adı güncellenir).</summary>
++    [HttpPost("register")]
++    [ProducesResponseType(typeof(RobotDto), StatusCodes.Status201Created)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<IActionResult> Register([FromBody] RegisterRobotRequest request, CancellationToken ct)
++    {
++        if (request is null || string.IsNullOrWhiteSpace(request.MachineName))
++            return BadRequest(new { error = "MachineName zorunludur." });
++
++        var mode = Enum.TryParse<RobotMode>(request.Mode, ignoreCase: true, out var m) ? m : RobotMode.Unattended;
++        var robot = await _robotService.RegisterAsync(new RobotRegistrationRequest
++        {
++            MachineName = request.MachineName,
++            Mode = mode,
++            Tags = request.Tags ?? "",
++            AgentVersion = request.AgentVersion,
++            Capacity = request.Capacity <= 0 ? 1 : request.Capacity,
++        }, ct);
++
++        var dto = RobotDto.From(robot);
++        return CreatedAtAction(nameof(Get), new { id = robot.Id }, dto);
++    }
++
++    /// <summary>Id ile robot döner.</summary>
++    [HttpGet("{id:guid}")]
++    [ProducesResponseType(typeof(RobotDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status404NotFound)]
++    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
++    {
++        var robot = await _robotService.GetAsync(id, ct);
++        return robot is null ? NotFound() : Ok(RobotDto.From(robot));
++    }
++
++    /// <summary>Robot heartbeat'ini kaydeder (LastHeartbeat + Status = Online).</summary>
++    [HttpPut("{id:guid}/heartbeat")]
++    [ProducesResponseType(typeof(RobotDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status404NotFound)]
++    public async Task<IActionResult> Heartbeat(Guid id, CancellationToken ct)
++    {
++        var robot = await _robotService.RecordHeartbeatAsync(id, ct);
++        return robot is null ? NotFound() : Ok(RobotDto.From(robot));
++    }
++}
++
++public class RegisterRobotRequest
++{
++    public string MachineName { get; set; } = string.Empty;
++    public string Mode { get; set; } = "Unattended";
++    public string? Tags { get; set; }
++    public string? AgentVersion { get; set; }
++    public int Capacity { get; set; } = 1;
++}
++
++public class RobotDto
++{
++    public Guid Id { get; set; }
++    public string MachineName { get; set; } = string.Empty;
++    public string Mode { get; set; } = string.Empty;
++    public string Status { get; set; } = string.Empty;
++    public DateTime? LastHeartbeat { get; set; }
++    public string? AgentVersion { get; set; }
++    public int Capacity { get; set; }
++
++    public static RobotDto From(Robot r) => new()
++    {
++        Id = r.Id,
++        MachineName = r.MachineName,
++        Mode = r.Mode.ToString(),
++        Status = r.Status.ToString(),
++        LastHeartbeat = r.LastHeartbeat,
++        AgentVersion = r.AgentVersion,
++        Capacity = r.Capacity,
++    };
++}
+diff --git a/tests/RPA.Infrastructure.Tests/RobotServiceTests.cs b/tests/RPA.Infrastructure.Tests/RobotServiceTests.cs
+new file mode 100644
+index 0000000..b7c32d0
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/RobotServiceTests.cs
+@@ -0,0 +1,139 @@
++namespace RPA.Infrastructure.Tests;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Robots;
++
++/// <summary>
++/// Task 3.1 — Robot kayıt + heartbeat + offline tespiti testleri (Spec Bölüm 5.6, 9).
++/// </summary>
++public class RobotServiceTests
++{
++    private static RpaDbContext CreateInMemoryDb()
++    {
++        var options = new DbContextOptionsBuilder<RpaDbContext>()
++            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
++            .Options;
++        var db = new RpaDbContext(options);
++        db.Database.EnsureCreated();
++        return db;
++    }
++
++    private static RobotService CreateService(RpaDbContext db)
++        => new RobotService(new EfRobotRepository(db), new MockLogger<RobotService>());
++
++    // ---- Repository / persistence ----
++
++    [Fact]
++    public async Task Repository_AddAndFind_RoundTrips()
++    {
++        var db = CreateInMemoryDb();
++        var repo = new EfRobotRepository(db);
++        var robot = new Robot { MachineName = "RPA-01", Mode = RobotMode.Unattended };
++
++        await repo.AddAsync(robot);
++        await repo.SaveChangesAsync();
++
++        var byName = await repo.FindByMachineNameAsync("RPA-01");
++        var byId = await repo.FindByIdAsync(robot.Id);
++        Assert.NotNull(byName);
++        Assert.NotNull(byId);
++        Assert.Equal(robot.Id, byName!.Id);
++    }
++
++    // ---- Register ----
++
++    [Fact]
++    public async Task Register_NewMachine_CreatesOnlineRobot()
++    {
++        var db = CreateInMemoryDb();
++        var service = CreateService(db);
++
++        var robot = await service.RegisterAsync(new RobotRegistrationRequest
++        {
++            MachineName = "RPA-01",
++            Mode = RobotMode.Unattended,
++            AgentVersion = "1.0.0",
++        });
++
++        Assert.NotEqual(Guid.Empty, robot.Id);
++        Assert.Equal(RobotStatus.Online, robot.Status);
++        Assert.NotNull(robot.LastHeartbeat);
++        Assert.Single(db.Set<Robot>());
++    }
++
++    [Fact]
++    public async Task Register_ExistingMachine_UpdatesInsteadOfDuplicating()
++    {
++        var db = CreateInMemoryDb();
++        var service = CreateService(db);
++
++        var first = await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "RPA-01", AgentVersion = "1.0.0" });
++        var second = await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "RPA-01", AgentVersion = "2.0.0" });
++
++        Assert.Equal(first.Id, second.Id);
++        Assert.Equal("2.0.0", second.AgentVersion);
++        Assert.Single(db.Set<Robot>());
++    }
++
++    // ---- Get ----
++
++    [Fact]
++    public async Task Get_UnknownId_ReturnsNull()
++    {
++        var db = CreateInMemoryDb();
++        var service = CreateService(db);
++        Assert.Null(await service.GetAsync(Guid.NewGuid()));
++    }
++
++    // ---- Heartbeat ----
++
++    [Fact]
++    public async Task Heartbeat_UpdatesLastHeartbeatAndStatus()
++    {
++        var db = CreateInMemoryDb();
++        var service = CreateService(db);
++        var robot = await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "RPA-01" });
++        robot.Status = RobotStatus.Offline;
++        robot.LastHeartbeat = DateTime.UtcNow.AddMinutes(-10);
++        await db.SaveChangesAsync();
++
++        var updated = await service.RecordHeartbeatAsync(robot.Id);
++
++        Assert.NotNull(updated);
++        Assert.Equal(RobotStatus.Online, updated!.Status);
++        Assert.True(updated.LastHeartbeat > DateTime.UtcNow.AddMinutes(-1));
++    }
++
++    [Fact]
++    public async Task Heartbeat_UnknownRobot_ReturnsNull()
++    {
++        var db = CreateInMemoryDb();
++        var service = CreateService(db);
++        Assert.Null(await service.RecordHeartbeatAsync(Guid.NewGuid()));
++    }
++
++    // ---- Offline detection ----
++
++    [Fact]
++    public async Task DetectOffline_MarksStaleRobotsOffline()
++    {
++        var db = CreateInMemoryDb();
++        var service = CreateService(db);
++
++        var stale = await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "STALE" });
++        stale.LastHeartbeat = DateTime.UtcNow.AddMinutes(-6);
++        var fresh = await service.RegisterAsync(new RobotRegistrationRequest { MachineName = "FRESH" });
++        fresh.LastHeartbeat = DateTime.UtcNow.AddMinutes(-1);
++        await db.SaveChangesAsync();
++
++        var count = await service.DetectOfflineRobotsAsync(TimeSpan.FromMinutes(5));
++
++        Assert.Equal(1, count);
++        Assert.Equal(RobotStatus.Offline, (await service.GetAsync(stale.Id))!.Status);
++        Assert.Equal(RobotStatus.Online, (await service.GetAsync(fresh.Id))!.Status);
++    }
++}
+diff --git a/tests/RPA.WebAPI.Tests/RPA.WebAPI.Tests.csproj b/tests/RPA.WebAPI.Tests/RPA.WebAPI.Tests.csproj
+index 23cdc29..744cfec 100644
+--- a/tests/RPA.WebAPI.Tests/RPA.WebAPI.Tests.csproj
++++ b/tests/RPA.WebAPI.Tests/RPA.WebAPI.Tests.csproj
+@@ -4,20 +4,21 @@
+     <TargetFramework>net10.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>false</IsPackable>
+   </PropertyGroup>
+ 
+   <ItemGroup>
+     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
++    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.9" />
+     <PackageReference Include="Moq" Version="4.20.72" />
+     <PackageReference Include="xunit" Version="2.9.3" />
+     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <Using Include="Xunit" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+diff --git a/tests/RPA.WebAPI.Tests/RobotHubTests.cs b/tests/RPA.WebAPI.Tests/RobotHubTests.cs
+new file mode 100644
+index 0000000..c0d9e39
+--- /dev/null
++++ b/tests/RPA.WebAPI.Tests/RobotHubTests.cs
+@@ -0,0 +1,105 @@
++namespace RPA.WebAPI.Tests;
++
++using Microsoft.AspNetCore.Http.Connections;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.AspNetCore.SignalR.Client;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Authentication;
++
++/// <summary>
++/// RobotHub SignalR bağlantı ve kimlik doğrulama testleri (Task 3.1, Spec Bölüm 9).
++/// </summary>
++public class RobotHubTests : IClassFixture<WebApplicationFactory<Program>>
++{
++    private readonly WebApplicationFactory<Program> _factory;
++
++    public RobotHubTests(WebApplicationFactory<Program> factory)
++    {
++        _factory = factory;
++    }
++
++    private (WebApplicationFactory<Program> factory, Mock<IRobotService> robotMock) BuildFactory()
++    {
++        var robotMock = new Mock<IRobotService>();
++        var factory = _factory.WithWebHostBuilder(builder =>
++        {
++            builder.ConfigureServices(services =>
++            {
++                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IRobotService));
++                if (descriptor is not null) services.Remove(descriptor);
++                services.AddScoped(_ => robotMock.Object);
++            });
++        });
++        return (factory, robotMock);
++    }
++
++    private HubConnection BuildConnection(WebApplicationFactory<Program> factory, string? token)
++    {
++        var server = factory.Server;
++        return new HubConnectionBuilder()
++            .WithUrl($"{server.BaseAddress}hubs/robot", options =>
++            {
++                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
++                options.Transports = HttpTransportType.LongPolling;
++                if (token is not null) options.AccessTokenProvider = () => Task.FromResult<string?>(token);
++            })
++            .Build();
++    }
++
++    private string GenerateToken(WebApplicationFactory<Program> factory)
++    {
++        using var scope = factory.Services.CreateScope();
++        var opts = scope.ServiceProvider.GetRequiredService<IOptions<AuthenticationOptions>>();
++        var tokenService = new JwtTokenService(opts);
++        return tokenService.GenerateToken("robot-agent", new[] { "Robot" });
++    }
++
++    [Fact]
++    public async Task Connect_WithoutToken_IsRejected()
++    {
++        var (factory, _) = BuildFactory();
++        var connection = BuildConnection(factory, token: null);
++
++        await Assert.ThrowsAnyAsync<Exception>(() => connection.StartAsync());
++        await connection.DisposeAsync();
++    }
++
++    [Fact]
++    public async Task Connect_WithValidToken_Succeeds()
++    {
++        var (factory, _) = BuildFactory();
++        var token = GenerateToken(factory);
++        var connection = BuildConnection(factory, token);
++
++        await connection.StartAsync();
++        Assert.Equal(HubConnectionState.Connected, connection.State);
++        await connection.DisposeAsync();
++    }
++
++    [Fact]
++    public async Task Register_OverHub_InvokesServiceAndReturnsRobot()
++    {
++        var (factory, robotMock) = BuildFactory();
++        var robot = new Robot { MachineName = "RPA-HUB", Status = RobotStatus.Online, LastHeartbeat = DateTime.UtcNow };
++        robotMock.Setup(s => s.RegisterAsync(It.IsAny<RobotRegistrationRequest>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(robot);
++
++        var token = GenerateToken(factory);
++        var connection = BuildConnection(factory, token);
++        var tcs = new TaskCompletionSource<string>();
++        connection.On<object>("Registered", payload => tcs.TrySetResult(payload?.ToString() ?? ""));
++
++        await connection.StartAsync();
++        await connection.InvokeAsync("Register", new { MachineName = "RPA-HUB", Mode = "Unattended", Capacity = 1 });
++
++        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
++        Assert.Equal(tcs.Task, completed);
++        robotMock.Verify(s => s.RegisterAsync(It.IsAny<RobotRegistrationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
++        await connection.DisposeAsync();
++    }
++}
+diff --git a/tests/RPA.WebAPI.Tests/RobotsControllerIntegrationTests.cs b/tests/RPA.WebAPI.Tests/RobotsControllerIntegrationTests.cs
+new file mode 100644
+index 0000000..764b2a6
+--- /dev/null
++++ b/tests/RPA.WebAPI.Tests/RobotsControllerIntegrationTests.cs
+@@ -0,0 +1,118 @@
++namespace RPA.WebAPI.Tests;
++
++using System.Net;
++using System.Net.Http.Json;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.Extensions.DependencyInjection;
++using Moq;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// RobotsController HTTP-seviyesi testleri (Task 3.1). IRobotService stub'lanır.
++/// </summary>
++public class RobotsControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
++{
++    private readonly WebApplicationFactory<Program> _factory;
++
++    public RobotsControllerIntegrationTests(WebApplicationFactory<Program> factory)
++    {
++        _factory = factory;
++    }
++
++    private HttpClient CreateClient(IRobotService robotService)
++    {
++        return _factory.WithWebHostBuilder(builder =>
++        {
++            builder.ConfigureServices(services =>
++            {
++                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IRobotService));
++                if (descriptor is not null) services.Remove(descriptor);
++                services.AddScoped(_ => robotService);
++            });
++        }).CreateClient();
++    }
++
++    [Fact]
++    public async Task Register_ReturnsCreatedRobot()
++    {
++        var mock = new Mock<IRobotService>();
++        var robot = new Robot { MachineName = "RPA-01", Status = RobotStatus.Online, LastHeartbeat = DateTime.UtcNow };
++        mock.Setup(s => s.RegisterAsync(It.IsAny<RobotRegistrationRequest>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(robot);
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PostAsJsonAsync("/api/robots/register",
++            new { machineName = "RPA-01", mode = "Unattended" });
++
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        var body = await response.Content.ReadFromJsonAsync<RobotDto>();
++        Assert.Equal("RPA-01", body!.MachineName);
++    }
++
++    [Fact]
++    public async Task Register_EmptyMachineName_Returns400()
++    {
++        var client = CreateClient(new Mock<IRobotService>().Object);
++        var response = await client.PostAsJsonAsync("/api/robots/register", new { machineName = "" });
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Get_Existing_Returns200()
++    {
++        var id = Guid.NewGuid();
++        var mock = new Mock<IRobotService>();
++        mock.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new Robot { Id = id, MachineName = "RPA-01" });
++        var client = CreateClient(mock.Object);
++
++        var response = await client.GetAsync($"/api/robots/{id}");
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Get_Unknown_Returns404()
++    {
++        var mock = new Mock<IRobotService>();
++        mock.Setup(s => s.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync((Robot?)null);
++        var client = CreateClient(mock.Object);
++
++        var response = await client.GetAsync($"/api/robots/{Guid.NewGuid()}");
++        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Heartbeat_Existing_Returns200()
++    {
++        var id = Guid.NewGuid();
++        var mock = new Mock<IRobotService>();
++        mock.Setup(s => s.RecordHeartbeatAsync(id, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new Robot { Id = id, MachineName = "RPA-01", Status = RobotStatus.Online });
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PutAsync($"/api/robots/{id}/heartbeat", null);
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Heartbeat_Unknown_Returns404()
++    {
++        var mock = new Mock<IRobotService>();
++        mock.Setup(s => s.RecordHeartbeatAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync((Robot?)null);
++        var client = CreateClient(mock.Object);
++
++        var response = await client.PutAsync($"/api/robots/{Guid.NewGuid()}/heartbeat", null);
++        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
++    }
++
++    private class RobotDto
++    {
++        public Guid Id { get; set; }
++        public string MachineName { get; set; } = string.Empty;
++        public string Status { get; set; } = string.Empty;
++    }
++}

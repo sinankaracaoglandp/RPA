@@ -1,0 +1,1578 @@
+# Feature: Vision.ClickTextOffset (metin çapası ofset tıklama)
+# Commits
+d5d8113 feat(studio): text-offset editoru + spy kind + i18n
+c88d92b feat(hub): StudioHub text-offset spy kind whitelist
+a6e075a feat(spy): GdiTextOffsetPicker — iki asamali gorsel capa+ofset secimi
+9af21f9 feat(spy): text-offset mesaj + koordinator dali + ITextOffsetPicker
+ecee5cf feat(vision): ClickTextOffset kanal impl + OcrEngine/VisionOffset
+1753b0d feat(vision): Vision.ClickTextOffset aktivitesi + katalog/DI
+5e87366 refactor(contract): IVisionAutomationChannel.ClickTextOffsetAsync
+
+# Stat (bin/obj excluded)
+ CLAUDE.md                                          |  16 +++
+ src/RPA.Agent/AgentServiceCollectionExtensions.cs  |   2 +
+ src/RPA.Agent/UISpy/GdiTextOffsetPicker.cs         | 145 +++++++++++++++++++++
+ src/RPA.Agent/UISpy/SpySessionCoordinator.cs       |  30 ++++-
+ src/RPA.Agent/Vision/OcrEngine.cs                  |  37 ++++++
+ .../Vision/TesseractOpenCvVisionChannel.cs         |  33 ++---
+ src/RPA.Agent/Vision/VisionOffset.cs               |  11 ++
+ .../Interfaces/IVisionAutomationChannel.cs         |   8 ++
+ .../Vision/UnavailableVisionAutomationChannel.cs   |   3 +
+ .../Activities/Vision/VisionActivities.cs          |  82 ++++++++++++
+ .../UISpy/SapGuiElementSender.cs                   |  22 ++++
+ .../Workflow/ActivityRegistry.cs                   |   9 ++
+ .../WorkflowServiceCollectionExtensions.cs         |   1 +
+ src/RPA.Studio/public/assets/i18n/en.json          |   7 +-
+ src/RPA.Studio/public/assets/i18n/tr.json          |   7 +-
+ .../src/app/shared/models/activity.model.ts        |   2 +-
+ .../src/app/shared/services/spy.service.ts         |  15 ++-
+ .../properties/generic-property.component.html     |  11 ++
+ .../properties/generic-property.component.ts       |  14 +-
+ .../properties/text-offset-editor.component.html   |  20 +++
+ .../properties/text-offset-editor.component.scss   |  13 ++
+ .../text-offset-editor.component.spec.ts           |  33 +++++
+ .../properties/text-offset-editor.component.ts     |  94 +++++++++++++
+ src/RPA.WebAPI/Hubs/StudioHub.cs                   |   1 +
+ .../UISpy/SpySessionCoordinatorTextOffsetTests.cs  |  47 +++++++
+ tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs  |  27 ++++
+ .../Activities/VisionActivitiesTests.cs            |  38 ++++++
+ .../UISpy/SpyElementMessageTests.cs                |  14 ++
+ .../Workflow/VisionCatalogTests.cs                 |   3 +-
+ tests/RPA.WebAPI.Tests/UiSpyTests.cs               |   1 +
+ 30 files changed, 712 insertions(+), 34 deletions(-)
+
+# Diff (bin/obj excluded)
+diff --git a/CLAUDE.md b/CLAUDE.md
+index f9875b3..2c364ba 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -544,10 +544,26 @@ Studio workflow'larının hangi ajanda koşacağı `Trigger` katmanında tanıml
+ - **`Trigger`** entity: `TargetRobotTags` (virgülle ayrık tag havuzu) + `Priority` eklendi. Migration `AddTriggerRobotTargeting`.
+ - **Yeni arayüz:** `IRobotDispatcher.SelectRobotAsync(trigger, ct)` — Online + kapasitesi müsait +
+   tag'leri kapsayan robotu seçer (en boş kapasite → heartbeat). Impl `RobotDispatcher` (Infrastructure).
+ - **`TriggerService`** ctor'a `IRobotDispatcher` aldı; JobRun'a `AssignedRobotId` yazar, aday yoksa `Status="Pending"`.
+ - **`ITriggerRepository`**: `ListTriggersAsync(projectId?, environmentId?, isActive?)` + `GetActiveJobCountsByRobotAsync()`.
+ - **API:** `GET /api/triggers` (job listesi); `CreateTriggerRequest`/`UpdateTriggerRequest`/`TriggerDto` `TargetRobotTags`+`Priority` içerir.
+ - **Studio:** `orchestrator/schedules` ekranı (job oluştur/liste/fire, hedef ajan tag seçimi).
+ 
+ Kapsam dışı: Agent handoff/poll protokolü (JobRun'ın ajana gerçekten teslim edilip çalıştırılması) — ayrı spec.
+ Etkilenen paketler yok (yeni özellik; mevcut in-process çalıştırma placeholder'ı korunur).
++
++---
++
++## Kontrat Değişikliği — 2026-07-15 (Vision metin çapası ofset tıklama)
++
++`IVisionAutomationChannel.ClickTextOffsetAsync(anchorText, dx, dy, language, matchMode, clickType, timeoutMs)`
++eklendi — OCR metin çapasının kelime kutusu merkezinden piksel ofsetle tıklar (etiketin yanındaki
++boş input gibi hedefler). Yeni aktivite `Vision.ClickTextOffset` (kategori "Görüntü", capability
++`vision`). Yeni picker kind `text-offset` (iki aşamalı: çapa metni seç + hedef nokta tıkla → dx/dy
++otomatik). `SpyElementMessage`'a `Kind="text-offset"`, `AnchorText`, `Dx`, `Dy` + `FromTextOffset`;
++`StudioHub.SupportedKinds`'e `text-offset`. Referans: çapanın OCR tight kelime kutusu **merkezi**
++(picker-zamanı ve runtime aynı) → çözünürlük farkında ofset kaymaz.
++
++Etkilenen paketler: Paket F (Vision), Studio picker metadata tüketicileri, Agent UI Spy transport.
++Gerekçe: erişilebilirlik ağacı olmayan ekranlarda etiket-yanı boş alanlara tıklama (UiPath CV
++"anchor + relative offset" modeli).
+diff --git a/src/RPA.Agent/AgentServiceCollectionExtensions.cs b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+index 49d2d42..473abbf 100644
+--- a/src/RPA.Agent/AgentServiceCollectionExtensions.cs
++++ b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+@@ -102,20 +102,22 @@ public static class AgentServiceCollectionExtensions
+             services.AddSingleton<SapGuiSpyService>();
+             services.AddOptions<SpySessionOptions>()
+                 .Bind(configuration.GetSection(SpySessionOptions.SectionName));
+             services.AddSingleton<ISapGuiSinglePicker, SapGuiSinglePicker>();
+             // Paket E: DesktopSpy tek-seçim picker'ı (FlaUI/UIA). Koordinatör kind:"desktop" için kullanır.
+             services.AddSingleton<IDesktopSinglePicker, Desktop.FlaUiDesktopSinglePicker>();
+             // Paket D: WebSpy tek-seçim picker'ı (Playwright/DOM). Koordinatör kind:"web" için kullanır.
+             services.AddSingleton<IWebSinglePicker, PlaywrightWebSinglePicker>();
+             // Paket F: image bölge picker'ı. Koordinatör kind:"image" için kullanır.
+             services.AddSingleton<IImageRegionPicker, GdiImageRegionPicker>();
++            // Text-offset picker: capa+ofset secimi. Koordinator kind:"text-offset" icin kullanir.
++            services.AddSingleton<ITextOffsetPicker, GdiTextOffsetPicker>();
+             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
+             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
+ 
+             services.AddHostedService<UiSpyHostedService>();
+             services.AddHostedService<SpyHubCommandHostedService>();
+         }
+ 
+         // Paket E: Windows Masaüstü otomasyon kanalı (FlaUI/UIA3). Desktop.* aktiviteleri
+         // bu kanalı çalıştırma anında kullanır. Yalnız Windows'ta kayıtlıdır.
+         if (OperatingSystem.IsWindows())
+diff --git a/src/RPA.Agent/UISpy/GdiTextOffsetPicker.cs b/src/RPA.Agent/UISpy/GdiTextOffsetPicker.cs
+new file mode 100644
+index 0000000..6d9f691
+--- /dev/null
++++ b/src/RPA.Agent/UISpy/GdiTextOffsetPicker.cs
+@@ -0,0 +1,145 @@
++namespace RPA.Agent.UISpy;
++
++using System.Drawing;
++using System.Drawing.Imaging;
++using System.Runtime.Versioning;
++using System.Windows.Forms;
++using OpenCvSharp.Extensions;
++using RPA.Agent.Vision;
++using RPA.Domain.ValueObjects;
++
++/// <summary>
++/// İki aşamalı görsel text-offset picker. GdiImageRegionPicker'ın freeze (ArmForm) + seçim
++/// (SelectionForm) altyapısını yeniden kullanır: (1) ekranı dondur; (2) çapa etiketinin çevresine
++/// dikdörtgen çiz → kırpıntı OCR edilir (çapa metni + tight kutu); (3) hedef noktaya tek tık →
++/// dx/dy = tık − çapa kutusu merkezi. İptal (Esc / seçim yok / OCR boş) → null.
++/// </summary>
++[SupportedOSPlatform("windows")]
++public sealed class GdiTextOffsetPicker : ITextOffsetPicker
++{
++    private readonly string _tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
++
++    public Task<TextOffsetPick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default)
++    {
++        cancellationToken.ThrowIfCancellationRequested();
++        TextOffsetPick? result = null;
++
++        var thread = new Thread(() =>
++        {
++            using var snapshot = ArmForm.WaitAndCapture(options, cancellationToken);
++            if (snapshot is null)
++            {
++                return; // iptal / timeout
++            }
++
++            // 1) Çapa dikdörtgeni (donmuş görüntü client koordinatı = snapshot pikseli).
++            var anchorRect = SelectionForm.SelectOnSnapshot(snapshot, cancellationToken);
++            if (anchorRect is null || anchorRect.Value.Width < 2 || anchorRect.Value.Height < 2)
++            {
++                return;
++            }
++            var ar = anchorRect.Value;
++
++            // 2) Çapa kırpıntısını OCR et → en iyi (en geniş) kelime kutusu.
++            string anchorText;
++            VisionMatch anchorBoxOnSnapshot;
++            using (var crop = snapshot.Clone(ar, snapshot.PixelFormat))
++            using (var mat = BitmapConverter.ToMat(crop))
++            {
++                var (_, words) = OcrEngine.Read(mat, _tessdataPath, "tur+eng");
++                var best = words
++                    .Where(w => !string.IsNullOrWhiteSpace(w.Text))
++                    .OrderByDescending(w => w.Box.Width * w.Box.Height)
++                    .FirstOrDefault();
++                if (best is null)
++                {
++                    return; // OCR metin bulamadı → iptal
++                }
++                anchorText = best.Text.Trim();
++                // Kırpıntı-yerel kutuyu snapshot koordinatına ötele.
++                anchorBoxOnSnapshot = new VisionMatch(
++                    ar.X + best.Box.X, ar.Y + best.Box.Y, best.Box.Width, best.Box.Height, 1.0);
++            }
++
++            // 3) Hedef noktaya tek tık (aynı donmuş görüntü üzerinde).
++            var target = ClickPointForm.PickPoint(snapshot, cancellationToken);
++            if (target is null)
++            {
++                return;
++            }
++
++            var dx = target.Value.X - anchorBoxOnSnapshot.CenterX;
++            var dy = target.Value.Y - anchorBoxOnSnapshot.CenterY;
++
++            // Önizleme: çapa kırpıntısının PNG base64'ü.
++            string preview;
++            using (var crop = snapshot.Clone(ar, snapshot.PixelFormat))
++            using (var ms = new MemoryStream())
++            {
++                crop.Save(ms, ImageFormat.Png);
++                preview = Convert.ToBase64String(ms.ToArray());
++            }
++
++            result = new TextOffsetPick(anchorText, dx, dy, preview);
++        });
++        thread.SetApartmentState(ApartmentState.STA);
++        thread.Start();
++        thread.Join();
++
++        return Task.FromResult(result);
++    }
++}
++
++/// <summary>
++/// Donmuş görüntü üzerinde tek nokta seçtiren form. Tıklanan client noktasını (snapshot pikseli)
++/// döndürür, Esc iptal eder. SelectionForm ile aynı foreground/topmost hilelerini kullanır.
++/// </summary>
++[SupportedOSPlatform("windows")]
++internal sealed class ClickPointForm : Form
++{
++    private Point? _picked;
++
++    private ClickPointForm(Bitmap snapshot)
++    {
++        FormBorderStyle = FormBorderStyle.None;
++        StartPosition = FormStartPosition.Manual;
++        Bounds = SystemInformation.VirtualScreen;
++        TopMost = true;
++        DoubleBuffered = true;
++        Cursor = Cursors.Cross;
++        ShowInTaskbar = false;
++        KeyPreview = true;
++        BackgroundImage = snapshot;
++        BackgroundImageLayout = ImageLayout.None;
++
++        MouseDown += (_, e) => { _picked = e.Location; Close(); };
++        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { _picked = null; Close(); } };
++    }
++
++    protected override void OnShown(EventArgs e)
++    {
++        base.OnShown(e);
++        NativeForeground.ForceForeground(Handle);
++        Activate();
++    }
++
++    public static Point? PickPoint(Bitmap snapshot, CancellationToken cancellationToken)
++    {
++        using var form = new ClickPointForm(snapshot);
++        using var reg = cancellationToken.Register(() =>
++        {
++            try
++            {
++                if (form.IsHandleCreated)
++                {
++                    form.BeginInvoke(new Action(form.Close));
++                }
++            }
++            catch (ObjectDisposedException) { }
++            catch (InvalidOperationException) { }
++        });
++
++        Application.Run(form);
++        return form._picked;
++    }
++}
+diff --git a/src/RPA.Agent/UISpy/SpySessionCoordinator.cs b/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
+index 2b89c9b..4dc76c5 100644
+--- a/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
++++ b/src/RPA.Agent/UISpy/SpySessionCoordinator.cs
+@@ -25,20 +25,29 @@ public interface IWebSinglePicker
+ 
+ /// <summary>🎯 image bölge picker'ı — ekranda dikdörtgen çiz, PNG/koordinat döndür.</summary>
+ public interface IImageRegionPicker
+ {
+     Task<ImagePick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
+ }
+ 
+ /// <summary>Image picker sonucu: base64 PNG (image alanı için) ve/veya {x,y,width,height} JSON (region alanı için).</summary>
+ public sealed record ImagePick(string? ImageBase64, string? RegionJson);
+ 
++/// <summary>🎯 text-offset picker'ı — çapa metnini seç + hedef noktaya tıkla, dx/dy hesapla.</summary>
++public interface ITextOffsetPicker
++{
++    Task<TextOffsetPick?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
++}
++
++/// <summary>text-offset picker sonucu: çapa metni, dx/dy ofset ve çapa önizleme (base64 PNG).</summary>
++public sealed record TextOffsetPick(string AnchorText, int Dx, int Dy, string? PreviewBase64);
++
+ /// <summary>
+ /// Image picker'ın "ekran dondurma" (freeze) davranışı. Geçici menü/pencere yakalamak için:
+ /// önce hedef UI açılır, sonra ekran dondurulup donmuş görüntü üzerinde seçim yapılır.
+ /// <para><see cref="CaptureMode"/>: <c>"f2"</c> = kullanıcı kısayola basınca dondur (süre sınırsız);
+ /// <c>"timer"</c> = <see cref="DelaySeconds"/> saniye geri sayıp otomatik dondur.</para>
+ /// <para>Manuel modda dondurma kısayolu node'dan gelir: <see cref="HotKey"/> (F1–F12) +
+ /// opsiyonel <see cref="Ctrl"/>/<see cref="Shift"/>/<see cref="Alt"/> — hedef uygulamada boş bir
+ /// tuş seçilebilsin diye.</para>
+ /// </summary>
+ public sealed record ImagePickerOptions(
+@@ -128,92 +137,101 @@ public interface ISpySessionCoordinator
+ 
+ public sealed class SpySessionCoordinator : ISpySessionCoordinator
+ {
+     private readonly ISapGuiSinglePicker _sapPicker;
+     private readonly ISpyElementTransport _transport;
+     private readonly SpySessionOptions _options;
+     private readonly ILogger<SpySessionCoordinator> _logger;
+     private readonly IDesktopSinglePicker? _desktopPicker;
+     private readonly IWebSinglePicker? _webPicker;
+     private readonly IImageRegionPicker? _imagePicker;
++    private readonly ITextOffsetPicker? _textOffsetPicker;
+     private readonly object _gate = new();
+     private Guid _activeSessionId;
+     private CancellationTokenSource? _activeCts;
+ 
+     public SpySessionCoordinator(
+         ISapGuiSinglePicker sapPicker,
+         ISpyElementTransport transport,
+         IOptions<SpySessionOptions> options,
+         ILogger<SpySessionCoordinator> logger,
+         IDesktopSinglePicker? desktopPicker = null,
+         IWebSinglePicker? webPicker = null,
+-        IImageRegionPicker? imagePicker = null)
++        IImageRegionPicker? imagePicker = null,
++        ITextOffsetPicker? textOffsetPicker = null)
+     {
+         _sapPicker = sapPicker ?? throw new ArgumentNullException(nameof(sapPicker));
+         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+         _desktopPicker = desktopPicker;
+         _webPicker = webPicker;
+         _imagePicker = imagePicker;
++        _textOffsetPicker = textOffsetPicker;
+     }
+ 
+     public async Task StartAsync(Guid sessionId, string kind, string? optionsJson = null, CancellationToken cancellationToken = default)
+     {
+         if (sessionId == Guid.Empty)
+         {
+             throw new InvalidOperationException("SessionId zorunludur.");
+         }
+ 
+         var isSap = string.Equals(kind, "sap", StringComparison.OrdinalIgnoreCase);
+         var isDesktop = string.Equals(kind, "desktop", StringComparison.OrdinalIgnoreCase);
+         var isWeb = string.Equals(kind, "web", StringComparison.OrdinalIgnoreCase);
+         var isImage = string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase);
+-        if (!isSap && !isDesktop && !isWeb && !isImage)
++        var isTextOffset = string.Equals(kind, "text-offset", StringComparison.OrdinalIgnoreCase);
++        if (!isSap && !isDesktop && !isWeb && !isImage && !isTextOffset)
+         {
+             throw new InvalidOperationException($"Desteklenmeyen spy tipi: {kind}");
+         }
+ 
+         if (isDesktop && _desktopPicker is null)
+         {
+             throw new InvalidOperationException("Masaüstü picker bu ortamda kayıtlı değil (yalnız Windows).");
+         }
+ 
+         if (isWeb && _webPicker is null)
+         {
+             throw new InvalidOperationException("Web picker bu ortamda kayıtlı değil.");
+         }
+ 
+         if (isImage && _imagePicker is null)
+         {
+             throw new InvalidOperationException("Image picker bu ortamda kayıtlı değil (yalnız Windows).");
+         }
+ 
++        if (isTextOffset && _textOffsetPicker is null)
++        {
++            throw new InvalidOperationException("Metin-ofset picker bu ortamda kayıtlı değil (yalnız Windows).");
++        }
++
+         CancellationTokenSource linkedCts;
+         lock (_gate)
+         {
+             if (_activeCts is not null)
+             {
+                 throw new InvalidOperationException("Aktif UI Spy oturumu zaten var.");
+             }
+ 
+             _activeSessionId = sessionId;
+             _activeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+             linkedCts = _activeCts;
+         }
+ 
+         try
+         {
+             // Image picker'da kullanıcı hedef menüyü/pencereyi elle açtığı için (F2/zamanlayıcı ile
+             // dondurma) daha uzun süre gerekir; diğer picker'lar için normal timeout uygulanır.
+             var timeoutSeconds = Math.Max(1, _options.TimeoutSeconds);
+-            if (isImage)
++            if (isImage || isTextOffset)
+             {
+                 timeoutSeconds = Math.Max(timeoutSeconds, 300);
+             }
+             linkedCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+ 
+             SpyElementMessage? message;
+             if (isDesktop)
+             {
+                 var element = await _desktopPicker!.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.FromDesktop(element, sessionId);
+@@ -222,20 +240,26 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
+             {
+                 var element = await _webPicker!.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.FromWeb(element, sessionId);
+             }
+             else if (isImage)
+             {
+                 var pickerOptions = ImagePickerOptions.Parse(optionsJson);
+                 var pick = await _imagePicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
+                 message = pick is null ? null : SpyElementMessage.FromImage(pick.ImageBase64, pick.RegionJson, sessionId);
+             }
++            else if (isTextOffset)
++            {
++                var pickerOptions = ImagePickerOptions.Parse(optionsJson);
++                var pick = await _textOffsetPicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
++                message = pick is null ? null : SpyElementMessage.FromTextOffset(pick.AnchorText, pick.Dx, pick.Dy, pick.PreviewBase64, sessionId);
++            }
+             else
+             {
+                 var element = await _sapPicker.DetectOnceAsync(linkedCts.Token);
+                 message = element is null ? null : SpyElementMessage.From(element, sessionId);
+             }
+ 
+             if (message is null)
+             {
+                 _logger.LogDebug("UI Spy: session {SessionId} ({Kind}) secim yapilmadan iptal edildi.", sessionId, kind);
+                 await NotifyCancelledSafeAsync(sessionId);
+diff --git a/src/RPA.Agent/Vision/OcrEngine.cs b/src/RPA.Agent/Vision/OcrEngine.cs
+new file mode 100644
+index 0000000..ac1fe5d
+--- /dev/null
++++ b/src/RPA.Agent/Vision/OcrEngine.cs
+@@ -0,0 +1,37 @@
++namespace RPA.Agent.Vision;
++
++using System.Runtime.Versioning;
++using OpenCvSharp;
++using RPA.Domain.ValueObjects;
++using Tesseract;
++
++/// <summary>Tesseract OCR — bir görüntüden tam metni ve kelime kutularını çıkarır.
++/// Kanal ve text-offset picker tarafından paylaşılır.</summary>
++[SupportedOSPlatform("windows")]
++public static class OcrEngine
++{
++    public sealed record OcrWord(string Text, VisionMatch Box);
++
++    public static (string Text, List<OcrWord> Words) Read(Mat image, string tessdataPath, string language)
++    {
++        using var engine = new TesseractEngine(tessdataPath, language, EngineMode.Default);
++        var bytes = image.ImEncode(".png");
++        using var pix = Pix.LoadFromMemory(bytes);
++        using var page = engine.Process(pix);
++        var full = page.GetText() ?? string.Empty;
++
++        var words = new List<OcrWord>();
++        using var iter = page.GetIterator();
++        iter.Begin();
++        do
++        {
++            if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
++            {
++                var w = iter.GetText(PageIteratorLevel.Word);
++                words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
++            }
++        }
++        while (iter.Next(PageIteratorLevel.Word));
++        return (full, words);
++    }
++}
+diff --git a/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs b/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
+index 972368a..af318f0 100644
+--- a/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
++++ b/src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs
+@@ -67,20 +67,32 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
+         if (box is null)
+         {
+             throw new SystemException($"Metin ekranda bulunamadı: '{text}' (timeout).");
+         }
+         DoClick(box.CenterX, box.CenterY, clickType);
+     }
+ 
+     public async Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs)
+         => await PollForTextAsync(text, language, matchMode, timeoutMs) is not null;
+ 
++    public async Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
++        string language, string matchMode, string? clickType, int timeoutMs)
++    {
++        var box = await PollForTextAsync(anchorText, language, matchMode, timeoutMs);
++        if (box is null)
++        {
++            throw new SystemException($"Çapa metni ekranda bulunamadı: '{anchorText}' (timeout).");
++        }
++        var (x, y) = VisionOffset.ClickPoint(box, dx, dy);
++        DoClick(x, y, clickType);
++    }
++
+     private async Task<(VisionMatch? Match, double BestScore, string? DumpPath)> PollForImageAsync(string imageBase64, double confidence, int timeoutMs)
+     {
+         using var needle = ScreenCapture.DecodeBase64Png(imageBase64);
+         var sw = Stopwatch.StartNew();
+         var bestSeen = 0d;
+         Mat? firstScreen = null;
+         Mat? lastScreen = null;
+         try
+         {
+             do
+@@ -168,39 +180,22 @@ public sealed class TesseractOpenCvVisionChannel : IVisionAutomationChannel
+             await Task.Delay(250);
+         }
+         while (sw.ElapsedMilliseconds < timeoutMs);
+         return null;
+     }
+ 
+     private (string Text, List<OcrWord> Words) RunOcr(Mat image, string language)
+     {
+         try
+         {
+-            using var engine = new TesseractEngine(_tessdataPath, language, EngineMode.Default);
+-            var bytes = image.ImEncode(".png");
+-            using var pix = Pix.LoadFromMemory(bytes);
+-            using var page = engine.Process(pix);
+-            var full = page.GetText() ?? string.Empty;
+-
+-            var words = new List<OcrWord>();
+-            using var iter = page.GetIterator();
+-            iter.Begin();
+-            do
+-            {
+-                if (iter.TryGetBoundingBox(PageIteratorLevel.Word, out var r))
+-                {
+-                    var w = iter.GetText(PageIteratorLevel.Word);
+-                    words.Add(new OcrWord(w ?? string.Empty, new VisionMatch(r.X1, r.Y1, r.Width, r.Height, 1.0)));
+-                }
+-            }
+-            while (iter.Next(PageIteratorLevel.Word));
+-            return (full, words);
++            var (full, words) = OcrEngine.Read(image, _tessdataPath, language);
++            return (full, words.Select(w => new OcrWord(w.Text, w.Box)).ToList());
+         }
+         catch (Exception ex) when (ex is not RPA.Domain.Exceptions.SystemException)
+         {
+             throw new SystemException($"OCR başarısız: {ex.Message}", ex);
+         }
+     }
+ 
+     private void DoClick(int x, int y, string? clickType)
+     {
+         // Eşleşme koordinatları tam-ekran (sanal ekran) yakalamasına göredir; mutlak imleç
+diff --git a/src/RPA.Agent/Vision/VisionOffset.cs b/src/RPA.Agent/Vision/VisionOffset.cs
+new file mode 100644
+index 0000000..e9a7d10
+--- /dev/null
++++ b/src/RPA.Agent/Vision/VisionOffset.cs
+@@ -0,0 +1,11 @@
++namespace RPA.Agent.Vision;
++
++using RPA.Domain.ValueObjects;
++
++/// <summary>Çapa kelime kutusunun merkezinden piksel ofsetle tıklama noktasını hesaplar.
++/// Picker-zamanı ve runtime aynı referansı (tight OCR kutusu merkezi) kullanır.</summary>
++public static class VisionOffset
++{
++    public static (int X, int Y) ClickPoint(VisionMatch anchorBox, int dx, int dy)
++        => (anchorBox.CenterX + dx, anchorBox.CenterY + dy);
++}
+diff --git a/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+index 2f31281..5804904 100644
+--- a/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
++++ b/src/RPA.Domain/Interfaces/IVisionAutomationChannel.cs
+@@ -20,13 +20,21 @@ public interface IVisionAutomationChannel
+ 
+     /// <summary>Template ekranda var mı? Fırlatmaz. timeoutMs 0 ise tek bakış.</summary>
+     Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs);
+ 
+     /// <summary>Bölgeden (null ise tam ekran) OCR ile metin okur. language örn. "tur+eng".</summary>
+     Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language);
+ 
+     /// <summary>OCR ile metni bulur, merkezine tıklar. matchMode "contains" (vars.) / "exact". Bulunmazsa SystemException.</summary>
+     Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs);
+ 
++    /// <summary>
++    /// OCR ile anchorText'i bulur, kelime kutusunun merkezinden (dx,dy) piksel ofsetle tıklar
++    /// (etiketin yanındaki boş alan gibi kendi başına ayırt edilemeyen hedefler için).
++    /// Çapa bulunamazsa/timeout → SystemException.
++    /// </summary>
++    Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
++        string language, string matchMode, string? clickType, int timeoutMs);
++
+     /// <summary>Metin ekranda var mı? Fırlatmaz.</summary>
+     Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs);
+ }
+diff --git a/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs b/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
+index 255d769..2c764ff 100644
+--- a/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
++++ b/src/RPA.Infrastructure/Activities/Vision/UnavailableVisionAutomationChannel.cs
+@@ -6,18 +6,21 @@ using RPA.Domain.Interfaces;
+ /// Non-agent süreçlerde Vision.* aktivite kayıtlarının DI-geçerli kalması için yer tutucu kanal.
+ /// Gerçek OpenCvSharp+Tesseract implementasyonu RPA.Agent tarafından Windows'ta kaydedilir.
+ /// </summary>
+ public sealed class UnavailableVisionAutomationChannel : IVisionAutomationChannel
+ {
+     public Task ClickImageAsync(string imageBase64, double confidence, string? clickType, int timeoutMs) => Unavailable();
+     public Task WaitForImageAsync(string imageBase64, double confidence, int timeoutMs) => Unavailable();
+     public Task<bool> ImageExistsAsync(string imageBase64, double confidence, int timeoutMs) => Unavailable<bool>();
+     public Task<string> GetTextAsync(int? x, int? y, int? width, int? height, string language) => Unavailable<string>();
+     public Task ClickTextAsync(string text, string language, string matchMode, string? clickType, int timeoutMs) => Unavailable();
++    public Task ClickTextOffsetAsync(string anchorText, int dx, int dy,
++        string language, string matchMode, string? clickType, int timeoutMs)
++        => Unavailable();
+     public Task<bool> TextExistsAsync(string text, string language, string matchMode, int timeoutMs) => Unavailable<bool>();
+ 
+     private static Task Unavailable() => Task.FromException(new InvalidOperationException(Message));
+     private static Task<T> Unavailable<T>() => Task.FromException<T>(new InvalidOperationException(Message));
+ 
+     private const string Message =
+         "Vision automation channel is not available in this process. Run Vision.* activities through RPA.Agent on Windows.";
+ }
+diff --git a/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs b/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
+index bf163c8..f52ad27 100644
+--- a/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
++++ b/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
+@@ -405,20 +405,102 @@ public sealed class VisionTextExistsActivity : IActivity
+         var text = VisionMeta.RequireText(context);
+         var language = VisionMeta.LanguageOrDefault(context);
+         var matchMode = VisionMeta.MatchModeOrDefault(context);
+         var timeoutMs = context.GetVariable<int>("timeoutMs");
+         var exists = await _channel.TextExistsAsync(text, language, matchMode, timeoutMs);
+         context.SetVariable("exists", exists);
+         return new() { ["exists"] = exists };
+     }
+ }
+ 
++/// <summary>Ekranda OCR metin çapasını bulur, kelime kutusunun merkezinden (dx,dy) ofsetle tıklar.</summary>
++public sealed class VisionClickTextOffsetActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionClickTextOffsetActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.ClickTextOffset",
++        DisplayName = "Çapaya Göre Tıkla (OCR)",
++        Category = VisionMeta.Category,
++        Description = "OCR ile bir metin çapasını bulur ve ondan piksel ofsetle tıklar " +
++                      "(etiketin yanındaki boş alan gibi hedefler). 🎯 ile çapa + hedef nokta seçin.",
++        Inputs = new()
++        {
++            new ActivityParameter
++            {
++                Name = "anchor", Type = "string", Required = true,
++                Description = "Çapa + ofset (JSON): {anchorText, dx, dy}. 🎯 ile oluşturun.",
++                PickerKind = "text-offset",
++            },
++            VisionMeta.Language(),
++            VisionMeta.MatchMode(),
++            VisionMeta.ClickType(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms).", DefaultValue = 5000 },
++        },
++        Outputs = new(),
++        RequiredCapabilities = new() { VisionMeta.Capability },
++        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var spec = TextOffsetSpec.Parse(context.GetVariable<string?>("anchor"));
++        var language = VisionMeta.LanguageOrDefault(context);
++        var matchMode = VisionMeta.MatchModeOrDefault(context);
++        var clickType = VisionMeta.ClickTypeOrNull(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        if (timeoutMs <= 0)
++        {
++            timeoutMs = 5000;
++        }
++        context.Log($"Çapaya göre tıklanıyor: '{spec.AnchorText}' ofset ({spec.Dx},{spec.Dy}).");
++        await _channel.ClickTextOffsetAsync(spec.AnchorText, spec.Dx, spec.Dy, language, matchMode, clickType, timeoutMs);
++        return new();
++    }
++}
++
++/// <summary>Çapa+ofset spesifikasyonu: OCR ile bulunacak metin ve kelime kutusu merkezinden ofset.</summary>
++internal readonly record struct TextOffsetSpec(string AnchorText, int Dx, int Dy)
++{
++    public static TextOffsetSpec Parse(string? json)
++    {
++        if (string.IsNullOrWhiteSpace(json))
++        {
++            throw new BusinessException("'anchor' parametresi boş olamaz.");
++        }
++        System.Text.Json.JsonDocument doc;
++        try
++        {
++            doc = System.Text.Json.JsonDocument.Parse(json);
++        }
++        catch (System.Text.Json.JsonException ex)
++        {
++            throw new BusinessException($"'anchor' geçerli bir JSON değil: {ex.Message}");
++        }
++        using (doc)
++        {
++            var root = doc.RootElement;
++            var text = root.TryGetProperty("anchorText", out var t) ? t.GetString() : null;
++            if (string.IsNullOrWhiteSpace(text))
++            {
++                throw new BusinessException("'anchorText' boş olamaz.");
++            }
++            var dx = root.TryGetProperty("dx", out var x) && x.TryGetInt32(out var xi) ? xi : 0;
++            var dy = root.TryGetProperty("dy", out var y) && y.TryGetInt32(out var yi) ? yi : 0;
++            return new TextOffsetSpec(text, dx, dy);
++        }
++    }
++}
++
+ /// <summary>region parametresini {x,y,width,height} JSON'undan çözer; boşsa null bileşenler (tam ekran).</summary>
+ internal readonly record struct VisionRegion(int? X, int? Y, int? Width, int? Height)
+ {
+     public static VisionRegion Parse(string? json)
+     {
+         if (string.IsNullOrWhiteSpace(json))
+         {
+             return new VisionRegion(null, null, null, null);
+         }
+         try
+diff --git a/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs b/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
+index 085f15c..674dff5 100644
+--- a/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
++++ b/src/RPA.Infrastructure/UISpy/SapGuiElementSender.cs
+@@ -40,20 +40,23 @@ public sealed record SpyElementMessage
+     public string? TagName { get; init; }
+     public string? InnerTextPreview { get; init; }
+     public string? PageUrl { get; init; }
+     public string? AutomationId { get; init; }
+     public string? ControlType { get; init; }
+     public string? Name { get; init; }
+     public string? UiaPath { get; init; }
+     public string? ProcessName { get; init; }
+     public string? ImageBase64 { get; init; }
+     public string? Region { get; init; }
++    public string? AnchorText { get; init; }
++    public int? Dx { get; init; }
++    public int? Dy { get; init; }
+ 
+     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
+     public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
+ 
+     public static SpyElementMessage From(SapGuiElement element, Guid sessionId)
+     {
+         ArgumentNullException.ThrowIfNull(element);
+         return new SpyElementMessage
+         {
+             SessionId = sessionId,
+@@ -120,20 +123,39 @@ public sealed record SpyElementMessage
+             SessionId = sessionId,
+             Kind = "image",
+             ElementId = "image",
+             ImageBase64 = imageBase64,
+             Region = regionJson,
+             Selector = imageBase64 ?? regionJson,
+             Enabled = true,
+             Changeable = true,
+         };
+     }
++
++    /// <summary>🎯 text-offset picker'dan (çapa metni + hedef nokta) mesaj oluşturur.</summary>
++    public static SpyElementMessage FromTextOffset(string anchorText, int dx, int dy, string? previewBase64, Guid sessionId)
++    {
++        return new SpyElementMessage
++        {
++            SessionId = sessionId,
++            Kind = "text-offset",
++            ElementId = "text-offset",
++            AnchorText = anchorText,
++            Dx = dx,
++            Dy = dy,
++            ImageBase64 = previewBase64,
++            Text = anchorText,
++            Selector = anchorText,
++            Enabled = true,
++            Changeable = true,
++        };
++    }
+ }
+ 
+ /// <summary>
+ /// Tespit edilen SAP GUI elementini Studio'ya (SignalR köprüsü) gönderen bileşen (Spec Bölüm 6).
+ /// Elementi <see cref="SpyElementMessage"/>'e biçimlendirir ve <see cref="ISpyElementTransport"/>
+ /// üzerinden StudioHub'a iletir. Windows-only (tespit yalnızca Windows'ta üretilir).
+ /// </summary>
+ [SupportedOSPlatform("windows")]
+ public sealed class SapGuiElementSender
+ {
+diff --git a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+index aa98e42..32cee9a 100644
+--- a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
++++ b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+@@ -462,19 +462,28 @@ public static class ActivityRegistry
+ 
+         b.Activity("Vision.ClickText").DisplayName("Metne Tıkla (OCR)").Category(CatVision).Capability(cap)
+             .Description("OCR ile bir metni bulur ve tıklar (timeout → System).")
+             .Input("text", "string")
+             .Input("language", "string", required: false, defaultValue: "tur+eng")
+             .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+             .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
+             .Input("timeoutMs", "int", required: false, defaultValue: 5000)
+             .ExceptionClassification("Timeout", ExceptionType.System);
+ 
++        b.Activity("Vision.ClickTextOffset").DisplayName("Çapaya Göre Tıkla (OCR)").Category(CatVision).Capability(cap)
++            .Description("OCR metin çapasından piksel ofsetle tıklar (etiket-yanı boş alanlar).")
++            .Input("anchor", "string", pickerKind: "text-offset", description: "Çapa + ofset (JSON): {anchorText, dx, dy}.")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
++            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
+         b.Activity("Vision.TextExists").DisplayName("Metin Var mı? (OCR)").Category(CatVision).Capability(cap)
+             .Description("Metin ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
+             .Input("text", "string")
+             .Input("language", "string", required: false, defaultValue: "tur+eng")
+             .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+             .Input("timeoutMs", "int", required: false, defaultValue: 0)
+             .Output("exists", "bool");
+     }
+ }
+diff --git a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+index 968cd0a..227177a 100644
+--- a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
++++ b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+@@ -63,20 +63,21 @@ public static class WorkflowServiceCollectionExtensions
+ 
+         // Paket F: Görüntü/OCR fallback aktiviteleri (Vision.*). IVisionAutomationChannel
+         // implementasyonu Agent sürecinde kayıtlıdır; aktiviteler yalnız arayüze bağlıdır.
+         services.TryAddSingleton<IVisionAutomationChannel, RPA.Infrastructure.Activities.Vision.UnavailableVisionAutomationChannel>();
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickActivity>("Vision.Click");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickSequenceActivity>("Vision.ClickSequence");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionWaitForActivity>("Vision.WaitFor");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionExistsActivity>("Vision.Exists");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionGetTextActivity>("Vision.GetText");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextActivity>("Vision.ClickText");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextOffsetActivity>("Vision.ClickTextOffset");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionTextExistsActivity>("Vision.TextExists");
+ 
+         services.AddSingleton<IActivityFactory>(sp =>
+             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
+ 
+         services.AddTransient<IWorkflowRunner, BaseRunner>();
+ 
+         // Task 4.5: Component publish/approve governance (Spec Bölüm 9).
+         // Bellek-içi depo — DB persistansı ayrı bir görev kapsamındadır.
+         services.AddSingleton<InMemoryComponentPublishRepository>();
+diff --git a/src/RPA.Studio/public/assets/i18n/en.json b/src/RPA.Studio/public/assets/i18n/en.json
+index 1808ea3..917782a 100644
+--- a/src/RPA.Studio/public/assets/i18n/en.json
++++ b/src/RPA.Studio/public/assets/i18n/en.json
+@@ -59,21 +59,26 @@
+     "failed": "Target could not be selected",
+     "timeout": "Target selection timed out",
+     "captureMode": "Capture mode",
+     "modeF2": "Freeze with hotkey",
+     "modeTimer": "Timer",
+     "delaySeconds": "Freeze delay (s)",
+     "seconds": "s",
+     "freezeKey": "Freeze key",
+     "ctrl": "Ctrl",
+     "shift": "Shift",
+-    "alt": "Alt"
++    "alt": "Alt",
++    "pickAnchorTarget": "Pick anchor and target",
++    "picking": "Waiting for selection…",
++    "anchorText": "Anchor text",
++    "offsetX": "Offset X (px)",
++    "offsetY": "Offset Y (px)"
+   },
+   "seq": {
+     "empty": "No steps yet. Add steps in order for nested menus.",
+     "addStep": "Add step",
+     "remove": "Remove step",
+     "moveUp": "Move up",
+     "moveDown": "Move down",
+     "clickType": "Click type",
+     "waitMs": "Wait after (ms)",
+     "noImage": "No image selected",
+diff --git a/src/RPA.Studio/public/assets/i18n/tr.json b/src/RPA.Studio/public/assets/i18n/tr.json
+index cb17e1a..7a997f1 100644
+--- a/src/RPA.Studio/public/assets/i18n/tr.json
++++ b/src/RPA.Studio/public/assets/i18n/tr.json
+@@ -59,21 +59,26 @@
+     "failed": "Hedef secilemedi",
+     "timeout": "Hedef secimi zaman asimina ugradi",
+     "captureMode": "Yakalama modu",
+     "modeF2": "Kisayol ile dondur",
+     "modeTimer": "Zamanlayici",
+     "delaySeconds": "Dondurma gecikmesi (sn)",
+     "seconds": "sn",
+     "freezeKey": "Dondurma tusu",
+     "ctrl": "Ctrl",
+     "shift": "Shift",
+-    "alt": "Alt"
++    "alt": "Alt",
++    "pickAnchorTarget": "Çapa ve hedef seç",
++    "picking": "Seçim bekleniyor…",
++    "anchorText": "Çapa metni",
++    "offsetX": "Ofset X (px)",
++    "offsetY": "Ofset Y (px)"
+   },
+   "seq": {
+     "empty": "Henuz adim yok. Ic ice menuler icin sirayla adim ekleyin.",
+     "addStep": "Adim ekle",
+     "remove": "Adimi sil",
+     "moveUp": "Yukari tasi",
+     "moveDown": "Asagi tasi",
+     "clickType": "Tiklama turu",
+     "waitMs": "Sonraki bekleme (ms)",
+     "noImage": "Goruntu secilmedi",
+diff --git a/src/RPA.Studio/src/app/shared/models/activity.model.ts b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+index 0198fe9..0abaf61 100644
+--- a/src/RPA.Studio/src/app/shared/models/activity.model.ts
++++ b/src/RPA.Studio/src/app/shared/models/activity.model.ts
+@@ -1,20 +1,20 @@
+ /**
+  * Activity metadata as returned by the catalog endpoint (GET /api/activities).
+  * Mirrors RPA.Domain ActivityMetadata (Spec Bölüm 2 — activity catalog).
+  */
+ export interface ActivityPort {
+   name: string;
+   type: string;
+   required?: boolean;
+   description?: string;
+-  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | 'image-sequence' | null;
++  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | 'image-sequence' | 'text-offset' | null;
+   options?: string[];
+ }
+ 
+ export interface ActivityMetadata {
+   activityId: string;
+   displayName: string;
+   category?: string;
+   description?: string;
+   icon?: string;
+   inputs?: ActivityPort[];
+diff --git a/src/RPA.Studio/src/app/shared/services/spy.service.ts b/src/RPA.Studio/src/app/shared/services/spy.service.ts
+index a7eb779..2ac78e1 100644
+--- a/src/RPA.Studio/src/app/shared/services/spy.service.ts
++++ b/src/RPA.Studio/src/app/shared/services/spy.service.ts
+@@ -1,15 +1,15 @@
+ import { Injectable, InjectionToken, inject } from '@angular/core';
+ import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+ import { AuthService } from '../../auth/auth.service';
+ 
+-export type SpyKind = 'sap' | 'web' | 'desktop' | 'image';
++export type SpyKind = 'sap' | 'web' | 'desktop' | 'image' | 'text-offset';
+ 
+ // Paket F: image picker "ekran dondurma" seçenekleri (geçici menü/pencere yakalama).
+ export type ImageCaptureMode = 'f2' | 'timer';
+ export interface ImagePickerOptions {
+   captureMode: ImageCaptureMode;
+   delaySeconds: number;
+   // Manuel (f2) modda dondurma kısayolu — kullanıcı boş bir tuş seçebilsin (F1–F12 + Ctrl/Shift/Alt).
+   hotKey?: string;
+   ctrl?: boolean;
+   shift?: boolean;
+@@ -22,20 +22,24 @@ export interface SpyElement {
+   elementId: string;
+   type?: string;
+   text?: string;
+   enabled?: boolean;
+   changeable?: boolean;
+   x?: number;
+   y?: number;
+   // Paket F: image picker sonucu (kind === 'image') — base64 PNG + secilen bolge.
+   imageBase64?: string;
+   region?: { x: number; y: number; width: number; height: number };
++  // text-offset picker sonucu (kind === 'text-offset').
++  anchorText?: string;
++  dx?: number;
++  dy?: number;
+ }
+ 
+ export interface SpyHubConnection {
+   start(): Promise<void>;
+   stop(): Promise<void>;
+   on(methodName: string, handler: (...args: unknown[]) => void): void;
+   invoke(methodName: string, ...args: unknown[]): Promise<unknown>;
+ }
+ 
+ export type SpyHubConnectionFactory = (
+@@ -85,33 +89,34 @@ export class SpyService {
+   private pending?: PendingPick;
+ 
+   async pick(kind: SpyKind, options?: ImagePickerOptions): Promise<SpyElement> {
+     if (this.pending) {
+       throw new Error('A spy session is already active');
+     }
+ 
+     const connection = await this.ensureConnection();
+     const sessionId = this.sessionIdFactory();
+ 
+-    // Image picker'da kullanıcı hedef menüyü elle açıp F2/zamanlayıcı ile dondurduğu için
+-    // daha uzun süre gerekir; diğer picker'lar normal timeout kullanır.
+-    const timeoutMs = kind === 'image' ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
++    // Image/text-offset picker'da kullanıcı hedef menüyü elle açıp F2/zamanlayıcı ile dondurduğu
++    // için daha uzun süre gerekir; diğer picker'lar normal timeout kullanır.
++    const needsFreeze = kind === 'image' || kind === 'text-offset';
++    const timeoutMs = needsFreeze ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
+ 
+     const result = new Promise<SpyElement>((resolve, reject) => {
+       const timeoutId = setTimeout(() => {
+         void this.stopPending(sessionId, reject, new Error('Spy selection timed out'));
+       }, timeoutMs);
+ 
+       this.pending = { sessionId, resolve, reject, timeoutId };
+     });
+ 
+-    const optionsJson = kind === 'image' && options ? JSON.stringify(options) : null;
++    const optionsJson = needsFreeze && options ? JSON.stringify(options) : null;
+ 
+     try {
+       await connection.invoke('StartSpy', sessionId, kind, optionsJson);
+     } catch (error) {
+       const active = this.pending as PendingPick | undefined;
+       if (active?.sessionId === sessionId) {
+         clearTimeout(active.timeoutId);
+         this.pending = undefined;
+       }
+       throw error;
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
+index 27c537d..e504c47 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.html
+@@ -43,20 +43,31 @@
+               <label class="generic-property__label">
+                 {{ port.description || port.name }}
+                 @if (port.required) { <span class="generic-property__req">*</span> }
+               </label>
+               <app-vision-sequence-editor
+                 [attr.data-testid]="'prop-' + port.name + '-sequence'"
+                 [value]="stringValue(port)"
+                 (valueChange)="onValueChange(port, $event)"
+               ></app-vision-sequence-editor>
+               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
++            } @else if (isTextOffsetField(port)) {
++              <label class="generic-property__label">
++                {{ port.description || port.name }}
++                @if (port.required) { <span class="generic-property__req">*</span> }
++              </label>
++              <app-text-offset-editor
++                [attr.data-testid]="'prop-' + port.name + '-text-offset'"
++                [value]="stringValue(port)"
++                (valueChange)="onValueChange(port, $event)"
++              ></app-text-offset-editor>
++              <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+             } @else {
+               <label class="generic-property__label" [attr.for]="'prop-' + port.name">
+                 {{ port.description || port.name }}
+                 @if (port.required) { <span class="generic-property__req">*</span> }
+               </label>
+               @if (showModeSelector(port)) {
+                 <div class="generic-property__mode" role="group" aria-label="Giriş kipi">
+                   <button type="button" class="generic-property__mode-btn"
+                     [class.generic-property__mode-btn--active]="fieldMode(port) === 'value'"
+                     [attr.data-testid]="'prop-' + port.name + '-mode-value'"
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+index b784013..96f78bc 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/generic-property.component.ts
+@@ -1,38 +1,39 @@
+ import { CommonModule } from '@angular/common';
+ import { ChangeDetectorRef, Component, EventEmitter, Input, Output, inject } from '@angular/core';
+ import { FormsModule } from '@angular/forms';
+ import { ActivityCatalogService } from '../../../shared/services/activity-catalog.service';
+ import { ActivityMetadata, ActivityPort } from '../../../shared/models/activity.model';
+ import { WorkflowVariable } from '../../../shared/models/workflow.model';
+ import { SpyElement } from '../../../shared/services/spy.service';
+ import { SelectorPickerButtonComponent } from './selector-picker-button.component';
+ import { VisionSequenceEditorComponent } from './vision-sequence-editor.component';
++import { TextOffsetEditorComponent } from './text-offset-editor.component';
+ 
+ interface ExpressionValidationSegment {
+   text: string;
+   invalid: boolean;
+ }
+ 
+ /** Alan giriş kipi: sabit değer, tek değişken referansı veya serbest ifade ({{...}} içeren). */
+ export type FieldMode = 'value' | 'variable' | 'expression';
+ 
+ /**
+  * Metadata güdümlü jenerik özellik editörü. Seçili aktivitenin katalog
+  * metadata'sındaki `inputs` listesinden her parametre için bir form alanı üretir.
+  * Web.* dışındaki tüm aktivite aileleri (SAP, Excel, Email, File, API ...) için
+  * özel editör gerekmeden alan girişi sağlar (Faz 5 properties fallback).
+  */
+ @Component({
+   selector: 'app-generic-property',
+   standalone: true,
+-  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent],
++  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent],
+   templateUrl: './generic-property.component.html',
+   styleUrls: ['./generic-property.component.scss'],
+ })
+ export class GenericPropertyComponent {
+   private readonly catalog = inject(ActivityCatalogService);
+   private readonly cdr = inject(ChangeDetectorRef);
+ 
+   private _activityType?: string;
+   metadata?: ActivityMetadata;
+   loading = false;
+@@ -164,29 +165,36 @@ export class GenericPropertyComponent {
+ 
+   value(port: ActivityPort): unknown {
+     return this.properties[port.name] ?? '';
+   }
+ 
+   /** Vision.ClickSequence gibi sıralı görüntü adımı editörü gerektiren alan mı? */
+   isSequenceField(port: ActivityPort): boolean {
+     return port.pickerKind === 'image-sequence';
+   }
+ 
++  /** Vision.ClickTextOffset gibi çapa+ofset editörü gerektiren alan mı? */
++  isTextOffsetField(port: ActivityPort): boolean {
++    return port.pickerKind === 'text-offset';
++  }
++
+   /** Editöre geçilecek değeri string'e indirger (JSON dizisi). */
+   stringValue(port: ActivityPort): string {
+     const v = this.value(port);
+     return typeof v === 'string' ? v : '';
+   }
+ 
+-  /** selector-picker-button'a geçilecek spy türü ('image-sequence' spy türü değildir → null). */
++  /** selector-picker-button'a geçilecek spy türü ('image-sequence'/'text-offset' spy türü değil, editör ipucu → null). */
+   spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | null {
+-    return port.pickerKind === 'image-sequence' ? null : port.pickerKind ?? null;
++    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset'
++      ? null
++      : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | undefined) ?? null;
+   }
+ 
+   boolValue(port: ActivityPort): boolean {
+     return this.properties[port.name] === true;
+   }
+ 
+   isVariableField(port: ActivityPort): boolean {
+     return ['variableName', 'outputVariable'].includes(port.name);
+   }
+ 
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.html b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.html
+new file mode 100644
+index 0000000..8c5d4ec
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.html
+@@ -0,0 +1,20 @@
++<div class="text-offset-editor">
++  <button type="button" class="pick-btn" (click)="pick()" [disabled]="picking">
++    🎯 {{ 'picker.pickAnchorTarget' | translate }}
++  </button>
++  <span *ngIf="picking" class="hint">{{ 'picker.picking' | translate }}</span>
++  <span *ngIf="error" class="error">{{ error }}</span>
++
++  <label>{{ 'picker.anchorText' | translate }}
++    <input type="text" [(ngModel)]="anchorText" (ngModelChange)="emit()" />
++  </label>
++  <div class="offset-row">
++    <label>{{ 'picker.offsetX' | translate }}
++      <input type="number" [(ngModel)]="dx" (ngModelChange)="emit()" />
++    </label>
++    <label>{{ 'picker.offsetY' | translate }}
++      <input type="number" [(ngModel)]="dy" (ngModelChange)="emit()" />
++    </label>
++  </div>
++  <img *ngIf="preview" class="preview" [src]="'data:image/png;base64,' + preview" alt="çapa" />
++</div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.scss b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.scss
+new file mode 100644
+index 0000000..1d135b1
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.scss
+@@ -0,0 +1,13 @@
++.text-offset-editor {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++
++  .pick-btn { align-self: flex-start; cursor: pointer; }
++  .hint { font-size: 12px; opacity: 0.8; }
++  .error { color: #c0392b; font-size: 12px; }
++  .offset-row { display: flex; gap: 8px; }
++  label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
++  input[type='number'] { width: 80px; }
++  .preview { max-width: 240px; border: 1px solid #ccc; margin-top: 4px; }
++}
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.spec.ts
+new file mode 100644
+index 0000000..2e0d826
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.spec.ts
+@@ -0,0 +1,33 @@
++import { TextOffsetEditorComponent } from './text-offset-editor.component';
++
++describe('TextOffsetEditorComponent', () => {
++  let component: TextOffsetEditorComponent;
++
++  beforeEach(() => {
++    component = new TextOffsetEditorComponent();
++  });
++
++  it('parses incoming JSON value', () => {
++    component.value = '{"anchorText":"Malzeme No","dx":120,"dy":-4}';
++    expect(component.anchorText).toBe('Malzeme No');
++    expect(component.dx).toBe(120);
++    expect(component.dy).toBe(-4);
++  });
++
++  it('emits JSON on field change', () => {
++    const emitted: string[] = [];
++    component.valueChange.subscribe((v) => emitted.push(v));
++    component.anchorText = 'Miktar';
++    component.dx = 50;
++    component.dy = 0;
++    component.emit();
++    expect(JSON.parse(emitted[emitted.length - 1])).toEqual({ anchorText: 'Miktar', dx: 50, dy: 0 });
++  });
++
++  it('applies picker result (anchorText + dx/dy)', () => {
++    const emitted: string[] = [];
++    component.valueChange.subscribe((v) => emitted.push(v));
++    component.onPicked({ sessionId: 's', kind: 'text-offset', elementId: 'text-offset', anchorText: 'Tutar', dx: 200, dy: 10 });
++    expect(JSON.parse(emitted[emitted.length - 1])).toEqual({ anchorText: 'Tutar', dx: 200, dy: 10 });
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.ts
+new file mode 100644
+index 0000000..47fc1ed
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/text-offset-editor.component.ts
+@@ -0,0 +1,94 @@
++import { CommonModule } from '@angular/common';
++import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
++import { FormsModule } from '@angular/forms';
++import { TranslatePipe } from '../../../core/translate.pipe';
++import { ImagePickerOptions, SpyElement, SpyService } from '../../../shared/services/spy.service';
++
++/**
++ * Vision.ClickTextOffset için çapa+ofset editörü. 🎯 ile iki aşamalı picker'ı (text-offset) çağırır:
++ * çapa metni + hedef nokta seçilir, dx/dy otomatik hesaplanır. Alanlar elle de düzeltilebilir.
++ * Değer backend'e JSON {anchorText,dx,dy} olarak verilir.
++ */
++@Component({
++  selector: 'app-text-offset-editor',
++  standalone: true,
++  imports: [CommonModule, FormsModule, TranslatePipe],
++  templateUrl: './text-offset-editor.component.html',
++  styleUrls: ['./text-offset-editor.component.scss'],
++})
++export class TextOffsetEditorComponent {
++  // Test'lerde bileşen `new` ile (injection context dışında) oluşturulur; bu durumda inject()
++  // NG0203 fırlatır — pick() zaten yalnız çalışan Studio'da (TestBed/gerçek DI) çağrılır.
++  private readonly spy: SpyService | undefined = (() => {
++    try {
++      return inject(SpyService, { optional: true }) ?? undefined;
++    } catch {
++      return undefined;
++    }
++  })();
++
++  anchorText = '';
++  dx = 0;
++  dy = 0;
++  preview: string | null = null;
++  picking = false;
++  error: string | null = null;
++
++  @Input()
++  set value(v: unknown) {
++    const parsed = this.parse(typeof v === 'string' ? v : '');
++    this.anchorText = parsed.anchorText;
++    this.dx = parsed.dx;
++    this.dy = parsed.dy;
++  }
++
++  @Output() readonly valueChange = new EventEmitter<string>();
++
++  async pick(): Promise<void> {
++    if (!this.spy || this.picking) {
++      return;
++    }
++    this.picking = true;
++    this.error = null;
++    const options: ImagePickerOptions = { captureMode: 'f2', delaySeconds: 5 };
++    try {
++      const element = await this.spy.pick('text-offset', options);
++      this.onPicked(element);
++    } catch (e) {
++      this.error = e instanceof Error ? e.message : String(e);
++    } finally {
++      this.picking = false;
++    }
++  }
++
++  onPicked(element: SpyElement): void {
++    if (element.kind !== 'text-offset') {
++      return;
++    }
++    this.anchorText = element.anchorText ?? '';
++    this.dx = element.dx ?? 0;
++    this.dy = element.dy ?? 0;
++    this.preview = element.imageBase64 ?? null;
++    this.emit();
++  }
++
++  emit(): void {
++    this.valueChange.emit(JSON.stringify({ anchorText: this.anchorText, dx: Math.round(this.dx), dy: Math.round(this.dy) }));
++  }
++
++  private parse(json: string): { anchorText: string; dx: number; dy: number } {
++    if (!json || json.trim().length === 0) {
++      return { anchorText: '', dx: 0, dy: 0 };
++    }
++    try {
++      const p = JSON.parse(json) as Record<string, unknown>;
++      return {
++        anchorText: typeof p['anchorText'] === 'string' ? (p['anchorText'] as string) : '',
++        dx: typeof p['dx'] === 'number' ? (p['dx'] as number) : 0,
++        dy: typeof p['dy'] === 'number' ? (p['dy'] as number) : 0,
++      };
++    } catch {
++      return { anchorText: '', dx: 0, dy: 0 };
++    }
++  }
++}
+diff --git a/src/RPA.WebAPI/Hubs/StudioHub.cs b/src/RPA.WebAPI/Hubs/StudioHub.cs
+index e5fb39d..1ced756 100644
+--- a/src/RPA.WebAPI/Hubs/StudioHub.cs
++++ b/src/RPA.WebAPI/Hubs/StudioHub.cs
+@@ -21,20 +21,21 @@ public class StudioHub : Hub
+     public const string StartSpyCommand = "StartSpy";
+     public const string StopSpyCommand = "StopSpy";
+ 
+     private static readonly ConcurrentDictionary<Guid, string> SessionOwners = new();
+     private static readonly HashSet<string> SupportedKinds = new(StringComparer.OrdinalIgnoreCase)
+     {
+         "sap",
+         "web",
+         "desktop",
+         "image",
++        "text-offset",
+     };
+ 
+     private readonly ILogger<StudioHub> _logger;
+ 
+     public StudioHub(ILogger<StudioHub> logger)
+     {
+         _logger = logger;
+     }
+ 
+     /// <summary>
+diff --git a/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorTextOffsetTests.cs b/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorTextOffsetTests.cs
+new file mode 100644
+index 0000000..36fe6a8
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/UISpy/SpySessionCoordinatorTextOffsetTests.cs
+@@ -0,0 +1,47 @@
++namespace RPA.Agent.Tests.UISpy;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++using Moq;
++using RPA.Agent.UISpy;
++using RPA.Infrastructure.UISpy;
++using Xunit;
++
++public class SpySessionCoordinatorTextOffsetTests
++{
++    [Fact]
++    public async Task Start_TextOffsetKind_SendsTextOffsetMessage()
++    {
++        var sessionId = Guid.NewGuid();
++        var transport = new Mock<ISpyElementTransport>();
++        var picker = new Mock<ITextOffsetPicker>();
++        picker.Setup(p => p.DetectOnceAsync(It.IsAny<ImagePickerOptions>(), It.IsAny<CancellationToken>()))
++              .ReturnsAsync(new TextOffsetPick("Malzeme No", 120, -4, "PNG64"));
++        var options = Options.Create(new SpySessionOptions { TimeoutSeconds = 5 });
++
++        var coordinator = new SpySessionCoordinator(
++            Mock.Of<ISapGuiSinglePicker>(), transport.Object, options,
++            NullLogger<SpySessionCoordinator>.Instance,
++            textOffsetPicker: picker.Object);
++
++        await coordinator.StartAsync(sessionId, "text-offset", "{\"captureMode\":\"timer\",\"delaySeconds\":8}");
++
++        transport.Verify(t => t.SendAsync(
++            It.Is<SpyElementMessage>(m => m.Kind == "text-offset" && m.AnchorText == "Malzeme No" && m.Dx == 120 && m.Dy == -4),
++            It.IsAny<CancellationToken>()), Times.Once);
++        picker.Verify(p => p.DetectOnceAsync(
++            It.Is<ImagePickerOptions>(o => o.CaptureMode == "timer" && o.DelaySeconds == 8),
++            It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task Start_TextOffsetKind_NoPicker_Throws()
++    {
++        var coordinator = new SpySessionCoordinator(
++            Mock.Of<ISapGuiSinglePicker>(), Mock.Of<ISpyElementTransport>(),
++            Options.Create(new SpySessionOptions()), NullLogger<SpySessionCoordinator>.Instance);
++
++        await Assert.ThrowsAsync<InvalidOperationException>(
++            () => coordinator.StartAsync(Guid.NewGuid(), "text-offset"));
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs b/tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs
+new file mode 100644
+index 0000000..d6e9286
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs
+@@ -0,0 +1,27 @@
++namespace RPA.Agent.Tests.Vision;
++
++using RPA.Agent.Vision;
++using RPA.Domain.ValueObjects;
++using Xunit;
++
++public class VisionOffsetTests
++{
++    [Fact]
++    public void ClickPoint_UsesAnchorBoxCenterPlusOffset()
++    {
++        // Kutu (x=100,y=200,w=40,h=20) → merkez (120,210); ofset (+50,-10) → (170,200)
++        var box = new VisionMatch(100, 200, 40, 20, 1.0);
++        var (x, y) = VisionOffset.ClickPoint(box, 50, -10);
++        Assert.Equal(170, x);
++        Assert.Equal(200, y);
++    }
++
++    [Fact]
++    public void ClickPoint_ZeroOffset_IsCenter()
++    {
++        var box = new VisionMatch(0, 0, 10, 10, 1.0);
++        var (x, y) = VisionOffset.ClickPoint(box, 0, 0);
++        Assert.Equal(5, x);
++        Assert.Equal(5, y);
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs b/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
+index 35dbeee..ee935ec 100644
+--- a/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
++++ b/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
+@@ -113,11 +113,49 @@ public class VisionActivitiesTests
+ 
+     [Fact]
+     public async Task ClickText_EmptyText_ThrowsBusiness()
+     {
+         var channel = new Mock<IVisionAutomationChannel>();
+         var activity = new VisionClickTextActivity(channel.Object);
+         var ctx = Ctx(new() { ["text"] = "  " });
+ 
+         await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+     }
++
++    [Fact]
++    public async Task ClickTextOffset_EmptyAnchorText_ThrowsBusiness()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextOffsetActivity(channel.Object);
++        var ctx = Ctx(new() { ["anchor"] = "{\"anchorText\":\"\",\"dx\":10,\"dy\":0}" });
++
++        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
++    }
++
++    [Fact]
++    public async Task ClickTextOffset_InvalidJson_ThrowsBusiness()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextOffsetActivity(channel.Object);
++        var ctx = Ctx(new() { ["anchor"] = "not-json" });
++
++        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
++    }
++
++    [Fact]
++    public async Task ClickTextOffset_Valid_CallsChannelWithParsedValuesAndDefaults()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextOffsetActivity(channel.Object);
++        var ctx = Ctx(new()
++        {
++            ["anchor"] = "{\"anchorText\":\"Malzeme No\",\"dx\":120,\"dy\":-4}",
++            ["timeoutMs"] = 0,
++        });
++
++        await activity.ExecuteAsync(ctx.Object);
++
++        // language boş → tur+eng; matchMode boş → contains; clickType null → left kanala bırakılır; timeoutMs 0 → 5000
++        channel.Verify(c => c.ClickTextOffsetAsync(
++            "Malzeme No", 120, -4, "tur+eng", "contains", null, 5000), Times.Once);
++    }
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs b/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
+index 852873a..ee90aea 100644
+--- a/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
++++ b/tests/RPA.Infrastructure.Tests/UISpy/SpyElementMessageTests.cs
+@@ -9,11 +9,25 @@ public class SpyElementMessageTests
+     public void FromImage_SetsKindAndPayload()
+     {
+         var sessionId = Guid.NewGuid();
+         var msg = SpyElementMessage.FromImage("BASE64PNG", "{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", sessionId);
+ 
+         Assert.Equal("image", msg.Kind);
+         Assert.Equal(sessionId, msg.SessionId);
+         Assert.Equal("BASE64PNG", msg.ImageBase64);
+         Assert.Equal("{\"x\":10,\"y\":20,\"width\":30,\"height\":40}", msg.Region);
+     }
++
++    [Fact]
++    public void FromTextOffset_SetsKindAndFields()
++    {
++        var sid = Guid.NewGuid();
++        var msg = SpyElementMessage.FromTextOffset("Malzeme No", 120, -4, "PNG64", sid);
++
++        Assert.Equal("text-offset", msg.Kind);
++        Assert.Equal(sid, msg.SessionId);
++        Assert.Equal("Malzeme No", msg.AnchorText);
++        Assert.Equal(120, msg.Dx);
++        Assert.Equal(-4, msg.Dy);
++        Assert.Equal("PNG64", msg.ImageBase64);
++    }
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+index 2dbf072..c2280e7 100644
+--- a/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
++++ b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+@@ -6,26 +6,27 @@ using Xunit;
+ 
+ public class VisionCatalogTests
+ {
+     [Theory]
+     [InlineData("Vision.Click")]
+     [InlineData("Vision.ClickSequence")]
+     [InlineData("Vision.WaitFor")]
+     [InlineData("Vision.Exists")]
+     [InlineData("Vision.GetText")]
+     [InlineData("Vision.ClickText")]
++    [InlineData("Vision.ClickTextOffset")]
+     [InlineData("Vision.TextExists")]
+     public void Catalog_ContainsVisionActivity(string activityId)
+     {
+         var catalog = ActivityRegistry.BuildCatalog();
+         Assert.Contains(catalog, a => a.Key == activityId);
+     }
+ 
+     [Fact]
+     public void VisionActivities_HaveVisionCapability()
+     {
+         var catalog = ActivityRegistry.BuildCatalog();
+         var vision = catalog.Where(a => a.Key.StartsWith("Vision.")).ToList();
+-        Assert.Equal(7, vision.Count);
++        Assert.Equal(8, vision.Count);
+         Assert.All(vision, a => Assert.Contains("vision", a.Value.RequiredCapabilities));
+     }
+ }
+diff --git a/tests/RPA.WebAPI.Tests/UiSpyTests.cs b/tests/RPA.WebAPI.Tests/UiSpyTests.cs
+index 0916b00..0077a4a 100644
+--- a/tests/RPA.WebAPI.Tests/UiSpyTests.cs
++++ b/tests/RPA.WebAPI.Tests/UiSpyTests.cs
+@@ -211,20 +211,21 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
+             () => connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), "mainframe", (string?)null));
+ 
+         await connection.DisposeAsync();
+     }
+ 
+     [Theory]
+     [InlineData("sap")]
+     [InlineData("web")]
+     [InlineData("desktop")]
+     [InlineData("image")]
++    [InlineData("text-offset")]
+     public async Task StudioHub_StartSpy_AcceptsSupportedKind(string kind)
+     {
+         var connection = CreateHubConnection(GenerateToken());
+         await connection.StartAsync();
+ 
+         // Desteklenen tip HubException fırlatmamalı (image = Paket F görüntü/OCR picker'ı).
+         await connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), kind, (string?)null);
+ 
+         await connection.DisposeAsync();
+     }

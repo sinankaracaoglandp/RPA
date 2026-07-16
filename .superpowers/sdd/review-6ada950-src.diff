@@ -1,0 +1,473 @@
+# Commit
+6ada950 feat(expr): AST evaluator + FunctionRegistry iskeleti + Evaluator delegasyonu
+
+# Stat
+ .../Workflow/ExpressionEvaluator.cs                |  37 +-----
+ .../Workflow/Expressions/ConversionFunctions.cs    |   5 +
+ .../Workflow/Expressions/DateFunctions.cs          |   5 +
+ .../Workflow/Expressions/ExpressionEngine.cs       | 138 +++++++++++++++++++++
+ .../Workflow/Expressions/FunctionRegistry.cs       |  37 ++++++
+ .../Workflow/Expressions/HelperFunctions.cs        |   5 +
+ .../Workflow/Expressions/StringFunctions.cs        |   5 +
+ .../Workflow/Expressions/ExpressionEngineTests.cs  |  44 +++++++
+ 8 files changed, 244 insertions(+), 32 deletions(-)
+
+# Diff
+diff --git a/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs b/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs
+index 707b37f..c4e10b8 100644
+--- a/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs
++++ b/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs
+@@ -1,88 +1,89 @@
+ namespace RPA.Infrastructure.Workflow;
+ 
+ using System.Globalization;
+ using System.Text.RegularExpressions;
+-using Newtonsoft.Json.Linq;
+ 
+ /// <summary>
+ /// MVP ifade değerlendiricisi (Spec Bölüm 5.2 — tam ifade dili S2'ye ertelendi).
+ ///
+ /// Desteklenen:
+ /// - Şablon: <c>${degisken}</c> → değişken değeriyle değiştirilir.
+ /// - JSON yolu: <c>${data.alan}</c> → iç içe özellik erişimi.
+ /// - Karşılaştırma (If/While koşulu): <c>${a} == ${b}</c>, <c>!=</c>, <c>&gt;</c>, <c>&lt;</c>, <c>&gt;=</c>, <c>&lt;=</c>.
+ /// - Literaller: sayılar, <c>true/false</c>, tırnaklı stringler.
+ /// </summary>
+ public sealed class ExpressionEvaluator
+ {
+     private static readonly Regex TokenPattern =
+         new(@"\$\{([^}]+)\}", RegexOptions.Compiled);
+ 
+     private static readonly Regex SingleTokenPattern =
+         new(@"^\s*\$\{([^}]+)\}\s*$", RegexOptions.Compiled);
+ 
+     private static readonly Regex MustacheTokenPattern =
+         new(@"\{\{\s*([^}]+?)\s*\}\}", RegexOptions.Compiled);
+ 
+     private static readonly string[] Operators = { "==", "!=", ">=", "<=", ">", "<" };
+ 
+     private readonly VariableScope _scope;
++    private readonly Expressions.ExpressionEngine _engine;
+ 
+     public ExpressionEvaluator(VariableScope scope)
+     {
+         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
++        _engine = new Expressions.ExpressionEngine(scope);
+     }
+ 
+     /// <summary>
+     /// İfadeyi tipini koruyarak değerlendirir. Tümüyle tek bir <c>${...}</c> ise ham değer;
+     /// aksi halde şablon değiştirmesiyle string döner.
+     /// </summary>
+     public object? EvaluateValue(string? expression)
+     {
+         if (expression is null)
+         {
+             return null;
+         }
+ 
+         expression = NormalizeExpression(expression);
+ 
+         var single = SingleTokenPattern.Match(expression);
+         if (single.Success)
+         {
+-            return ResolvePath(single.Groups[1].Value.Trim());
++            return _engine.Evaluate(single.Groups[1].Value.Trim());
+         }
+ 
+         if (!TokenPattern.IsMatch(expression))
+         {
+             // Düz literal — sayı/bool/string olarak yorumla.
+             return ParseLiteral(expression);
+         }
+ 
+         return EvaluateString(expression);
+     }
+ 
+     /// <summary>İfadeyi şablon değiştirerek string'e çevirir.</summary>
+     public string EvaluateString(string? expression)
+     {
+         if (string.IsNullOrEmpty(expression))
+         {
+             return expression ?? "";
+         }
+ 
+         expression = NormalizeExpression(expression);
+ 
+         return TokenPattern.Replace(expression, m =>
+         {
+-            var value = ResolvePath(m.Groups[1].Value.Trim());
++            var value = _engine.Evaluate(m.Groups[1].Value.Trim());
+             return value?.ToString() ?? "";
+         });
+     }
+ 
+     /// <summary>Boolean koşulu değerlendirir (If/While).</summary>
+     public bool EvaluateCondition(string? condition)
+     {
+         if (string.IsNullOrWhiteSpace(condition))
+         {
+             return false;
+         }
+ 
+@@ -140,25 +141,25 @@ public sealed class ExpressionEvaluator
+     private object? ResolveOperand(string raw)
+     {
+         if (string.IsNullOrEmpty(raw))
+         {
+             return null;
+         }
+ 
+         raw = NormalizeExpression(raw);
+ 
+         var single = SingleTokenPattern.Match(raw);
+         if (single.Success)
+         {
+-            return ResolvePath(single.Groups[1].Value.Trim());
++            return _engine.Evaluate(single.Groups[1].Value.Trim());
+         }
+ 
+         if (TokenPattern.IsMatch(raw))
+         {
+             return EvaluateString(raw);
+         }
+ 
+         // Check if operand contains comparison operators (for nested conditions)
+         foreach (var op in new[] { ">=", "<=", ">", "<", "==", "!=" })
+         {
+             if (raw.Contains(op, StringComparison.Ordinal))
+             {
+@@ -199,52 +200,24 @@ public sealed class ExpressionEvaluator
+         {
+             return l;
+         }
+ 
+         if (double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+         {
+             return d;
+         }
+ 
+         return raw;
+     }
+ 
+-    /// <summary>Nokta ile ayrılmış yolu çözer: değişken + iç içe JSON alanları.</summary>
+-    private object? ResolvePath(string path)
+-    {
+-        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
+-        if (parts.Length == 0)
+-        {
+-            return null;
+-        }
+-
+-        if (!_scope.TryGetVariable(parts[0], out var current))
+-        {
+-            return null;
+-        }
+-
+-        for (var i = 1; i < parts.Length && current is not null; i++)
+-        {
+-            current = current switch
+-            {
+-                JObject jo => jo[parts[i]],
+-                IReadOnlyDictionary<string, object?> dict =>
+-                    dict.TryGetValue(parts[i], out var v) ? v : null,
+-                _ => null,
+-            };
+-        }
+-
+-        return current is JToken token ? VariableScope.JTokenToNative(token) : current;
+-    }
+-
+     private static bool Compare(object? left, object? right, string op)
+     {
+         if (TryToDouble(left, out var dl) && TryToDouble(right, out var dr))
+         {
+             return op switch
+             {
+                 "==" => dl == dr,
+                 "!=" => dl != dr,
+                 ">=" => dl >= dr,
+                 "<=" => dl <= dr,
+                 ">" => dl > dr,
+                 "<" => dl < dr,
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ConversionFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/ConversionFunctions.cs
+new file mode 100644
+index 0000000..83fd34c
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ConversionFunctions.cs
+@@ -0,0 +1,5 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++
++internal static class ConversionFunctions { public static IReadOnlyList<ExpressionFunction> All => System.Array.Empty<ExpressionFunction>(); }
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/DateFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/DateFunctions.cs
+new file mode 100644
+index 0000000..b86a8e9
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/DateFunctions.cs
+@@ -0,0 +1,5 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++
++internal static class DateFunctions { public static IReadOnlyList<ExpressionFunction> All => System.Array.Empty<ExpressionFunction>(); }
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ExpressionEngine.cs b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionEngine.cs
+new file mode 100644
+index 0000000..fc9f77d
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionEngine.cs
+@@ -0,0 +1,138 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.Linq;
++using Newtonsoft.Json.Linq;
++
++/// <summary>AST değerlendirici. Değişken çözümü VariableScope + JSON yolu; fonksiyonlar FunctionRegistry.
++/// Aritmetik/karşılaştırma ExpressionEvaluator'ın eski Compare mantığıyla tutarlı.</summary>
++internal sealed class ExpressionEngine
++{
++    private readonly VariableScope _scope;
++
++    public ExpressionEngine(VariableScope scope)
++        => _scope = scope ?? throw new ArgumentNullException(nameof(scope));
++
++    public object? Evaluate(string rawExpression) => Evaluate(ExpressionParser.Parse(rawExpression));
++
++    public object? Evaluate(ExprNode node) => node switch
++    {
++        LiteralNode l => l.Value,
++        VariableNode v => ResolvePath(v.Path),
++        UnaryNode u => EvalUnary(u),
++        FunctionNode f => EvalFunction(f),
++        BinaryNode b => EvalBinary(b),
++        _ => null,
++    };
++
++    private object? EvalUnary(UnaryNode u)
++    {
++        var v = Evaluate(u.Operand);
++        if (TryToDouble(v, out var d)) { return NormalizeNumber(-d); }
++        throw ExpressionErrors.Business("Tekli '-' yalnız sayıya uygulanır.");
++    }
++
++    private object? EvalFunction(FunctionNode f)
++    {
++        if (!FunctionRegistry.TryGet(f.Name, out var fn))
++        {
++            throw ExpressionErrors.Business($"Bilinmeyen fonksiyon: '{f.Name}'");
++        }
++        var args = f.Args.Select(Evaluate).ToList();
++        var required = fn.Info.Parameters.Count(p => !p.Optional);
++        var total = fn.Info.Parameters.Count;
++        // Son parametre "params" (Concat) değilse argüman sayısını doğrula.
++        if (args.Count < required || (total >= 0 && args.Count > total && !IsVariadic(fn)))
++        {
++            throw ExpressionErrors.Business($"{f.Name} {required}-{total} argüman alır, {args.Count} verildi.");
++        }
++        return fn.Invoke(args);
++    }
++
++    private static bool IsVariadic(ExpressionFunction fn) =>
++        fn.Info.Parameters.Count == 1 && fn.Info.Parameters[0].Name == "...";
++
++    private object? EvalBinary(BinaryNode b)
++    {
++        var left = Evaluate(b.Left);
++        var right = Evaluate(b.Right);
++        switch (b.Op)
++        {
++            case "+":
++                if (left is string || right is string) { return Str(left) + Str(right); }
++                return Arithmetic(left, right, "+");
++            case "-": case "*": case "/":
++                return Arithmetic(left, right, b.Op);
++            default:
++                return Compare(left, right, b.Op);
++        }
++    }
++
++    private static object NormalizeNumber(double d) =>
++        d == Math.Floor(d) && !double.IsInfinity(d) ? (object)(long)d : d;
++
++    private static object Arithmetic(object? left, object? right, string op)
++    {
++        if (!TryToDouble(left, out var l) || !TryToDouble(right, out var r))
++        {
++            throw ExpressionErrors.Business($"Aritmetik '{op}' sayısal olmayan değere uygulandı.");
++        }
++        var result = op switch
++        {
++            "+" => l + r,
++            "-" => l - r,
++            "*" => l * r,
++            "/" => r == 0 ? throw ExpressionErrors.Business("Sıfıra bölme.") : l / r,
++            _ => 0d,
++        };
++        // Tam sayı operandlar + bölme değilse long döndür (ToInt/karşılaştırma tutarlılığı).
++        var integral = left is long or int && right is long or int;
++        return integral && op != "/" ? NormalizeNumber(result) : result;
++    }
++
++    private static string Str(object? v) => v?.ToString() ?? "";
++
++    /// <summary>Nokta yolunu çözer: değişken + iç içe JSON alanları (eski ResolvePath ile birebir).</summary>
++    private object? ResolvePath(string path)
++    {
++        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
++        if (parts.Length == 0) { return null; }
++        if (!_scope.TryGetVariable(parts[0], out var current)) { return null; }
++        for (var i = 1; i < parts.Length && current is not null; i++)
++        {
++            current = current switch
++            {
++                JObject jo => jo[parts[i]],
++                IReadOnlyDictionary<string, object?> dict => dict.TryGetValue(parts[i], out var v) ? v : null,
++                _ => null,
++            };
++        }
++        return current is JToken token ? VariableScope.JTokenToNative(token) : current;
++    }
++
++    private static bool Compare(object? left, object? right, string op)
++    {
++        if (TryToDouble(left, out var dl) && TryToDouble(right, out var dr))
++        {
++            return op switch { "==" => dl == dr, "!=" => dl != dr, ">=" => dl >= dr, "<=" => dl <= dr, ">" => dl > dr, "<" => dl < dr, _ => false };
++        }
++        var cmp = string.Compare(left?.ToString() ?? "", right?.ToString() ?? "", StringComparison.Ordinal);
++        return op switch { "==" => cmp == 0, "!=" => cmp != 0, ">=" => cmp >= 0, "<=" => cmp <= 0, ">" => cmp > 0, "<" => cmp < 0, _ => false };
++    }
++
++    internal static bool TryToDouble(object? value, out double result)
++    {
++        switch (value)
++        {
++            case null: result = 0; return false;
++            case bool b: result = b ? 1 : 0; return true;
++            case double d: result = d; return true;
++            case long l: result = l; return true;
++            case int i: result = i; return true;
++            case decimal m: result = (double)m; return true;
++            default: return double.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result);
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/FunctionRegistry.cs b/src/RPA.Infrastructure/Workflow/Expressions/FunctionRegistry.cs
+new file mode 100644
+index 0000000..27a05fd
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/FunctionRegistry.cs
+@@ -0,0 +1,37 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Linq;
++
++/// <summary>Autocomplete + doküman için fonksiyon metadata'sı (public — WebAPI katalog uç noktası tüketir).</summary>
++public sealed record ExpressionFunctionInfo(
++    string Name, string Category, string ReturnType,
++    IReadOnlyList<ExpressionFunctionParam> Parameters, string Description, string Example);
++
++public sealed record ExpressionFunctionParam(string Name, string Type, bool Optional);
++
++/// <summary>Çalıştırılabilir fonksiyon = metadata + invoker (değerlendirilmiş argümanlar).</summary>
++internal sealed record ExpressionFunction(ExpressionFunctionInfo Info, Func<IReadOnlyList<object?>, object?> Invoke);
++
++/// <summary>Tüm ifade fonksiyonlarının kayıt defteri (case-insensitive ad). Kategori modülleri doldurur.</summary>
++internal static class FunctionRegistry
++{
++    private static readonly Dictionary<string, ExpressionFunction> Map = BuildMap();
++
++    private static Dictionary<string, ExpressionFunction> BuildMap()
++    {
++        var all = new List<ExpressionFunction>();
++        all.AddRange(DateFunctions.All);
++        all.AddRange(StringFunctions.All);
++        all.AddRange(ConversionFunctions.All);
++        all.AddRange(HelperFunctions.All);
++        return all.ToDictionary(f => f.Info.Name, f => f, StringComparer.OrdinalIgnoreCase);
++    }
++
++    public static bool TryGet(string name, out ExpressionFunction fn) => Map.TryGetValue(name, out fn!);
++
++    /// <summary>Studio autocomplete kataloğu (ada göre sıralı, invoker'sız metadata).</summary>
++    public static IReadOnlyList<ExpressionFunctionInfo> Catalog =>
++        Map.Values.Select(f => f.Info).OrderBy(i => i.Category).ThenBy(i => i.Name).ToList();
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/HelperFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/HelperFunctions.cs
+new file mode 100644
+index 0000000..07d0696
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/HelperFunctions.cs
+@@ -0,0 +1,5 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++
++internal static class HelperFunctions { public static IReadOnlyList<ExpressionFunction> All => System.Array.Empty<ExpressionFunction>(); }
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/StringFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/StringFunctions.cs
+new file mode 100644
+index 0000000..8242ff8
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/StringFunctions.cs
+@@ -0,0 +1,5 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++
++internal static class StringFunctions { public static IReadOnlyList<ExpressionFunction> All => System.Array.Empty<ExpressionFunction>(); }
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionEngineTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionEngineTests.cs
+new file mode 100644
+index 0000000..1451208
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionEngineTests.cs
+@@ -0,0 +1,44 @@
++namespace RPA.Infrastructure.Tests.Workflow.Expressions;
++
++using RPA.Domain.Exceptions;
++using RPA.Infrastructure.Workflow;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++public class ExpressionEngineTests
++{
++    private static ExpressionEngine Engine(params (string, object?)[] vars)
++    {
++        var scope = new VariableScope();
++        foreach (var (k, v) in vars) { scope.SetGlobalVariable(k, v); }
++        return new ExpressionEngine(scope);
++    }
++
++    [Fact]
++    public void Variable_ResolvesFromScope()
++        => Assert.Equal("abc", Engine(("ad", "abc")).Evaluate("ad"));
++
++    [Fact]
++    public void Arithmetic_IntegerAddition_ReturnsLong()
++        => Assert.Equal(3L, Engine(("x", 2L)).Evaluate("x + 1"));
++
++    [Fact]
++    public void Arithmetic_Precedence()
++        => Assert.Equal(7L, Engine(("x", 3L)).Evaluate("x * 2 + 1"));
++
++    [Fact]
++    public void StringConcat_WithPlus()
++        => Assert.Equal("a-1", Engine(("s", "a")).Evaluate("s + \"-\" + 1"));
++
++    [Fact]
++    public void Comparison_ReturnsBool()
++        => Assert.Equal(true, Engine(("x", 5L)).Evaluate("x > 3"));
++
++    [Fact]
++    public void UnknownFunction_ThrowsBusiness()
++        => Assert.Throws<BusinessException>(() => Engine().Evaluate("Yok(1)"));
++
++    [Fact]
++    public void Arithmetic_Subtraction_LeftAssociative()
++        => Assert.Equal(5L, Engine().Evaluate("10 - 3 - 2"));
++}

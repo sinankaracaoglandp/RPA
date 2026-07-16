@@ -1,0 +1,255 @@
+# Review package: 6bb2e2c..HEAD
+
+## Commits
+899bfd0 feat(studio): ProjectService ve taslak yükle/kaydet HTTP akışı
+
+## Files changed
+ .../src/app/shared/models/workflow.model.ts        |  2 +-
+ .../app/shared/services/project.service.spec.ts    | 46 ++++++++++++++++++++
+ .../src/app/shared/services/project.service.ts     | 43 +++++++++++++++++++
+ .../shared/services/workflow-draft.service.spec.ts | 50 ++++++++++++++++++++++
+ .../app/shared/services/workflow-draft.service.ts  | 33 ++++++++++++--
+ 5 files changed, 169 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/shared/models/workflow.model.ts b/src/RPA.Studio/src/app/shared/models/workflow.model.ts
+index 58a9281..1338670 100644
+--- a/src/RPA.Studio/src/app/shared/models/workflow.model.ts
++++ b/src/RPA.Studio/src/app/shared/models/workflow.model.ts
+@@ -59,21 +59,21 @@ export interface WorkflowVariable {
+ export interface WorkflowVersion {
+   schemaVersion: string;
+   id: string;
+   name: string;
+   version: string;
+   nodes: WorkflowNode[];
+   connections: WorkflowConnection[];
+   variables?: WorkflowVariable[];
+ }
+ 
+-export function emptyWorkflow(id = crypto.randomUUID(), name = 'Untitled'): WorkflowVersion {
++export function emptyWorkflow(id: string = crypto.randomUUID(), name: string = 'Untitled'): WorkflowVersion {
+   return {
+     schemaVersion: '1.0',
+     id,
+     name,
+     version: '1.0.0',
+     nodes: [],
+     connections: [],
+     variables: [],
+   };
+ }
+diff --git a/src/RPA.Studio/src/app/shared/services/project.service.spec.ts b/src/RPA.Studio/src/app/shared/services/project.service.spec.ts
+new file mode 100644
+index 0000000..ee88c7e
+--- /dev/null
++++ b/src/RPA.Studio/src/app/shared/services/project.service.spec.ts
+@@ -0,0 +1,46 @@
++import { provideHttpClient } from '@angular/common/http';
++import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
++import { TestBed } from '@angular/core/testing';
++import { ProjectService } from './project.service';
++
++describe('ProjectService', () => {
++  let service: ProjectService;
++  let http: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [provideHttpClient(), provideHttpClientTesting()],
++    });
++    service = TestBed.inject(ProjectService);
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => http.verify());
++
++  it('lists projects from GET /api/projects', () => {
++    let result: unknown;
++    service.getProjects().subscribe((r) => (result = r));
++
++    const req = http.expectOne('/api/projects');
++    expect(req.request.method).toBe('GET');
++    req.flush([{ id: 'p1', name: 'Pilot', workflowCount: 2 }]);
++
++    expect(result).toEqual([{ id: 'p1', name: 'Pilot', workflowCount: 2 }]);
++  });
++
++  it('creates a project via POST /api/projects', () => {
++    service.createProject('Pilot', 'açıklama').subscribe();
++    const req = http.expectOne('/api/projects');
++    expect(req.request.method).toBe('POST');
++    expect(req.request.body).toEqual({ name: 'Pilot', description: 'açıklama' });
++    req.flush({ id: 'p1', name: 'Pilot', workflowCount: 0 });
++  });
++
++  it('creates a workflow via POST /api/projects/{id}/workflows', () => {
++    service.createWorkflow('p1', 'Sipariş').subscribe();
++    const req = http.expectOne('/api/projects/p1/workflows');
++    expect(req.request.method).toBe('POST');
++    expect(req.request.body).toEqual({ name: 'Sipariş' });
++    req.flush({ id: 'w1', name: 'Sipariş' });
++  });
++});
+diff --git a/src/RPA.Studio/src/app/shared/services/project.service.ts b/src/RPA.Studio/src/app/shared/services/project.service.ts
+new file mode 100644
+index 0000000..848632a
+--- /dev/null
++++ b/src/RPA.Studio/src/app/shared/services/project.service.ts
+@@ -0,0 +1,43 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface ProjectSummary {
++  id: string;
++  name: string;
++  description?: string;
++  workflowCount: number;
++}
++
++export interface WorkflowSummary {
++  id: string;
++  name: string;
++  updatedAt?: string;
++}
++
++/** Projelerim ekranının backend erişimi (Paket B — /api/projects). */
++@Injectable({ providedIn: 'root' })
++export class ProjectService {
++  private readonly http = inject(HttpClient);
++
++  getProjects(): Observable<ProjectSummary[]> {
++    return this.http.get<ProjectSummary[]>('/api/projects');
++  }
++
++  createProject(name: string, description?: string): Observable<ProjectSummary> {
++    return this.http.post<ProjectSummary>('/api/projects', { name, description });
++  }
++
++  getWorkflows(projectId: string): Observable<WorkflowSummary[]> {
++    return this.http.get<WorkflowSummary[]>(
++      `/api/projects/${encodeURIComponent(projectId)}/workflows`,
++    );
++  }
++
++  createWorkflow(projectId: string, name: string): Observable<WorkflowSummary> {
++    return this.http.post<WorkflowSummary>(
++      `/api/projects/${encodeURIComponent(projectId)}/workflows`,
++      { name },
++    );
++  }
++}
+diff --git a/src/RPA.Studio/src/app/shared/services/workflow-draft.service.spec.ts b/src/RPA.Studio/src/app/shared/services/workflow-draft.service.spec.ts
+new file mode 100644
+index 0000000..383ce9b
+--- /dev/null
++++ b/src/RPA.Studio/src/app/shared/services/workflow-draft.service.spec.ts
+@@ -0,0 +1,50 @@
++import { provideHttpClient } from '@angular/common/http';
++import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
++import { TestBed } from '@angular/core/testing';
++import { WorkflowDraftService } from './workflow-draft.service';
++import { emptyWorkflow } from '../models/workflow.model';
++
++describe('WorkflowDraftService', () => {
++  let service: WorkflowDraftService;
++  let http: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [provideHttpClient(), provideHttpClientTesting()],
++    });
++    service = TestBed.inject(WorkflowDraftService);
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => http.verify());
++
++  it('load parses the draft JsonDefinition into a WorkflowVersion', () => {
++    const wf = emptyWorkflow('w1', 'Sipariş');
++    let result: unknown;
++    service.load('w1').subscribe((r) => (result = r));
++
++    http.expectOne('/api/workflows/w1/draft').flush({
++      id: 'v1', workflowId: 'w1', version: '1.0.0',
++      jsonDefinition: JSON.stringify(wf),
++    });
++
++    expect(result).toEqual(wf);
++  });
++
++  it('save PUTs the serialized graph to the draft endpoint', () => {
++    const wf = emptyWorkflow('w1', 'Sipariş');
++    service.save('w1', wf).subscribe();
++
++    const req = http.expectOne('/api/workflows/w1/draft');
++    expect(req.request.method).toBe('PUT');
++    expect(JSON.parse(req.request.body.jsonDefinition)).toEqual(wf);
++    req.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
++  });
++
++  it('keeps the existing pending hand-off behaviour', () => {
++    const wf = emptyWorkflow();
++    service.setPending(wf);
++    expect(service.consumePending()).toEqual(wf);
++    expect(service.consumePending()).toBeNull();
++  });
++});
+diff --git a/src/RPA.Studio/src/app/shared/services/workflow-draft.service.ts b/src/RPA.Studio/src/app/shared/services/workflow-draft.service.ts
+index 052266b..c5975b8 100644
+--- a/src/RPA.Studio/src/app/shared/services/workflow-draft.service.ts
++++ b/src/RPA.Studio/src/app/shared/services/workflow-draft.service.ts
+@@ -1,23 +1,48 @@
+-import { Injectable, signal } from '@angular/core';
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { Observable, map } from 'rxjs';
+ import { WorkflowVersion } from '../models/workflow.model';
+ 
++interface WorkflowDraftDto {
++  id: string;
++  workflowId: string;
++  version: string;
++  jsonDefinition: string;
++}
++
+ /**
+- * Hand-off point for "create workflow from template" (Faz 5, Task 5.5).
+- * The Template Wizard stores the newly created workflow here before
+- * navigating to the designer; the designer consumes (and clears) it on load.
++ * Hand-off point for "create workflow from template" (Faz 5, Task 5.5) ve
++ * taslak kalıcılığı (Paket B): backend'deki draft'ı yükle/kaydet.
+  */
+ @Injectable({ providedIn: 'root' })
+ export class WorkflowDraftService {
++  private readonly http = inject(HttpClient);
+   private readonly _pending = signal<WorkflowVersion | null>(null);
+ 
+   setPending(workflow: WorkflowVersion): void {
+     this._pending.set(workflow);
+   }
+ 
+   /** Returns and clears the pending draft, if any. */
+   consumePending(): WorkflowVersion | null {
+     const pending = this._pending();
+     this._pending.set(null);
+     return pending;
+   }
++
++  /** Backend'deki taslağı yükler (JsonDefinition parse edilir). */
++  load(workflowId: string): Observable<WorkflowVersion> {
++    return this.http
++      .get<WorkflowDraftDto>(`/api/workflows/${encodeURIComponent(workflowId)}/draft`)
++      .pipe(map((dto) => JSON.parse(dto.jsonDefinition) as WorkflowVersion));
++  }
++
++  /** Canvas'tan serialize edilen grafiği taslağa kaydeder. */
++  save(workflowId: string, version: WorkflowVersion): Observable<void> {
++    return this.http
++      .put<WorkflowDraftDto>(`/api/workflows/${encodeURIComponent(workflowId)}/draft`, {
++        jsonDefinition: JSON.stringify(version),
++      })
++      .pipe(map(() => undefined));
++  }
+ }

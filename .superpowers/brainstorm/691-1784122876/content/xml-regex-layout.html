@@ -1,0 +1,66 @@
+<h2>XML Alan ve Regex Editörü</h2>
+<p class="subtitle">Önerilen üç panelli çalışma alanı — dosyadan alan seç, kuralı tanımla, sonucu anında doğrula.</p>
+
+<div class="mockup">
+  <div class="mockup-header">EInvoice.ReadUbl — Alan Eşleme Editörü</div>
+  <div class="mockup-body" style="padding:0;display:grid;grid-template-columns:30% 38% 32%;min-height:520px">
+    <section style="padding:18px;border-right:1px solid #d8dee9;background:#f7f9fc">
+      <div class="label">1 · XML AĞACI</div>
+      <div style="margin:12px 0;padding:10px;border:1px solid #d8dee9;border-radius:8px;background:white">📄 eFatura.xml</div>
+      <div style="font-family:monospace;font-size:13px;line-height:2">
+        <div>▾ Invoice</div>
+        <div style="padding-left:16px">├─ cbc:ID <strong style="color:#2563eb">FTR202600001</strong></div>
+        <div style="padding-left:16px">├─ cbc:IssueDate</div>
+        <div style="padding-left:16px">▾ cac:AccountingSupplierParty</div>
+        <div style="padding-left:32px">└─ cbc:Name</div>
+        <div style="padding-left:16px;background:#dbeafe;border-radius:5px">▾ cac:InvoiceLine <span style="float:right">×3</span></div>
+        <div style="padding-left:32px">├─ cbc:InvoicedQuantity</div>
+        <div style="padding-left:32px">├─ cbc:LineExtensionAmount</div>
+        <div style="padding-left:32px">└─ cac:Item / cbc:Name</div>
+      </div>
+    </section>
+
+    <section style="padding:18px;border-right:1px solid #d8dee9">
+      <div class="label">2 · ALAN KURALI</div>
+      <p><strong>Çıktı alanı</strong></p>
+      <input class="mock-input" value="invoiceNumber" style="width:100%;box-sizing:border-box">
+      <p><strong>XPath</strong></p>
+      <input class="mock-input" value="//cbc:ID" style="width:100%;box-sizing:border-box;font-family:monospace">
+      <p><strong>Regex (isteğe bağlı)</strong></p>
+      <input class="mock-input" value="^FTR(?&lt;yil&gt;\d{4})(?&lt;sira&gt;\d+)$" style="width:100%;box-sizing:border-box;font-family:monospace">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+        <div><span class="label">GRUP</span><input class="mock-input" value="0" style="width:100%;box-sizing:border-box"></div>
+        <div><span class="label">TİP</span><input class="mock-input" value="string" style="width:100%;box-sizing:border-box"></div>
+      </div>
+      <p style="margin-top:16px"><strong>Tekrarlanan satır kapsamı</strong></p>
+      <div style="padding:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;font-family:monospace">//cac:InvoiceLine</div>
+      <button class="mock-button" style="margin-top:18px">+ Alan eşlemesi ekle</button>
+    </section>
+
+    <section style="padding:18px;background:#fbfcfe">
+      <div class="label">3 · CANLI ÖNİZLEME</div>
+      <p><strong>Seçilen ham değer</strong></p>
+      <div style="padding:12px;background:#111827;color:#e5e7eb;border-radius:8px;font-family:monospace">FTR202600001</div>
+      <p><strong>Regex sonucu</strong> <span style="color:#15803d">✓ eşleşti</span></p>
+      <div style="padding:12px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;font-family:monospace;line-height:1.8">
+        full: FTR202600001<br>yil: 2026<br>sira: 00001
+      </div>
+      <p><strong>Üretilen veri</strong></p>
+      <div style="padding:12px;background:#111827;color:#a7f3d0;border-radius:8px;font-family:monospace;font-size:12px;white-space:pre">{
+  "invoiceNumber": "FTR202600001",
+  "year": "2026",
+  "sequence": "00001"
+}</div>
+      <div style="margin-top:16px;padding:10px;border-left:4px solid #f59e0b;background:#fffbeb;font-size:13px">XML namespace'leri otomatik çözülür; regex yalnızca seçilen tag değerine uygulanır.</div>
+    </section>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve-three-panel" onclick="toggleSelect(this)">
+    <div class="letter">A</div><div class="content"><h3>Üç panelli düzeni onayla</h3><p>Ağaç, kural ve canlı sonuç aynı ekranda görünür.</p></div>
+  </div>
+  <div class="option" data-choice="request-simpler" onclick="toggleSelect(this)">
+    <div class="letter">B</div><div class="content"><h3>Daha sade bir sihirbaz yap</h3><p>Dosya → alan → regex adımları ayrı ekranlarda ilerler.</p></div>
+  </div>
+</div>

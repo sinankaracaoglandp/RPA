@@ -1,0 +1,372 @@
+# Review package: 4907841..HEAD
+
+## Commits
+d07cf31 fix(studio-api): boş taslak JSON'u serializer ile üretiliyor — ad kaçış hatası
+72d4d8e feat(studio-api): WorkflowDesignService — proje/workflow CRUD + taslak kaydet/yükle
+
+## Files changed
+ .../Services/WorkflowDesignService.cs              | 162 ++++++++++++++++++
+ .../Services/WorkflowDesignServiceTests.cs         | 186 +++++++++++++++++++++
+ 2 files changed, 348 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Infrastructure/Services/WorkflowDesignService.cs b/src/RPA.Infrastructure/Services/WorkflowDesignService.cs
+new file mode 100644
+index 0000000..c890fbd
+--- /dev/null
++++ b/src/RPA.Infrastructure/Services/WorkflowDesignService.cs
+@@ -0,0 +1,162 @@
++namespace RPA.Infrastructure.Services;
++
++using System.Text.Json;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Workflow;
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++using Environment = RPA.Domain.Entities.Environment;
++
++/// <summary>
++/// Studio tasarım-zamanı kalıcılık akışı (Paket B): proje/workflow oluşturma-listeleme
++/// ve taslak (Status == Draft) kaydet/yükle. Taslak tek kayıttır; kaydetme mevcut
++/// taslağın JsonDefinition'ını günceller, yeni versiyon YARATMAZ (yayınlama
++/// WorkflowDeploymentService'te kalır). JSON, kontrat şeması v1.0'a karşı doğrulanır.
++/// </summary>
++public sealed class WorkflowDesignService
++{
++    /// <summary>Taslakların bağlandığı ortam; yoksa otomatik oluşturulur.</summary>
++    public const string DraftEnvironmentName = "Dev";
++
++    private readonly IProjectRepository _projects;
++    private readonly IWorkflowRepository _workflows;
++    private readonly IEnvironmentRepository _environments;
++    private readonly WorkflowValidator _validator;
++
++    public WorkflowDesignService(
++        IProjectRepository projects,
++        IWorkflowRepository workflows,
++        IEnvironmentRepository environments,
++        WorkflowValidator validator)
++    {
++        _projects = projects ?? throw new ArgumentNullException(nameof(projects));
++        _workflows = workflows ?? throw new ArgumentNullException(nameof(workflows));
++        _environments = environments ?? throw new ArgumentNullException(nameof(environments));
++        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
++    }
++
++    public async Task<IReadOnlyList<(Project Project, int WorkflowCount)>> ListProjectsAsync(
++        CancellationToken ct = default)
++    {
++        var projects = await _projects.ListAsync(ct).ConfigureAwait(false);
++        var result = new List<(Project, int)>(projects.Count);
++        foreach (var p in projects)
++        {
++            result.Add((p, await _projects.CountWorkflowsAsync(p.Id, ct).ConfigureAwait(false)));
++        }
++        return result;
++    }
++
++    public async Task<Project> CreateProjectAsync(
++        string name, string? description, CancellationToken ct = default)
++    {
++        if (string.IsNullOrWhiteSpace(name))
++        {
++            throw new BusinessException("Proje adı boş olamaz.");
++        }
++        var project = new Project { Id = Guid.NewGuid(), Name = name.Trim(), Description = description };
++        await _projects.AddAsync(project, ct).ConfigureAwait(false);
++        await _projects.SaveChangesAsync(ct).ConfigureAwait(false);
++        return project;
++    }
++
++    public async Task<IReadOnlyList<Workflow>> ListWorkflowsAsync(
++        Guid projectId, CancellationToken ct = default)
++    {
++        _ = await RequireProject(projectId, ct).ConfigureAwait(false);
++        return await _workflows.ListByProjectAsync(projectId, ct).ConfigureAwait(false);
++    }
++
++    public async Task<Workflow> CreateWorkflowAsync(
++        Guid projectId, string name, CancellationToken ct = default)
++    {
++        if (string.IsNullOrWhiteSpace(name))
++        {
++            throw new BusinessException("Workflow adı boş olamaz.");
++        }
++        _ = await RequireProject(projectId, ct).ConfigureAwait(false);
++
++        var workflow = new Workflow { Id = Guid.NewGuid(), ProjectId = projectId, Name = name.Trim() };
++        await _workflows.AddAsync(workflow, ct).ConfigureAwait(false);
++        await CreateDraft(workflow, ct).ConfigureAwait(false);
++        await _workflows.SaveChangesAsync(ct).ConfigureAwait(false);
++        return workflow;
++    }
++
++    public async Task<WorkflowVersion> GetDraftAsync(Guid workflowId, CancellationToken ct = default)
++    {
++        var workflow = await RequireWorkflow(workflowId, ct).ConfigureAwait(false);
++        var draft = await _workflows.FindDraftAsync(workflowId, ct).ConfigureAwait(false);
++        if (draft is null)
++        {
++            draft = await CreateDraft(workflow, ct).ConfigureAwait(false);
++            await _workflows.SaveChangesAsync(ct).ConfigureAwait(false);
++        }
++        return draft;
++    }
++
++    public async Task<WorkflowVersion> SaveDraftAsync(
++        Guid workflowId, string jsonDefinition, CancellationToken ct = default)
++    {
++        var validation = _validator.ValidateWorkflowJson(jsonDefinition);
++        if (!validation.IsValid)
++        {
++            throw new BusinessException(
++                $"Workflow JSON şema doğrulaması başarısız: {string.Join("; ", validation.Errors)}");
++        }
++
++        var workflow = await RequireWorkflow(workflowId, ct).ConfigureAwait(false);
++        var draft = await _workflows.FindDraftAsync(workflowId, ct).ConfigureAwait(false)
++            ?? await CreateDraft(workflow, ct).ConfigureAwait(false);
++
++        draft.JsonDefinition = jsonDefinition;
++        await _workflows.SaveChangesAsync(ct).ConfigureAwait(false);
++        return draft;
++    }
++
++    private async Task<WorkflowVersion> CreateDraft(Workflow workflow, CancellationToken ct)
++    {
++        var env = await _environments.FindByNameAsync(DraftEnvironmentName, ct).ConfigureAwait(false);
++        if (env is null)
++        {
++            env = new Environment { Id = Guid.NewGuid(), Name = DraftEnvironmentName };
++            await _environments.AddAsync(env, ct).ConfigureAwait(false);
++        }
++
++        var draft = new WorkflowVersion
++        {
++            Id = Guid.NewGuid(),
++            WorkflowId = workflow.Id,
++            Version = "1.0.0",
++            Status = ComponentStatus.Draft,
++            EnvironmentId = env.Id,
++            JsonDefinition = EmptyDefinition(workflow),
++        };
++        await _workflows.AddVersionAsync(draft, ct).ConfigureAwait(false);
++        return draft;
++    }
++
++    private static string EmptyDefinition(Workflow workflow)
++    {
++        var definition = new
++        {
++            schemaVersion = "1.0",
++            id = workflow.Id,
++            name = workflow.Name,
++            version = "1.0.0",
++            nodes = Array.Empty<object>(),
++            connections = Array.Empty<object>(),
++            variables = Array.Empty<object>()
++        };
++        return JsonSerializer.Serialize(definition);
++    }
++
++    private async Task<Project> RequireProject(Guid id, CancellationToken ct)
++        => await _projects.FindAsync(id, ct).ConfigureAwait(false)
++            ?? throw new BusinessException($"Proje bulunamadı: {id}");
++
++    private async Task<Workflow> RequireWorkflow(Guid id, CancellationToken ct)
++        => await _workflows.FindAsync(id, ct).ConfigureAwait(false)
++            ?? throw new BusinessException($"Workflow bulunamadı: {id}");
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Services/WorkflowDesignServiceTests.cs b/tests/RPA.Infrastructure.Tests/Services/WorkflowDesignServiceTests.cs
+new file mode 100644
+index 0000000..6b01161
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Services/WorkflowDesignServiceTests.cs
+@@ -0,0 +1,186 @@
++namespace RPA.Infrastructure.Tests.Services;
++
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Services;
++using System.Text.Json;
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++using Environment = RPA.Domain.Entities.Environment;
++using Xunit;
++
++public class WorkflowDesignServiceTests
++{
++    private sealed class FakeProjectRepo : IProjectRepository
++    {
++        public readonly List<Project> Items = new();
++        public readonly List<Workflow> WorkflowItems = new();
++        public Task<IReadOnlyList<Project>> ListAsync(CancellationToken ct = default)
++            => Task.FromResult<IReadOnlyList<Project>>(Items.OrderBy(p => p.Name).ToList());
++        public Task<Project?> FindAsync(Guid id, CancellationToken ct = default)
++            => Task.FromResult(Items.FirstOrDefault(p => p.Id == id));
++        public Task<Project> AddAsync(Project p, CancellationToken ct = default)
++        { Items.Add(p); return Task.FromResult(p); }
++        public Task<int> CountWorkflowsAsync(Guid projectId, CancellationToken ct = default)
++            => Task.FromResult(WorkflowItems.Count(w => w.ProjectId == projectId));
++        public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
++    }
++
++    private sealed class FakeWorkflowRepo : IWorkflowRepository
++    {
++        public readonly List<Workflow> Items;
++        public readonly List<WorkflowVersion> Versions = new();
++        public FakeWorkflowRepo(List<Workflow>? shared = null) => Items = shared ?? new List<Workflow>();
++        public Task<IReadOnlyList<Workflow>> ListByProjectAsync(Guid projectId, CancellationToken ct = default)
++            => Task.FromResult<IReadOnlyList<Workflow>>(Items.Where(w => w.ProjectId == projectId).ToList());
++        public Task<Workflow?> FindAsync(Guid id, CancellationToken ct = default)
++            => Task.FromResult(Items.FirstOrDefault(w => w.Id == id));
++        public Task<Workflow> AddAsync(Workflow w, CancellationToken ct = default)
++        { Items.Add(w); return Task.FromResult(w); }
++        public Task<WorkflowVersion?> FindDraftAsync(Guid workflowId, CancellationToken ct = default)
++            => Task.FromResult(Versions.FirstOrDefault(
++                v => v.WorkflowId == workflowId && v.Status == ComponentStatus.Draft));
++        public Task AddVersionAsync(WorkflowVersion v, CancellationToken ct = default)
++        { Versions.Add(v); return Task.CompletedTask; }
++        public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
++    }
++
++    private sealed class FakeEnvRepo : IEnvironmentRepository
++    {
++        public readonly List<Environment> Items = new();
++        public Task<IReadOnlyList<Environment>> ListAsync(CancellationToken ct = default)
++            => Task.FromResult<IReadOnlyList<Environment>>(Items.ToList());
++        public Task<Environment?> FindByNameAsync(string name, CancellationToken ct = default)
++            => Task.FromResult(Items.FirstOrDefault(
++                e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)));
++        public Task<Environment> AddAsync(Environment e, CancellationToken ct = default)
++        { Items.Add(e); return Task.FromResult(e); }
++        public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
++    }
++
++    private static (WorkflowDesignService svc, FakeProjectRepo projects, FakeWorkflowRepo workflows, FakeEnvRepo envs) Make()
++    {
++        var projects = new FakeProjectRepo();
++        var workflows = new FakeWorkflowRepo(projects.WorkflowItems);
++        var envs = new FakeEnvRepo();
++        return (new WorkflowDesignService(projects, workflows, envs, new RPA.Infrastructure.Workflow.WorkflowValidator()), projects, workflows, envs);
++    }
++
++    private const string ValidJson =
++        "{\"schemaVersion\":\"1.0\",\"id\":\"550e8400-e29b-41d4-a716-446655440000\",\"name\":\"Test\",\"version\":\"1.0.0\",\"nodes\":[],\"connections\":[]}";
++
++    [Fact]
++    public async Task CreateProject_EmptyName_Throws()
++    {
++        var (svc, _, _, _) = Make();
++        await Assert.ThrowsAsync<BusinessException>(() => svc.CreateProjectAsync("", null));
++    }
++
++    [Fact]
++    public async Task ListProjects_ReturnsWorkflowCounts()
++    {
++        var (svc, _, _, _) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", "açıklama");
++        await svc.CreateWorkflowAsync(p.Id, "wf-a");
++        await svc.CreateWorkflowAsync(p.Id, "wf-b");
++
++        var list = await svc.ListProjectsAsync();
++
++        Assert.Single(list);
++        Assert.Equal(2, list[0].WorkflowCount);
++    }
++
++    [Fact]
++    public async Task CreateWorkflow_UnknownProject_Throws()
++    {
++        var (svc, _, _, _) = Make();
++        await Assert.ThrowsAsync<BusinessException>(() => svc.CreateWorkflowAsync(Guid.NewGuid(), "wf"));
++    }
++
++    [Fact]
++    public async Task CreateWorkflow_CreatesEmptyDraftVersion()
++    {
++        var (svc, _, workflows, _) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", null);
++
++        var wf = await svc.CreateWorkflowAsync(p.Id, "Sipariş Aktarımı");
++
++        var draft = await workflows.FindDraftAsync(wf.Id);
++        Assert.NotNull(draft);
++        Assert.Equal(ComponentStatus.Draft, draft!.Status);
++        Assert.Contains("\"nodes\"", draft.JsonDefinition);
++    }
++
++    [Fact]
++    public async Task GetDraft_MissingDraft_CreatesOne()
++    {
++        var (svc, projects, workflows, _) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", null);
++        var wf = await svc.CreateWorkflowAsync(p.Id, "wf");
++        workflows.Versions.Clear(); // taslağı yapay olarak kaldır
++
++        var draft = await svc.GetDraftAsync(wf.Id);
++
++        Assert.Equal(ComponentStatus.Draft, draft.Status);
++        Assert.Single(workflows.Versions);
++    }
++
++    [Fact]
++    public async Task SaveDraft_ValidJson_UpdatesExistingDraft_NoNewVersion()
++    {
++        var (svc, _, workflows, _) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", null);
++        var wf = await svc.CreateWorkflowAsync(p.Id, "wf");
++
++        var saved = await svc.SaveDraftAsync(wf.Id, ValidJson);
++
++        Assert.Equal(ValidJson, saved.JsonDefinition);
++        Assert.Single(workflows.Versions); // güncelleme, yeni versiyon değil
++    }
++
++    [Fact]
++    public async Task SaveDraft_InvalidJson_ThrowsBusinessException()
++    {
++        var (svc, _, _, _) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", null);
++        var wf = await svc.CreateWorkflowAsync(p.Id, "wf");
++
++        await Assert.ThrowsAsync<BusinessException>(
++            () => svc.SaveDraftAsync(wf.Id, "{\"nodes\":\"bozuk\"}"));
++    }
++
++    [Fact]
++    public async Task Draft_UsesDevEnvironment_AutoCreatesWhenMissing()
++    {
++        var (svc, _, workflows, envs) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", null);
++        var wf = await svc.CreateWorkflowAsync(p.Id, "wf");
++
++        Assert.Contains(envs.Items, e => e.Name == "Dev");
++        var draft = await workflows.FindDraftAsync(wf.Id);
++        Assert.Equal(envs.Items.First(e => e.Name == "Dev").Id, draft!.EnvironmentId);
++    }
++
++    [Fact]
++    public async Task CreateWorkflow_NameWithBackslashAndNewline_DraftJsonIsValidAndRoundTrips()
++    {
++        var (svc, _, workflows, _) = Make();
++        var p = await svc.CreateProjectAsync("Pilot", null);
++        var testName = "Ad\\ı\n\"test\""; // backslash, newline, quotes
++
++        var wf = await svc.CreateWorkflowAsync(p.Id, testName);
++
++        var draft = await workflows.FindDraftAsync(wf.Id);
++        Assert.NotNull(draft);
++
++        // Parse JSON to verify it's valid
++        var doc = JsonDocument.Parse(draft!.JsonDefinition);
++        var root = doc.RootElement;
++
++        // Extract the name property and verify it round-trips
++        var nameProperty = root.GetProperty("name");
++        var roundTrippedName = nameProperty.GetString();
++
++        Assert.Equal(testName, roundTrippedName);
++    }
++}

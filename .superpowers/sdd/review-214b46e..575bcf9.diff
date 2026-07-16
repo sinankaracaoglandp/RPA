@@ -1,0 +1,2452 @@
+# Review package: 214b46e..575bcf9
+
+## Commits
+575bcf9 feat(infrastructure,webapi): SchedulerHostedService + Triggers REST API (Task 3.3)
+77e1139 feat(infrastructure): EF migration — Triggers/Schedules/JobRuns şeması (Task 3.3)
+1496997 feat(infrastructure): TriggerService — JobRun oluşturma + OverlapPolicy (Task 3.3)
+b0d5b7f feat(infrastructure): Cron zaman dilimi hesaplayıcı (Task 3.3)
+
+## Files changed
+ src/RPA.Domain/Interfaces/ITriggerRepository.cs    |  34 ++
+ src/RPA.Domain/Interfaces/ITriggerService.cs       |  50 +++
+ ...0705095452_AddTriggerScheduleJobRun.Designer.cs | 470 +++++++++++++++++++++
+ .../20260705095452_AddTriggerScheduleJobRun.cs     | 111 +++++
+ .../Migrations/RpaDbContextModelSnapshot.cs        | 161 +++++++
+ .../Persistence/EfTriggerRepository.cs             |  53 +++
+ src/RPA.Infrastructure/Persistence/RpaDbContext.cs |  39 ++
+ src/RPA.Infrastructure/RPA.Infrastructure.csproj   |   3 +
+ .../Scheduling/CronScheduleCalculator.cs           |  64 +++
+ .../Scheduling/SchedulerHostedService.cs           |  94 +++++
+ .../SchedulerServiceCollectionExtensions.cs        |  17 +
+ .../Scheduling/TriggerService.cs                   | 141 +++++++
+ src/RPA.WebAPI/Program.cs                          |   4 +
+ src/RPA.WebAPI/Triggers/TriggersController.cs      | 198 +++++++++
+ .../CronScheduleCalculatorTests.cs                 |  78 ++++
+ .../SchedulerHostedServiceTests.cs                 | 136 ++++++
+ .../TriggerMigrationTests.cs                       | 102 +++++
+ .../TriggerServiceTests.cs                         | 235 +++++++++++
+ .../TriggersControllerIntegrationTests.cs          | 178 ++++++++
+ 19 files changed, 2168 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Domain/Interfaces/ITriggerRepository.cs b/src/RPA.Domain/Interfaces/ITriggerRepository.cs
+new file mode 100644
+index 0000000..b6c4c80
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/ITriggerRepository.cs
+@@ -0,0 +1,34 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++
++/// <summary>
++/// Trigger/Schedule/JobRun kalıcılık soyutlaması (Task 3.3, Spec Bölüm 7 — Triggers).
++/// </summary>
++public interface ITriggerRepository
++{
++    Task<Trigger?> FindTriggerByIdAsync(Guid triggerId, CancellationToken cancellationToken = default);
++
++    Task<IReadOnlyList<Trigger>> FindTriggersByWorkflowVersionAsync(Guid workflowVersionId, CancellationToken cancellationToken = default);
++
++    /// <summary>Aktif (IsActive) ve tipi Cron olan tüm tetikleyicileri döner (zamanlayıcı taraması için).</summary>
++    Task<IReadOnlyList<Trigger>> FindActiveCronTriggersAsync(CancellationToken cancellationToken = default);
++
++    Task<Schedule?> FindScheduleByTriggerIdAsync(Guid triggerId, CancellationToken cancellationToken = default);
++
++    Task AddTriggerAsync(Trigger trigger, CancellationToken cancellationToken = default);
++
++    Task AddScheduleAsync(Schedule schedule, CancellationToken cancellationToken = default);
++
++    /// <summary>Verilen workflow versiyonu için Running durumundaki bir JobRun olup olmadığını döner
++    /// (OverlapPolicy = skip/queue kontrolü — Spec Bölüm 7).</summary>
++    Task<bool> HasRunningJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default);
++
++    /// <summary>Verilen workflow versiyonu için en eski Queued JobRun'ı döner; yoksa null
++    /// (OverlapPolicy = queue — önceki çalışma bitince sıradaki başlatılır).</summary>
++    Task<JobRun?> FindOldestQueuedJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default);
++
++    Task AddJobRunAsync(JobRun jobRun, CancellationToken cancellationToken = default);
++
++    Task SaveChangesAsync(CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Domain/Interfaces/ITriggerService.cs b/src/RPA.Domain/Interfaces/ITriggerService.cs
+new file mode 100644
+index 0000000..025bd68
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/ITriggerService.cs
+@@ -0,0 +1,50 @@
++namespace RPA.Domain.Interfaces;
++
++using RPA.Domain.Entities;
++
++/// <summary>
++/// Tetikleyici yürütme servisi (Task 3.3, Spec Bölüm 7 — Triggers). Bir tetikleyici ateşlendiğinde
++/// (cron zamanı geldi / manuel / API) JobRun oluşturur ve OverlapPolicy'ye göre hemen çalıştırır,
++/// kuyruğa alır ya da atlar.
++/// </summary>
++public interface ITriggerService
++{
++    /// <summary>
++    /// Tetikleyiciyi ateşler. Trigger bulunamaz veya IsActive=false ise sonuç Outcome=NotFound/Inactive olur.
++    /// Cron tetikleyicilerde ilişkili Schedule.OverlapPolicy uygulanır:
++    /// skip (çalışan varsa atla), queue (çalışan varsa JobRun'ı Queued olarak biriktir),
++    /// parallel (her zaman yeni JobRun başlatıp çalıştırır).
++    /// </summary>
++    Task<TriggerExecutionResult> ExecuteTriggerAsync(
++        Guid triggerId, string triggeredBy, CancellationToken cancellationToken = default);
++}
++
++/// <summary>Tetikleyici ateşleme sonucu.</summary>
++public sealed class TriggerExecutionResult
++{
++    public TriggerExecutionOutcome Outcome { get; init; }
++
++    public JobRun? JobRun { get; init; }
++
++    public static TriggerExecutionResult NotFound() => new() { Outcome = TriggerExecutionOutcome.NotFound };
++
++    public static TriggerExecutionResult Inactive() => new() { Outcome = TriggerExecutionOutcome.Inactive };
++
++    public static TriggerExecutionResult Skipped(JobRun? previous) => new() { Outcome = TriggerExecutionOutcome.Skipped, JobRun = previous };
++
++    public static TriggerExecutionResult Queued(JobRun jobRun) => new() { Outcome = TriggerExecutionOutcome.Queued, JobRun = jobRun };
++
++    public static TriggerExecutionResult Executed(JobRun jobRun) => new() { Outcome = TriggerExecutionOutcome.Executed, JobRun = jobRun };
++}
++
++public enum TriggerExecutionOutcome
++{
++    NotFound,
++    Inactive,
++    /// <summary>OverlapPolicy=skip: hâlihazırda çalışan bir JobRun olduğu için ateşlenmedi.</summary>
++    Skipped,
++    /// <summary>OverlapPolicy=queue: hâlihazırda çalışan bir JobRun olduğu için yeni JobRun Queued olarak eklendi.</summary>
++    Queued,
++    /// <summary>JobRun oluşturuldu ve hemen çalıştırıldı (parallel veya çalışan yoktu).</summary>
++    Executed,
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260705095452_AddTriggerScheduleJobRun.Designer.cs b/src/RPA.Infrastructure/Migrations/20260705095452_AddTriggerScheduleJobRun.Designer.cs
+new file mode 100644
+index 0000000..5f6be6e
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260705095452_AddTriggerScheduleJobRun.Designer.cs
+@@ -0,0 +1,470 @@
++﻿// <auto-generated />
++using System;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Metadata;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++using RPA.Infrastructure.Persistence;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    [DbContext(typeof(RpaDbContext))]
++    [Migration("20260705095452_AddTriggerScheduleJobRun")]
++    partial class AddTriggerScheduleJobRun
++    {
++        /// <inheritdoc />
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "10.0.9")
++                .HasAnnotation("Relational:MaxIdentifierLength", 128);
++
++            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Action")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("NewValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("OldValue")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("ResourceId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("ResourceType")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("nvarchar(128)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("UserId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("UserId");
++
++                    b.ToTable("AuditLogs");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.JobRun", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("ElasticsearchCorrelationId")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("ScreenshotArchivePath")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<DateTime>("StartedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("TriggeredBy")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("WorkflowVersionId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowVersionId", "Status");
++
++                    b.ToTable("JobRuns");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Queue", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<int>("MaxRetries")
++                        .HasColumnType("int");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("RequireIdempotency")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("RetryBackoffPolicy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<int?>("SlaSeconds")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Queues");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.QueueItem", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<int>("AttemptCount")
++                        .HasColumnType("int");
++
++                    b.Property<string>("CheckpointData")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("ErrorDetail")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("IdempotencyKey")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("Payload")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("QueueId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("StartedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<int>("Status")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("QueueId", "IdempotencyKey")
++                        .IsUnique();
++
++                    b.HasIndex("QueueId", "Status");
++
++                    b.ToTable("QueueItems");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Robot", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AgentVersion")
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<int>("Capacity")
++                        .HasColumnType("int");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("LastHeartbeat")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("MachineName")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<string>("Mode")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("Tags")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("nvarchar(1024)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("MachineName");
++
++                    b.ToTable("Robots");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Schedule", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("CronExpression")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("nvarchar(128)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("OverlapPolicy")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("TimeZone")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<Guid>("TriggerId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("TriggerId")
++                        .IsUnique();
++
++                    b.ToTable("Schedules");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Trigger", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Configuration")
++                        .IsRequired()
++                        .HasMaxLength(4000)
++                        .HasColumnType("nvarchar(4000)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("IsActive")
++                        .HasColumnType("bit");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Type")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("WorkflowVersionId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowVersionId", "IsActive");
++
++                    b.ToTable("Triggers");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("AdUsername")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("nvarchar(256)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("Email")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("FullName")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Users");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.User", "User")
++                        .WithMany("AuditLogs")
++                        .HasForeignKey("UserId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++
++                    b.Navigation("User");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Navigation("AuditLogs");
++                });
++#pragma warning restore 612, 618
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260705095452_AddTriggerScheduleJobRun.cs b/src/RPA.Infrastructure/Migrations/20260705095452_AddTriggerScheduleJobRun.cs
+new file mode 100644
+index 0000000..4d17585
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260705095452_AddTriggerScheduleJobRun.cs
+@@ -0,0 +1,111 @@
++﻿using System;
++using Microsoft.EntityFrameworkCore.Migrations;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    /// <inheritdoc />
++    public partial class AddTriggerScheduleJobRun : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.CreateTable(
++                name: "JobRuns",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    WorkflowVersionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    TriggeredBy = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
++                    AssignedRobotId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
++                    EnvironmentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    Status = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
++                    StartedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    ElasticsearchCorrelationId = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
++                    ScreenshotArchivePath = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_JobRuns", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "Schedules",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    TriggerId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    CronExpression = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
++                    TimeZone = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
++                    OverlapPolicy = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_Schedules", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "Triggers",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    ProjectId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    WorkflowVersionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    Type = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
++                    Configuration = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
++                    EnvironmentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    IsActive = table.Column<bool>(type: "bit", nullable: false),
++                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
++                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_Triggers", x => x.Id);
++                });
++
++            migrationBuilder.CreateIndex(
++                name: "IX_JobRuns_WorkflowVersionId_Status",
++                table: "JobRuns",
++                columns: new[] { "WorkflowVersionId", "Status" });
++
++            migrationBuilder.CreateIndex(
++                name: "IX_Schedules_TriggerId",
++                table: "Schedules",
++                column: "TriggerId",
++                unique: true);
++
++            migrationBuilder.CreateIndex(
++                name: "IX_Triggers_WorkflowVersionId_IsActive",
++                table: "Triggers",
++                columns: new[] { "WorkflowVersionId", "IsActive" });
++        }
++
++        /// <inheritdoc />
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.DropTable(
++                name: "JobRuns");
++
++            migrationBuilder.DropTable(
++                name: "Schedules");
++
++            migrationBuilder.DropTable(
++                name: "Triggers");
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+index e0fa298..23c55bf 100644
+--- a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
++++ b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+@@ -66,20 +66,82 @@ namespace RPA.Infrastructure.Migrations
+                     b.Property<Guid>("UserId")
+                         .HasColumnType("uniqueidentifier");
+ 
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("UserId");
+ 
+                     b.ToTable("AuditLogs");
+                 });
+ 
++            modelBuilder.Entity("RPA.Domain.Entities.JobRun", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("ElasticsearchCorrelationId")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("ScreenshotArchivePath")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<DateTime>("StartedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("TriggeredBy")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("WorkflowVersionId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowVersionId", "Status");
++
++                    b.ToTable("JobRuns");
++                });
++
+             modelBuilder.Entity("RPA.Domain.Entities.Queue", b =>
+                 {
+                     b.Property<Guid>("Id")
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("datetime2");
+ 
+                     b.Property<string>("CreatedBy")
+@@ -238,20 +300,119 @@ namespace RPA.Infrastructure.Migrations
+                     b.Property<string>("UpdatedBy")
+                         .HasColumnType("nvarchar(max)");
+ 
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("MachineName");
+ 
+                     b.ToTable("Robots");
+                 });
+ 
++            modelBuilder.Entity("RPA.Domain.Entities.Schedule", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<string>("CronExpression")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("nvarchar(128)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<string>("OverlapPolicy")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<string>("TimeZone")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("nvarchar(64)");
++
++                    b.Property<Guid>("TriggerId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("TriggerId")
++                        .IsUnique();
++
++                    b.ToTable("Schedules");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Trigger", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Configuration")
++                        .IsRequired()
++                        .HasMaxLength(4000)
++                        .HasColumnType("nvarchar(4000)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<bool>("IsActive")
++                        .HasColumnType("bit");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("bit");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("Type")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("nvarchar(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("datetime2");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("nvarchar(max)");
++
++                    b.Property<Guid>("WorkflowVersionId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowVersionId", "IsActive");
++
++                    b.ToTable("Triggers");
++                });
++
+             modelBuilder.Entity("RPA.Domain.Entities.User", b =>
+                 {
+                     b.Property<Guid>("Id")
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
+                     b.Property<string>("AdUsername")
+                         .IsRequired()
+                         .HasMaxLength(256)
+                         .HasColumnType("nvarchar(256)");
+diff --git a/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs b/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs
+new file mode 100644
+index 0000000..7f22f8c
+--- /dev/null
++++ b/src/RPA.Infrastructure/Persistence/EfTriggerRepository.cs
+@@ -0,0 +1,53 @@
++namespace RPA.Infrastructure.Persistence;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Interfaces;
++
++/// <summary>EF Core tabanlı <see cref="ITriggerRepository"/> implementasyonu (Task 3.3).</summary>
++public sealed class EfTriggerRepository : ITriggerRepository
++{
++    private readonly RpaDbContext _db;
++
++    public EfTriggerRepository(RpaDbContext db)
++    {
++        _db = db ?? throw new ArgumentNullException(nameof(db));
++    }
++
++    public Task<Trigger?> FindTriggerByIdAsync(Guid triggerId, CancellationToken cancellationToken = default)
++        => _db.Triggers.FirstOrDefaultAsync(t => t.Id == triggerId && !t.IsDeleted, cancellationToken);
++
++    public async Task<IReadOnlyList<Trigger>> FindTriggersByWorkflowVersionAsync(Guid workflowVersionId, CancellationToken cancellationToken = default)
++        => await _db.Triggers
++            .Where(t => !t.IsDeleted && t.WorkflowVersionId == workflowVersionId)
++            .ToListAsync(cancellationToken);
++
++    public async Task<IReadOnlyList<Trigger>> FindActiveCronTriggersAsync(CancellationToken cancellationToken = default)
++        => await _db.Triggers
++            .Where(t => !t.IsDeleted && t.IsActive && t.Type == RPA.Domain.Enums.TriggerType.Cron)
++            .ToListAsync(cancellationToken);
++
++    public Task<Schedule?> FindScheduleByTriggerIdAsync(Guid triggerId, CancellationToken cancellationToken = default)
++        => _db.Schedules.FirstOrDefaultAsync(s => s.TriggerId == triggerId && !s.IsDeleted, cancellationToken);
++
++    public async Task AddTriggerAsync(Trigger trigger, CancellationToken cancellationToken = default)
++        => await _db.Triggers.AddAsync(trigger, cancellationToken);
++
++    public async Task AddScheduleAsync(Schedule schedule, CancellationToken cancellationToken = default)
++        => await _db.Schedules.AddAsync(schedule, cancellationToken);
++
++    public Task<bool> HasRunningJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default)
++        => _db.JobRuns.AnyAsync(j => j.WorkflowVersionId == workflowVersionId && j.Status == "Running", cancellationToken);
++
++    public Task<JobRun?> FindOldestQueuedJobRunAsync(Guid workflowVersionId, CancellationToken cancellationToken = default)
++        => _db.JobRuns
++            .Where(j => j.WorkflowVersionId == workflowVersionId && j.Status == "Queued")
++            .OrderBy(j => j.CreatedAt)
++            .FirstOrDefaultAsync(cancellationToken);
++
++    public async Task AddJobRunAsync(JobRun jobRun, CancellationToken cancellationToken = default)
++        => await _db.JobRuns.AddAsync(jobRun, cancellationToken);
++
++    public Task SaveChangesAsync(CancellationToken cancellationToken = default)
++        => _db.SaveChangesAsync(cancellationToken);
++}
+diff --git a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+index 6ee2794..791525f 100644
+--- a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
++++ b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+@@ -26,20 +26,27 @@ public class RpaDbContext : DbContext
+ 
+     /// <summary>Task 2.5.1 — Idempotency/Checkpoint için minimal Queue/QueueItem eşlemesi.
+     /// Tam Queue şeması (Project ilişkisi dahil) WP-1.2 tam DbContext paketinde tamamlanacaktır.</summary>
+     public DbSet<Queue> Queues => Set<Queue>();
+ 
+     public DbSet<QueueItem> QueueItems => Set<QueueItem>();
+ 
+     /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
+     public DbSet<Robot> Robots => Set<Robot>();
+ 
++    /// <summary>Task 3.3 — Zamanlayıcı + tetikleyiciler (Spec Bölüm 7).</summary>
++    public DbSet<Trigger> Triggers => Set<Trigger>();
++
++    public DbSet<Schedule> Schedules => Set<Schedule>();
++
++    public DbSet<JobRun> JobRuns => Set<JobRun>();
++
+     protected override void OnModelCreating(ModelBuilder modelBuilder)
+     {
+         base.OnModelCreating(modelBuilder);
+ 
+         modelBuilder.Entity<AuditLog>(entity =>
+         {
+             entity.HasKey(a => a.Id);
+             entity.Property(a => a.Action).HasMaxLength(64).IsRequired();
+             entity.Property(a => a.ResourceType).HasMaxLength(128).IsRequired();
+         });
+@@ -85,12 +92,44 @@ public class RpaDbContext : DbContext
+             entity.HasKey(r => r.Id);
+             entity.Property(r => r.MachineName).HasMaxLength(256).IsRequired();
+             entity.Property(r => r.Tags).HasMaxLength(1024);
+             entity.Property(r => r.AgentVersion).HasMaxLength(64);
+             entity.Property(r => r.Mode).HasConversion<string>().HasMaxLength(32);
+             entity.Property(r => r.Status).HasConversion<string>().HasMaxLength(32);
+             entity.HasIndex(r => r.MachineName);
+             // QueueItems navigasyonu QueueItem tarafında Ignore edildi (tam şema WP-1.2/3.2).
+             entity.Ignore(r => r.QueueItems);
+         });
++
++        modelBuilder.Entity<Trigger>(entity =>
++        {
++            entity.HasKey(t => t.Id);
++            entity.Property(t => t.Configuration).HasMaxLength(4000).IsRequired();
++            entity.Property(t => t.Type).HasConversion<string>().HasMaxLength(32);
++            entity.HasIndex(t => new { t.WorkflowVersionId, t.IsActive });
++            // Project navigasyonu tam şema paketinde (WP-1.2) yapılandırılacak.
++            entity.Ignore(t => t.Project);
++        });
++
++        modelBuilder.Entity<Schedule>(entity =>
++        {
++            entity.HasKey(s => s.Id);
++            entity.Property(s => s.CronExpression).HasMaxLength(128).IsRequired();
++            entity.Property(s => s.TimeZone).HasMaxLength(64).IsRequired();
++            entity.Property(s => s.OverlapPolicy).HasMaxLength(32).IsRequired();
++            entity.HasIndex(s => s.TriggerId).IsUnique();
++        });
++
++        modelBuilder.Entity<JobRun>(entity =>
++        {
++            entity.HasKey(j => j.Id);
++            entity.Property(j => j.TriggeredBy).HasMaxLength(32).IsRequired();
++            entity.Property(j => j.Status).HasMaxLength(32).IsRequired();
++            entity.Property(j => j.ElasticsearchCorrelationId).HasMaxLength(64);
++            // Task 3.3 — OverlapPolicy kontrolü (skip/queue) aynı WorkflowVersion için çalışan
++            // JobRun aranmasıyla yapılır; bu sorgu için birleşik indeks.
++            entity.HasIndex(j => new { j.WorkflowVersionId, j.Status });
++            // WorkflowVersion navigasyonu tam şema paketinde (WP-1.2) yapılandırılacak.
++            entity.Ignore(j => j.WorkflowVersion);
++        });
+     }
+ }
+diff --git a/src/RPA.Infrastructure/RPA.Infrastructure.csproj b/src/RPA.Infrastructure/RPA.Infrastructure.csproj
+index 0974c78..6227a6b 100644
+--- a/src/RPA.Infrastructure/RPA.Infrastructure.csproj
++++ b/src/RPA.Infrastructure/RPA.Infrastructure.csproj
+@@ -1,28 +1,31 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+     <TargetFramework>net10.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+   </PropertyGroup>
+ 
+   <ItemGroup>
+     <PackageReference Include="ClosedXML" Version="0.102.0" />
++    <PackageReference Include="Cronos" Version="0.13.0" />
+     <PackageReference Include="CsvHelper" Version="31.0.2" />
+     <PackageReference Include="LdapForNet" Version="2.7.15" />
+     <PackageReference Include="MailKit" Version="4.7.1" />
+     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
++    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
++    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+     <PackageReference Include="NJsonSchema" Version="11.1.0" />
+     <PackageReference Include="Polly" Version="8.5.0" />
+     <PackageReference Include="Serilog" Version="4.3.1" />
+     <PackageReference Include="Serilog.Sinks.Elasticsearch" Version="10.0.0" />
+     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <!-- Kontrat şeması (değişmez referans) — embedded resource olarak paketlenir; dosya değiştirilmez. -->
+diff --git a/src/RPA.Infrastructure/Scheduling/CronScheduleCalculator.cs b/src/RPA.Infrastructure/Scheduling/CronScheduleCalculator.cs
+new file mode 100644
+index 0000000..7d4b1d6
+--- /dev/null
++++ b/src/RPA.Infrastructure/Scheduling/CronScheduleCalculator.cs
+@@ -0,0 +1,64 @@
++namespace RPA.Infrastructure.Scheduling;
++
++using System;
++using Cronos;
++
++/// <summary>
++/// Cron ifadelerini ayrıştırıp zaman dilimi farkındalıklı bir sonraki çalışma zamanını hesaplar
++/// (Task 3.3, Spec Bölüm 7). Cronos kütüphanesi (minimal bağımlılık) üzerine ince bir katman;
++/// hatalı cron/timezone durumlarında istisna fırlatmak yerine null döner (Scheduler tarafında
++/// güvenli şekilde atlanabilsin diye).
++/// </summary>
++public static class CronScheduleCalculator
++{
++    /// <summary>
++    /// Verilen cron ifadesinin, <paramref name="fromUtc"/>'den sonraki bir sonraki çalışma
++    /// zamanını UTC olarak döner. Cron/timezone geçersizse null döner.
++    /// </summary>
++    public static DateTime? GetNextOccurrence(string cronExpression, string timeZoneId, DateTime fromUtc)
++    {
++        if (string.IsNullOrWhiteSpace(cronExpression))
++            return null;
++
++        CronExpression parsed;
++        try
++        {
++            parsed = CronExpression.Parse(cronExpression);
++        }
++        catch (CronFormatException)
++        {
++            return null;
++        }
++
++        TimeZoneInfo tz;
++        try
++        {
++            tz = string.IsNullOrWhiteSpace(timeZoneId) || timeZoneId == "UTC"
++                ? TimeZoneInfo.Utc
++                : TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
++        }
++        catch (TimeZoneNotFoundException)
++        {
++            return null;
++        }
++        catch (InvalidTimeZoneException)
++        {
++            return null;
++        }
++
++        var fromUtcSafe = DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc);
++        var next = parsed.GetNextOccurrence(fromUtcSafe, tz, inclusive: false);
++        return next.HasValue ? DateTime.SpecifyKind(next.Value, DateTimeKind.Utc) : null;
++    }
++
++    /// <summary>
++    /// Son ateşlemeden (<paramref name="lastFireUtc"/>) sonraki bir sonraki çalışma zamanının
++    /// <paramref name="nowUtc"/>'ye eşit veya öncesinde olup olmadığını (yani tetikleyicinin ateşlenmesi
++    /// gerekip gerekmediğini) döner.
++    /// </summary>
++    public static bool IsDue(string cronExpression, string timeZoneId, DateTime lastFireUtc, DateTime nowUtc)
++    {
++        var next = GetNextOccurrence(cronExpression, timeZoneId, lastFireUtc);
++        return next.HasValue && next.Value <= DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc);
++    }
++}
+diff --git a/src/RPA.Infrastructure/Scheduling/SchedulerHostedService.cs b/src/RPA.Infrastructure/Scheduling/SchedulerHostedService.cs
+new file mode 100644
+index 0000000..93e91c8
+--- /dev/null
++++ b/src/RPA.Infrastructure/Scheduling/SchedulerHostedService.cs
+@@ -0,0 +1,94 @@
++namespace RPA.Infrastructure.Scheduling;
++
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Zamanlayıcı arka plan servisi (Task 3.3, Spec Bölüm 7). Periyodik olarak aktif Cron
++/// tetikleyicilerini tarar; ilişkili Schedule'ın cron ifadesine göre ateşleme zamanı gelmişse
++/// ITriggerService.ExecuteTriggerAsync çağrılır. Ateşleme, tetikleyici bazında son ateşleme
++/// zamanı (bellek içi) ile tekrar tetiklenmeyi engeller.
++/// </summary>
++public sealed class SchedulerHostedService : BackgroundService
++{
++    private readonly IServiceScopeFactory _scopeFactory;
++    private readonly ILogger<SchedulerHostedService> _logger;
++    private readonly SchedulerOptions _options;
++    private readonly Dictionary<Guid, DateTime> _lastFireUtc = new();
++
++    public SchedulerHostedService(
++        IServiceScopeFactory scopeFactory,
++        ILogger<SchedulerHostedService> logger,
++        IOptions<SchedulerOptions>? options = null)
++    {
++        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++        _options = options?.Value ?? new SchedulerOptions();
++    }
++
++    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
++    {
++        while (!stoppingToken.IsCancellationRequested)
++        {
++            try
++            {
++                await ScanOnceAsync(stoppingToken);
++            }
++            catch (Exception ex)
++            {
++                _logger.LogError(ex, "Zamanlayıcı tarama sırasında beklenmeyen hata.");
++            }
++
++            try
++            {
++                await Task.Delay(_options.PollInterval, stoppingToken);
++            }
++            catch (OperationCanceledException)
++            {
++                // Servis durduruluyor.
++            }
++        }
++    }
++
++    /// <summary>
++    /// Tek bir tarama turu: aktif Cron tetikleyicilerini bulur, her biri için son ateşlemeden
++    /// bu yana cron'un tetiklenmesi gerekip gerekmediğini kontrol eder, gerekiyorsa
++    /// ITriggerService.ExecuteTriggerAsync çağırır. Test edilebilirlik için public.
++    /// </summary>
++    public async Task ScanOnceAsync(CancellationToken cancellationToken = default)
++    {
++        using var scope = _scopeFactory.CreateScope();
++        var repository = scope.ServiceProvider.GetRequiredService<ITriggerRepository>();
++        var triggerService = scope.ServiceProvider.GetRequiredService<ITriggerService>();
++
++        var triggers = await repository.FindActiveCronTriggersAsync(cancellationToken);
++        var now = DateTime.UtcNow;
++
++        foreach (var trigger in triggers)
++        {
++            var schedule = await repository.FindScheduleByTriggerIdAsync(trigger.Id, cancellationToken);
++            if (schedule is null)
++                continue;
++
++            var lastFire = _lastFireUtc.TryGetValue(trigger.Id, out var lf) ? lf : trigger.CreatedAt;
++            if (!CronScheduleCalculator.IsDue(schedule.CronExpression, schedule.TimeZone, lastFire, now))
++                continue;
++
++            _lastFireUtc[trigger.Id] = now;
++            _logger.LogInformation("Zamanlayıcı: Trigger {TriggerId} cron zamanı geldi — ateşleniyor.", trigger.Id);
++            await triggerService.ExecuteTriggerAsync(trigger.Id, "cron", cancellationToken);
++        }
++    }
++}
++
++/// <summary>Zamanlayıcı ayarları (tarama aralığı).</summary>
++public sealed class SchedulerOptions
++{
++    public const string SectionName = "Scheduler";
++
++    /// <summary>Tarama aralığı. Varsayılan 30 saniye.</summary>
++    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(30);
++}
+diff --git a/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs
+new file mode 100644
+index 0000000..b6fea01
+--- /dev/null
++++ b/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs
+@@ -0,0 +1,17 @@
++namespace RPA.Infrastructure.Scheduling;
++
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++using RPA.Domain.Interfaces;
++
++/// <summary>Zamanlayıcı + tetikleyiciler DI kaydı (Task 3.3, Spec Bölüm 7).</summary>
++public static class SchedulerServiceCollectionExtensions
++{
++    public static IServiceCollection AddSchedulerServices(this IServiceCollection services)
++    {
++        services.AddScoped<ITriggerRepository, Persistence.EfTriggerRepository>();
++        services.AddScoped<ITriggerService, TriggerService>();
++        services.AddHostedService<SchedulerHostedService>();
++        return services;
++    }
++}
+diff --git a/src/RPA.Infrastructure/Scheduling/TriggerService.cs b/src/RPA.Infrastructure/Scheduling/TriggerService.cs
+new file mode 100644
+index 0000000..f251a38
+--- /dev/null
++++ b/src/RPA.Infrastructure/Scheduling/TriggerService.cs
+@@ -0,0 +1,141 @@
++namespace RPA.Infrastructure.Scheduling;
++
++using Microsoft.Extensions.Logging;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Exceptions;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Tetikleyici yürütme servisi (Task 3.3, Spec Bölüm 7). Bir tetikleyici ateşlendiğinde JobRun
++/// oluşturur; Cron tetikleyicilerde Schedule.OverlapPolicy'ye göre hemen çalıştırır (parallel),
++/// atlar (skip) ya da kuyruğa alır (queue). Correlation ID = JobRun.Id.
++/// </summary>
++public sealed class TriggerService : ITriggerService
++{
++    private const string PolicySkip = "skip";
++    private const string PolicyQueue = "queue";
++    private const string PolicyParallel = "parallel";
++
++    private readonly ITriggerRepository _repository;
++    private readonly IWorkflowRunner _workflowRunner;
++    private readonly ILogger<TriggerService> _logger;
++
++    public TriggerService(ITriggerRepository repository, IWorkflowRunner workflowRunner, ILogger<TriggerService> logger)
++    {
++        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
++        _workflowRunner = workflowRunner ?? throw new ArgumentNullException(nameof(workflowRunner));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public async Task<TriggerExecutionResult> ExecuteTriggerAsync(
++        Guid triggerId, string triggeredBy, CancellationToken cancellationToken = default)
++    {
++        var trigger = await _repository.FindTriggerByIdAsync(triggerId, cancellationToken);
++        if (trigger is null)
++        {
++            _logger.LogWarning("ExecuteTrigger: bilinmeyen Trigger {TriggerId}.", triggerId);
++            return TriggerExecutionResult.NotFound();
++        }
++
++        if (!trigger.IsActive)
++        {
++            _logger.LogInformation("Trigger {TriggerId} pasif — ateşlenmedi.", triggerId);
++            return TriggerExecutionResult.Inactive();
++        }
++
++        var policy = PolicyParallel;
++        if (trigger.Type == TriggerType.Cron)
++        {
++            var schedule = await _repository.FindScheduleByTriggerIdAsync(triggerId, cancellationToken);
++            policy = schedule?.OverlapPolicy?.Trim().ToLowerInvariant() ?? PolicyParallel;
++        }
++
++        var hasRunning = await _repository.HasRunningJobRunAsync(trigger.WorkflowVersionId, cancellationToken);
++
++        if (hasRunning && policy == PolicySkip)
++        {
++            _logger.LogInformation(
++                "Trigger {TriggerId}: çalışan JobRun mevcut, OverlapPolicy=skip — ateşleme atlandı.", triggerId);
++            return TriggerExecutionResult.Skipped(null);
++        }
++
++        if (hasRunning && policy == PolicyQueue)
++        {
++            var queued = NewJobRun(trigger, triggeredBy, status: "Queued");
++            await _repository.AddJobRunAsync(queued, cancellationToken);
++            await _repository.SaveChangesAsync(cancellationToken);
++            _logger.LogInformation(
++                "Trigger {TriggerId}: çalışan JobRun mevcut, OverlapPolicy=queue — JobRun {JobRunId} kuyruğa alındı.",
++                triggerId, queued.Id);
++            return TriggerExecutionResult.Queued(queued);
++        }
++
++        // parallel ya da hiç çalışan yok: hemen başlat.
++        var jobRun = NewJobRun(trigger, triggeredBy, status: "Running");
++        await _repository.AddJobRunAsync(jobRun, cancellationToken);
++        await _repository.SaveChangesAsync(cancellationToken);
++        _logger.LogInformation(
++            "Trigger {TriggerId} ateşlendi — JobRun {JobRunId} başlatıldı (correlationId={CorrelationId}).",
++            triggerId, jobRun.Id, jobRun.ElasticsearchCorrelationId);
++
++        await RunAndFinalizeAsync(jobRun, cancellationToken);
++        return TriggerExecutionResult.Executed(jobRun);
++    }
++
++    private JobRun NewJobRun(Trigger trigger, string triggeredBy, string status) => new()
++    {
++        WorkflowVersionId = trigger.WorkflowVersionId,
++        TriggeredBy = triggeredBy,
++        EnvironmentId = trigger.EnvironmentId,
++        Status = status,
++        StartedAt = DateTime.UtcNow,
++        ElasticsearchCorrelationId = Guid.NewGuid().ToString(),
++    };
++
++    private async Task RunAndFinalizeAsync(JobRun jobRun, CancellationToken cancellationToken)
++    {
++        // Not: Gerçek WorkflowVersion + argümanlar Task 3.4/İş Akışı Motoru entegrasyonunda tam
++        // olarak bağlanacaktır. Burada IWorkflowRunner sözleşmesi çağrılır; JobRun.WorkflowVersion
++        // navigasyonu henüz tam şemada değil (bkz. RpaDbContext Ignore) — placeholder ile çağrılır.
++        try
++        {
++            var result = await _workflowRunner.ExecuteAsync(
++                jobRun.WorkflowVersion, new Dictionary<string, object?>(), jobRun.Id, cancellationToken);
++
++            jobRun.Status = result.Success ? "Successful" : (result.Exception is BusinessException ? "BusinessException" : "Failed");
++        }
++        catch (BusinessException)
++        {
++            jobRun.Status = "BusinessException";
++        }
++        catch (Exception ex)
++        {
++            _logger.LogError(ex, "JobRun {JobRunId} çalıştırılırken hata.", jobRun.Id);
++            jobRun.Status = "Failed";
++        }
++        finally
++        {
++            jobRun.CompletedAt = DateTime.UtcNow;
++            await _repository.SaveChangesAsync(cancellationToken);
++        }
++
++        await ProcessNextQueuedAsync(jobRun.WorkflowVersionId, cancellationToken);
++    }
++
++    /// <summary>Bir JobRun tamamlandığında, aynı workflow versiyonu için OverlapPolicy=queue ile
++    /// biriktirilmiş en eski JobRun varsa onu başlatır (Spec Bölüm 7).</summary>
++    private async Task ProcessNextQueuedAsync(Guid workflowVersionId, CancellationToken cancellationToken)
++    {
++        var next = await _repository.FindOldestQueuedJobRunAsync(workflowVersionId, cancellationToken);
++        if (next is null)
++            return;
++
++        next.Status = "Running";
++        next.StartedAt = DateTime.UtcNow;
++        await _repository.SaveChangesAsync(cancellationToken);
++        _logger.LogInformation("Kuyruktaki JobRun {JobRunId} başlatıldı (OverlapPolicy=queue).", next.Id);
++
++        await RunAndFinalizeAsync(next, cancellationToken);
++    }
++}
+diff --git a/src/RPA.WebAPI/Program.cs b/src/RPA.WebAPI/Program.cs
+index 76da294..0797239 100644
+--- a/src/RPA.WebAPI/Program.cs
++++ b/src/RPA.WebAPI/Program.cs
+@@ -1,20 +1,21 @@
+ using System.Security.Cryptography;
+ using System.Text;
+ using Microsoft.AspNetCore.Authentication.JwtBearer;
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.IdentityModel.Tokens;
+ using RPA.Infrastructure.Authentication;
+ using RPA.Infrastructure.Logging;
+ using RPA.Infrastructure.Persistence;
+ using RPA.Infrastructure.Queues;
+ using RPA.Infrastructure.Robots;
++using RPA.Infrastructure.Scheduling;
+ using RPA.Infrastructure.Vault;
+ using RPA.Infrastructure.Workflow;
+ using RPA.WebAPI.Robots;
+ using RPA.WebAPI.Middleware;
+ using Serilog;
+ 
+ var builder = WebApplication.CreateBuilder(args);
+ 
+ // --- Serilog Configuration (Spec Bölüm 11) ---
+ // Configure Serilog from appsettings.json and register the CorrelationIdEnricher.
+@@ -44,20 +45,23 @@ builder.Services.AddDbContext<RpaDbContext>(options =>
+ 
+ // Workflow çekirdeği: aktivite kataloğu + JSON şema doğrulayıcı — Spec Bölüm 5.1, 5.3.
+ builder.Services.AddWorkflowServices();
+ 
+ // Robot kayıt + heartbeat + offline tespiti servisleri — Spec Bölüm 5.6, 9.
+ builder.Services.AddRobotServices();
+ 
+ // Kuyruk motoru (UPDLOCK atama + retry) — Task 3.2, Spec Bölüm 7.
+ builder.Services.AddQueueServices();
+ 
++// Zamanlayıcı + tetikleyiciler (cron/manuel, OverlapPolicy) — Task 3.3, Spec Bölüm 7.
++builder.Services.AddSchedulerServices();
++
+ // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
+ builder.Services.AddSignalR();
+ 
+ // JWT Bearer authentication middleware.
+ var jwt = builder.Configuration
+     .GetSection(AuthenticationOptions.SectionName)
+     .Get<AuthenticationOptions>()?.Jwt ?? new JwtOptions();
+ 
+ // CRITICAL FIX: No fallback to all-zero key. Require JWT_SECRET environment variable.
+ if (string.IsNullOrEmpty(jwt.Secret))
+diff --git a/src/RPA.WebAPI/Triggers/TriggersController.cs b/src/RPA.WebAPI/Triggers/TriggersController.cs
+new file mode 100644
+index 0000000..e934de3
+--- /dev/null
++++ b/src/RPA.WebAPI/Triggers/TriggersController.cs
+@@ -0,0 +1,198 @@
++namespace RPA.WebAPI.Triggers;
++
++using Microsoft.AspNetCore.Mvc;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++
++/// <summary>
++/// Tetikleyici yönetim endpoint'leri (Task 3.3, Spec Bölüm 7). Tetikleyici oluşturma/güncelleme
++/// ve workflow versiyonuna göre listeleme sağlar. Ateşleme (fire) SchedulerHostedService
++/// (cron) veya harici çağıranlar (manuel/webhook) tarafından ITriggerService üzerinden yapılır.
++/// </summary>
++[ApiController]
++[Route("api")]
++public class TriggersController : ControllerBase
++{
++    private readonly ITriggerRepository _repository;
++    private readonly ITriggerService _triggerService;
++
++    public TriggersController(ITriggerRepository repository, ITriggerService triggerService)
++    {
++        _repository = repository;
++        _triggerService = triggerService;
++    }
++
++    /// <summary>Yeni tetikleyici oluşturur. Type=Cron ise Schedule zorunludur.</summary>
++    [HttpPost("triggers")]
++    [ProducesResponseType(typeof(TriggerDto), StatusCodes.Status201Created)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<IActionResult> Create([FromBody] CreateTriggerRequest request, CancellationToken ct)
++    {
++        if (request is null || request.WorkflowVersionId == Guid.Empty)
++            return BadRequest(new { error = "workflowVersionId zorunludur." });
++
++        if (!Enum.TryParse<TriggerType>(request.Type, ignoreCase: true, out var type))
++            return BadRequest(new { error = $"Geçersiz Type: {request.Type}" });
++
++        if (type == TriggerType.Cron && request.Schedule is null)
++            return BadRequest(new { error = "Cron tetikleyici için Schedule zorunludur." });
++
++        var trigger = new Trigger
++        {
++            ProjectId = request.ProjectId,
++            WorkflowVersionId = request.WorkflowVersionId,
++            Type = type,
++            Configuration = request.Configuration ?? "{}",
++            EnvironmentId = request.EnvironmentId,
++            IsActive = request.IsActive,
++        };
++        await _repository.AddTriggerAsync(trigger, ct);
++
++        Schedule? schedule = null;
++        if (type == TriggerType.Cron && request.Schedule is not null)
++        {
++            schedule = new Schedule
++            {
++                TriggerId = trigger.Id,
++                CronExpression = request.Schedule.CronExpression,
++                TimeZone = string.IsNullOrWhiteSpace(request.Schedule.TimeZone) ? "UTC" : request.Schedule.TimeZone,
++                OverlapPolicy = string.IsNullOrWhiteSpace(request.Schedule.OverlapPolicy) ? "skip" : request.Schedule.OverlapPolicy,
++            };
++            await _repository.AddScheduleAsync(schedule, ct);
++        }
++
++        await _repository.SaveChangesAsync(ct);
++        return CreatedAtAction(nameof(GetByWorkflowVersion), new { workflowVersionId = trigger.WorkflowVersionId }, TriggerDto.From(trigger, schedule));
++    }
++
++    /// <summary>Belirtilen workflow versiyonuna ait tüm tetikleyicileri döner.</summary>
++    [HttpGet("workflows/{workflowVersionId:guid}/triggers")]
++    [ProducesResponseType(typeof(List<TriggerDto>), StatusCodes.Status200OK)]
++    public async Task<IActionResult> GetByWorkflowVersion(Guid workflowVersionId, CancellationToken ct)
++    {
++        var triggers = await _repository.FindTriggersByWorkflowVersionAsync(workflowVersionId, ct);
++        var dtos = new List<TriggerDto>();
++        foreach (var trigger in triggers)
++        {
++            var schedule = trigger.Type == TriggerType.Cron
++                ? await _repository.FindScheduleByTriggerIdAsync(trigger.Id, ct)
++                : null;
++            dtos.Add(TriggerDto.From(trigger, schedule));
++        }
++
++        return Ok(dtos);
++    }
++
++    /// <summary>Tetikleyiciyi günceller: IsActive, Configuration ve (varsa) Schedule alanları.</summary>
++    [HttpPatch("triggers/{id:guid}")]
++    [ProducesResponseType(typeof(TriggerDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status404NotFound)]
++    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateTriggerRequest request, CancellationToken ct)
++    {
++        var trigger = await _repository.FindTriggerByIdAsync(id, ct);
++        if (trigger is null)
++            return NotFound();
++
++        if (request.IsActive.HasValue)
++            trigger.IsActive = request.IsActive.Value;
++        if (request.Configuration is not null)
++            trigger.Configuration = request.Configuration;
++
++        Schedule? schedule = await _repository.FindScheduleByTriggerIdAsync(id, ct);
++        if (request.Schedule is not null && schedule is not null)
++        {
++            if (!string.IsNullOrWhiteSpace(request.Schedule.CronExpression))
++                schedule.CronExpression = request.Schedule.CronExpression;
++            if (!string.IsNullOrWhiteSpace(request.Schedule.TimeZone))
++                schedule.TimeZone = request.Schedule.TimeZone;
++            if (!string.IsNullOrWhiteSpace(request.Schedule.OverlapPolicy))
++                schedule.OverlapPolicy = request.Schedule.OverlapPolicy;
++        }
++
++        await _repository.SaveChangesAsync(ct);
++        return Ok(TriggerDto.From(trigger, schedule));
++    }
++
++    /// <summary>Tetikleyiciyi manuel olarak ateşler (test/elle tetikleme amaçlı).</summary>
++    [HttpPost("triggers/{id:guid}/fire")]
++    [ProducesResponseType(typeof(TriggerFireResultDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status404NotFound)]
++    public async Task<IActionResult> Fire(Guid id, CancellationToken ct)
++    {
++        var result = await _triggerService.ExecuteTriggerAsync(id, "manual", ct);
++        if (result.Outcome == TriggerExecutionOutcome.NotFound)
++            return NotFound();
++
++        return Ok(new TriggerFireResultDto
++        {
++            Outcome = result.Outcome.ToString(),
++            JobRunId = result.JobRun?.Id,
++            JobRunStatus = result.JobRun?.Status,
++        });
++    }
++}
++
++public sealed class CreateTriggerRequest
++{
++    public Guid ProjectId { get; set; }
++    public Guid WorkflowVersionId { get; set; }
++    public string Type { get; set; } = "Manual";
++    public string? Configuration { get; set; }
++    public Guid EnvironmentId { get; set; }
++    public bool IsActive { get; set; } = true;
++    public ScheduleRequest? Schedule { get; set; }
++}
++
++public sealed class UpdateTriggerRequest
++{
++    public bool? IsActive { get; set; }
++    public string? Configuration { get; set; }
++    public ScheduleRequest? Schedule { get; set; }
++}
++
++public sealed class ScheduleRequest
++{
++    public string CronExpression { get; set; } = "";
++    public string TimeZone { get; set; } = "UTC";
++    public string OverlapPolicy { get; set; } = "skip";
++}
++
++public sealed class TriggerDto
++{
++    public Guid Id { get; set; }
++    public Guid WorkflowVersionId { get; set; }
++    public string Type { get; set; } = "";
++    public string Configuration { get; set; } = "{}";
++    public bool IsActive { get; set; }
++    public ScheduleDto? Schedule { get; set; }
++
++    public static TriggerDto From(Trigger t, Schedule? s) => new()
++    {
++        Id = t.Id,
++        WorkflowVersionId = t.WorkflowVersionId,
++        Type = t.Type.ToString(),
++        Configuration = t.Configuration,
++        IsActive = t.IsActive,
++        Schedule = s is null ? null : new ScheduleDto
++        {
++            CronExpression = s.CronExpression,
++            TimeZone = s.TimeZone,
++            OverlapPolicy = s.OverlapPolicy,
++        },
++    };
++}
++
++public sealed class ScheduleDto
++{
++    public string CronExpression { get; set; } = "";
++    public string TimeZone { get; set; } = "UTC";
++    public string OverlapPolicy { get; set; } = "skip";
++}
++
++public sealed class TriggerFireResultDto
++{
++    public string Outcome { get; set; } = "";
++    public Guid? JobRunId { get; set; }
++    public string? JobRunStatus { get; set; }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/CronScheduleCalculatorTests.cs b/tests/RPA.Infrastructure.Tests/CronScheduleCalculatorTests.cs
+new file mode 100644
+index 0000000..338c321
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/CronScheduleCalculatorTests.cs
+@@ -0,0 +1,78 @@
++namespace RPA.Infrastructure.Tests;
++
++using System;
++using RPA.Infrastructure.Scheduling;
++
++/// <summary>
++/// Task 3.3 — Cron ifadesi ayrıştırma + zaman dilimi farkındalıklı bir sonraki çalışma zamanı
++/// hesaplama testleri (Spec Bölüm 7). Cronos kütüphanesi üzerine ince bir katman.
++/// </summary>
++public class CronScheduleCalculatorTests
++{
++    [Fact]
++    public void GetNextOccurrence_Daily_ReturnsNextDaySameTime()
++    {
++        // Her gün 09:00 UTC.
++        var from = new DateTime(2026, 7, 5, 10, 0, 0, DateTimeKind.Utc); // 09:00 geçmiş
++        var next = CronScheduleCalculator.GetNextOccurrence("0 9 * * *", "UTC", from);
++
++        Assert.NotNull(next);
++        Assert.Equal(new DateTime(2026, 7, 6, 9, 0, 0, DateTimeKind.Utc), next!.Value);
++    }
++
++    [Fact]
++    public void GetNextOccurrence_Weekly_ReturnsNextMatchingWeekday()
++    {
++        // Her Pazartesi 08:00 UTC. 2026-07-05 Pazar.
++        var from = new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc);
++        var next = CronScheduleCalculator.GetNextOccurrence("0 8 * * MON", "UTC", from);
++
++        Assert.NotNull(next);
++        Assert.Equal(DayOfWeek.Monday, next!.Value.DayOfWeek);
++        Assert.Equal(new DateTime(2026, 7, 6, 8, 0, 0, DateTimeKind.Utc), next.Value);
++    }
++
++    [Fact]
++    public void GetNextOccurrence_TimeZoneAware_ConvertsToUtc()
++    {
++        // Europe/Istanbul (UTC+3, DST yok Cronos'ta IANA kullanılır) 09:00 yerel -> 06:00 UTC.
++        var from = new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc);
++        var next = CronScheduleCalculator.GetNextOccurrence("0 9 * * *", "Turkey Standard Time", from);
++
++        Assert.NotNull(next);
++        Assert.Equal(DateTimeKind.Utc, next!.Value.Kind);
++        Assert.Equal(6, next.Value.Hour);
++    }
++
++    [Fact]
++    public void GetNextOccurrence_InvalidCron_ReturnsNull()
++    {
++        var next = CronScheduleCalculator.GetNextOccurrence("not a cron", "UTC", DateTime.UtcNow);
++        Assert.Null(next);
++    }
++
++    [Fact]
++    public void GetNextOccurrence_UnknownTimeZone_ReturnsNull()
++    {
++        var next = CronScheduleCalculator.GetNextOccurrence("0 9 * * *", "Not/AZone", DateTime.UtcNow);
++        Assert.Null(next);
++    }
++
++    [Fact]
++    public void IsDue_ReturnsTrueWhenNextOccurrenceAtOrBeforeNow()
++    {
++        var lastFire = new DateTime(2026, 7, 4, 9, 0, 0, DateTimeKind.Utc);
++        var now = new DateTime(2026, 7, 5, 9, 0, 1, DateTimeKind.Utc);
++
++        Assert.True(CronScheduleCalculator.IsDue("0 9 * * *", "UTC", lastFire, now));
++    }
++
++    [Fact]
++    public void IsDue_ReturnsFalseWhenNotYetDue()
++    {
++        var lastFire = new DateTime(2026, 7, 5, 9, 0, 0, DateTimeKind.Utc);
++        var now = new DateTime(2026, 7, 5, 10, 0, 0, DateTimeKind.Utc);
++
++        Assert.False(CronScheduleCalculator.IsDue("0 9 * * *", "UTC", lastFire, now));
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/SchedulerHostedServiceTests.cs b/tests/RPA.Infrastructure.Tests/SchedulerHostedServiceTests.cs
+new file mode 100644
+index 0000000..dd6eb5f
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/SchedulerHostedServiceTests.cs
+@@ -0,0 +1,136 @@
++namespace RPA.Infrastructure.Tests;
++
++using Microsoft.Extensions.DependencyInjection;
++using Moq;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Scheduling;
++
++/// <summary>
++/// Task 3.3 — SchedulerHostedService: aktif Cron tetikleyicilerini tarayıp zamanı gelenleri
++/// ateşlediğini doğrular (Spec Bölüm 7).
++/// </summary>
++public class SchedulerHostedServiceTests
++{
++    private static IServiceScopeFactory BuildScopeFactory(ITriggerRepository repository, ITriggerService triggerService)
++    {
++        var services = new ServiceCollection();
++        services.AddSingleton(repository);
++        services.AddSingleton(triggerService);
++        return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
++    }
++
++    private static Trigger MakeTrigger(bool active = true) => new()
++    {
++        Id = Guid.NewGuid(),
++        ProjectId = Guid.NewGuid(),
++        WorkflowVersionId = Guid.NewGuid(),
++        Type = TriggerType.Cron,
++        EnvironmentId = Guid.NewGuid(),
++        IsActive = active,
++        CreatedAt = DateTime.UtcNow.AddDays(-1),
++    };
++
++    [Fact]
++    public async Task ScanOnce_DueSchedule_ExecutesTrigger()
++    {
++        var trigger = MakeTrigger();
++        var schedule = new Schedule { TriggerId = trigger.Id, CronExpression = "* * * * *", TimeZone = "UTC", OverlapPolicy = "parallel" };
++
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindActiveCronTriggersAsync(It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new List<Trigger> { trigger });
++        repo.Setup(r => r.FindScheduleByTriggerIdAsync(trigger.Id, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(schedule);
++
++        var triggerService = new Mock<ITriggerService>();
++        triggerService.Setup(s => s.ExecuteTriggerAsync(trigger.Id, "cron", It.IsAny<CancellationToken>()))
++            .ReturnsAsync(TriggerExecutionResult.Executed(new JobRun()));
++
++        var scheduler = new SchedulerHostedService(
++            BuildScopeFactory(repo.Object, triggerService.Object),
++            new MockLogger<SchedulerHostedService>());
++
++        await scheduler.ScanOnceAsync();
++
++        triggerService.Verify(s => s.ExecuteTriggerAsync(trigger.Id, "cron", It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task ScanOnce_NotYetDue_DoesNotExecute()
++    {
++        var trigger = MakeTrigger();
++        // Cron: her gün 09:00. CreatedAt (lastFire) az önce -> muhtemelen henüz zamanı gelmedi.
++        trigger.CreatedAt = DateTime.UtcNow;
++        var schedule = new Schedule { TriggerId = trigger.Id, CronExpression = "0 9 * * *", TimeZone = "UTC", OverlapPolicy = "parallel" };
++
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindActiveCronTriggersAsync(It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new List<Trigger> { trigger });
++        repo.Setup(r => r.FindScheduleByTriggerIdAsync(trigger.Id, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(schedule);
++
++        var triggerService = new Mock<ITriggerService>();
++
++        var scheduler = new SchedulerHostedService(
++            BuildScopeFactory(repo.Object, triggerService.Object),
++            new MockLogger<SchedulerHostedService>());
++
++        // "0 9 * * *" bir sonraki oluşumu şimdiden en az birkaç saat sonra olacağından tetiklenmemeli
++        // (test her saatte flaky olmaması için: eğer test saat 08:59-09:00 arası koşarsa nadiren
++        // farklı davranabilir; CronScheduleCalculator birim testleriyle ayrıca doğrulanmıştır).
++        await scheduler.ScanOnceAsync();
++
++        triggerService.Verify(s => s.ExecuteTriggerAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
++    }
++
++    [Fact]
++    public async Task ScanOnce_TwiceInSamePeriod_ExecutesOnlyOnce()
++    {
++        var trigger = MakeTrigger();
++        var schedule = new Schedule { TriggerId = trigger.Id, CronExpression = "* * * * *", TimeZone = "UTC", OverlapPolicy = "parallel" };
++
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindActiveCronTriggersAsync(It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new List<Trigger> { trigger });
++        repo.Setup(r => r.FindScheduleByTriggerIdAsync(trigger.Id, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(schedule);
++
++        var triggerService = new Mock<ITriggerService>();
++        triggerService.Setup(s => s.ExecuteTriggerAsync(trigger.Id, "cron", It.IsAny<CancellationToken>()))
++            .ReturnsAsync(TriggerExecutionResult.Executed(new JobRun()));
++
++        var scheduler = new SchedulerHostedService(
++            BuildScopeFactory(repo.Object, triggerService.Object),
++            new MockLogger<SchedulerHostedService>());
++
++        await scheduler.ScanOnceAsync();
++        await scheduler.ScanOnceAsync();
++
++        // İkinci tarama, bellek içi lastFire güncellendiği için (bir sonraki dakikaya kadar) tekrar ateşlememeli.
++        triggerService.Verify(s => s.ExecuteTriggerAsync(trigger.Id, "cron", It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task ScanOnce_NoScheduleForTrigger_SkipsWithoutError()
++    {
++        var trigger = MakeTrigger();
++
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindActiveCronTriggersAsync(It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new List<Trigger> { trigger });
++        repo.Setup(r => r.FindScheduleByTriggerIdAsync(trigger.Id, It.IsAny<CancellationToken>()))
++            .ReturnsAsync((Schedule?)null);
++
++        var triggerService = new Mock<ITriggerService>();
++
++        var scheduler = new SchedulerHostedService(
++            BuildScopeFactory(repo.Object, triggerService.Object),
++            new MockLogger<SchedulerHostedService>());
++
++        await scheduler.ScanOnceAsync();
++
++        triggerService.Verify(s => s.ExecuteTriggerAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/TriggerMigrationTests.cs b/tests/RPA.Infrastructure.Tests/TriggerMigrationTests.cs
+new file mode 100644
+index 0000000..2a48e9a
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/TriggerMigrationTests.cs
+@@ -0,0 +1,102 @@
++namespace RPA.Infrastructure.Tests;
++
++using Microsoft.Data.Sqlite;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using RPA.Infrastructure.Persistence;
++
++/// <summary>
++/// Task 3.3 — AddTriggerScheduleJobRun migration: Trigger/Schedule/JobRun tablolarının şemaya
++/// eklendiğini doğrular (Spec Bölüm 7).
++/// </summary>
++public class TriggerMigrationTests
++{
++    private static RpaDbContext CreateSqliteDb(SqliteConnection connection)
++    {
++        var options = new DbContextOptionsBuilder<RpaDbContext>()
++            .UseSqlite(connection)
++            .ConfigureWarnings(w => w.Ignore(
++                Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning))
++            .Options;
++        return new RpaDbContext(options);
++    }
++
++    private static IMigrator Migrator(SqliteConnection connection)
++        => CreateSqliteDb(connection).GetService<IMigrator>();
++
++    [Fact]
++    public void Migration_Up_CreatesTriggerScheduleJobRunTables()
++    {
++        using var connection = new SqliteConnection("DataSource=:memory:");
++        connection.Open();
++        var script = Migrator(connection).GenerateScript();
++
++        Assert.Contains("CREATE TABLE \"Triggers\"", script);
++        Assert.Contains("CREATE TABLE \"Schedules\"", script);
++        Assert.Contains("CREATE TABLE \"JobRuns\"", script);
++    }
++
++    [Fact]
++    public void Migration_IsRegisteredInAssembly()
++    {
++        using var connection = new SqliteConnection("DataSource=:memory:");
++        connection.Open();
++        using var db = CreateSqliteDb(connection);
++
++        var migrationsAssembly = db.GetService<IMigrationsAssembly>();
++        Assert.Contains(migrationsAssembly.Migrations.Keys, k => k.Contains("AddTriggerScheduleJobRun"));
++    }
++
++    [Fact]
++    public void Migration_Down_DropsTriggerScheduleJobRunTables()
++    {
++        using var connection = new SqliteConnection("DataSource=:memory:");
++        connection.Open();
++        using var db = CreateSqliteDb(connection);
++        var migrationsAssembly = db.GetService<IMigrationsAssembly>();
++        var migration = migrationsAssembly.Migrations.Single(m => m.Key.Contains("AddTriggerScheduleJobRun"));
++        var instance = migrationsAssembly.CreateMigration(migration.Value, "Sqlite");
++
++        Assert.NotEmpty(instance.UpOperations);
++        Assert.NotEmpty(instance.DownOperations);
++    }
++
++    [Fact]
++    public async Task InMemoryProvider_AllowsTriggerScheduleJobRunInsert()
++    {
++        // Not: Tam migration zincirini Sqlite üzerinde MigrateAsync ile uygulamak, önceki
++        // (bu göreve ait olmayan) bir migration'daki SQL Server'a özgü sözdiziminden dolayı
++        // başarısız olur (QueueMigrationTests'te de aynı nedenle yalnızca script/metadata
++        // doğrulanır). Bu yüzden şema+ilişkilerin çalıştığını InMemory sağlayıcı ile doğrularız.
++        var options = new DbContextOptionsBuilder<RpaDbContext>()
++            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
++            .Options;
++        using var db = new RpaDbContext(options);
++        db.Database.EnsureCreated();
++
++        var trigger = new RPA.Domain.Entities.Trigger
++        {
++            ProjectId = Guid.NewGuid(),
++            WorkflowVersionId = Guid.NewGuid(),
++            Type = RPA.Domain.Enums.TriggerType.Cron,
++            EnvironmentId = Guid.NewGuid(),
++            IsActive = true,
++        };
++        db.Triggers.Add(trigger);
++        await db.SaveChangesAsync();
++
++        var schedule = new RPA.Domain.Entities.Schedule
++        {
++            TriggerId = trigger.Id,
++            CronExpression = "0 9 * * *",
++            TimeZone = "UTC",
++            OverlapPolicy = "skip",
++        };
++        db.Schedules.Add(schedule);
++        await db.SaveChangesAsync();
++
++        Assert.Single(db.Triggers);
++        Assert.Single(db.Schedules);
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs b/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs
+new file mode 100644
+index 0000000..e392db1
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs
+@@ -0,0 +1,235 @@
++namespace RPA.Infrastructure.Tests;
++
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Interfaces;
++using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Scheduling;
++
++/// <summary>
++/// Task 3.3 — TriggerService: JobRun oluşturma ve OverlapPolicy (skip/queue/parallel) testleri
++/// (Spec Bölüm 7).
++/// </summary>
++public class TriggerServiceTests
++{
++    private static RpaDbContext Db(string name)
++    {
++        var options = new DbContextOptionsBuilder<RpaDbContext>()
++            .UseInMemoryDatabase(databaseName: name)
++            .Options;
++        var db = new RpaDbContext(options);
++        db.Database.EnsureCreated();
++        return db;
++    }
++
++    private sealed class FakeWorkflowRunner : IWorkflowRunner
++    {
++        public int CallCount;
++        public bool ShouldFail;
++        public TaskCompletionSource<bool>? Gate; // isteğe bağlı: eşzamanlılık senaryoları için bekletme
++
++        public async Task<WorkflowExecutionResult> ExecuteAsync(
++            WorkflowVersion workflowVersion, Dictionary<string, object?> arguments, Guid jobRunId, CancellationToken cancellationToken = default)
++        {
++            Interlocked.Increment(ref CallCount);
++            if (Gate is not null)
++                await Gate.Task;
++
++            return new WorkflowExecutionResult { Success = !ShouldFail };
++        }
++
++        public Task<Dictionary<string, object?>> InvokeComponentAsync(ComponentVersion componentVersion, Dictionary<string, object?> inputs, Guid jobRunId, CancellationToken cancellationToken = default)
++            => Task.FromResult(new Dictionary<string, object?>());
++
++        public Task<WorkflowExecutionResult> ResumeAsync(WorkflowVersion workflowVersion, Dictionary<string, object?> arguments, string checkpointData, Guid jobRunId, CancellationToken cancellationToken = default)
++            => Task.FromResult(new WorkflowExecutionResult { Success = true });
++    }
++
++    private static async Task<Trigger> SeedTrigger(RpaDbContext db, TriggerType type = TriggerType.Manual)
++    {
++        var trigger = new Trigger
++        {
++            ProjectId = Guid.NewGuid(),
++            WorkflowVersionId = Guid.NewGuid(),
++            Type = type,
++            EnvironmentId = Guid.NewGuid(),
++            IsActive = true,
++        };
++        db.Triggers.Add(trigger);
++        await db.SaveChangesAsync();
++        return trigger;
++    }
++
++    private static async Task<Schedule> SeedSchedule(RpaDbContext db, Guid triggerId, string overlapPolicy)
++    {
++        var schedule = new Schedule
++        {
++            TriggerId = triggerId,
++            CronExpression = "0 9 * * *",
++            TimeZone = "UTC",
++            OverlapPolicy = overlapPolicy,
++        };
++        db.Schedules.Add(schedule);
++        await db.SaveChangesAsync();
++        return schedule;
++    }
++
++    private static TriggerService Service(RpaDbContext db, FakeWorkflowRunner runner)
++        => new(new EfTriggerRepository(db), runner, new MockLogger<TriggerService>());
++
++    [Fact]
++    public async Task ExecuteTrigger_UnknownTrigger_ReturnsNotFound()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var result = await Service(db, new FakeWorkflowRunner()).ExecuteTriggerAsync(Guid.NewGuid(), "manual");
++        Assert.Equal(TriggerExecutionOutcome.NotFound, result.Outcome);
++    }
++
++    [Fact]
++    public async Task ExecuteTrigger_InactiveTrigger_ReturnsInactive()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db);
++        trigger.IsActive = false;
++        await db.SaveChangesAsync();
++
++        var result = await Service(db, new FakeWorkflowRunner()).ExecuteTriggerAsync(trigger.Id, "manual");
++        Assert.Equal(TriggerExecutionOutcome.Inactive, result.Outcome);
++    }
++
++    [Fact]
++    public async Task ExecuteTrigger_Manual_CreatesJobRunAndExecutes()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db);
++        var runner = new FakeWorkflowRunner();
++
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "manual");
++
++        Assert.Equal(TriggerExecutionOutcome.Executed, result.Outcome);
++        Assert.NotNull(result.JobRun);
++        Assert.Equal(1, runner.CallCount);
++        Assert.Equal("Successful", result.JobRun!.Status);
++        Assert.NotNull(result.JobRun.CompletedAt);
++        Assert.NotEmpty(result.JobRun.ElasticsearchCorrelationId);
++    }
++
++    [Fact]
++    public async Task ExecuteTrigger_FailedExecution_SetsFailedStatus()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db);
++        var runner = new FakeWorkflowRunner { ShouldFail = true };
++
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "manual");
++
++        Assert.Equal("Failed", result.JobRun!.Status);
++    }
++
++    [Fact]
++    public async Task OverlapPolicy_Skip_PreventsConcurrentRun()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db, TriggerType.Cron);
++        await SeedSchedule(db, trigger.Id, "skip");
++
++        // Halihazırda çalışan bir JobRun simüle edilir.
++        db.JobRuns.Add(new JobRun { WorkflowVersionId = trigger.WorkflowVersionId, Status = "Running", TriggeredBy = "cron", StartedAt = DateTime.UtcNow, ElasticsearchCorrelationId = "x" });
++        await db.SaveChangesAsync();
++
++        var runner = new FakeWorkflowRunner();
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "cron");
++
++        Assert.Equal(TriggerExecutionOutcome.Skipped, result.Outcome);
++        Assert.Equal(0, runner.CallCount);
++        // Yalnızca önceden var olan JobRun kaydı olmalı, yeni oluşturulmamalı.
++        Assert.Equal(1, await db.JobRuns.CountAsync());
++    }
++
++    [Fact]
++    public async Task OverlapPolicy_Queue_EnqueuesWaitingRun()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db, TriggerType.Cron);
++        await SeedSchedule(db, trigger.Id, "queue");
++
++        db.JobRuns.Add(new JobRun { WorkflowVersionId = trigger.WorkflowVersionId, Status = "Running", TriggeredBy = "cron", StartedAt = DateTime.UtcNow, ElasticsearchCorrelationId = "x" });
++        await db.SaveChangesAsync();
++
++        var runner = new FakeWorkflowRunner();
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "cron");
++
++        Assert.Equal(TriggerExecutionOutcome.Queued, result.Outcome);
++        Assert.Equal("Queued", result.JobRun!.Status);
++        Assert.Equal(0, runner.CallCount); // henüz çalıştırılmadı
++        Assert.Equal(2, await db.JobRuns.CountAsync());
++    }
++
++    [Fact]
++    public async Task OverlapPolicy_Queue_StartsWaitingRunAfterPreviousCompletes()
++    {
++        var dbName = Guid.NewGuid().ToString();
++        Guid triggerId, workflowVersionId;
++        using (var seedDb = Db(dbName))
++        {
++            var trigger = await SeedTrigger(seedDb, TriggerType.Cron);
++            await SeedSchedule(seedDb, trigger.Id, "queue");
++            triggerId = trigger.Id;
++            workflowVersionId = trigger.WorkflowVersionId;
++        }
++
++        var runner = new FakeWorkflowRunner { Gate = new TaskCompletionSource<bool>() };
++
++        // İlk tetikleme: kendi DbContext'i ile ateşlenir, WorkflowRunner Gate açılana kadar bekler
++        // (Running durumda kalır) — böylece ikinci tetikleme OverlapPolicy=queue ile karşılaşır.
++        using var db1 = Db(dbName);
++        var task1 = Service(db1, runner).ExecuteTriggerAsync(triggerId, "cron");
++
++        // İlk JobRun'ın Running olarak kalıcı hale gelmesini bekle.
++        using (var pollDb = Db(dbName))
++        {
++            for (var i = 0; i < 100 && !await pollDb.JobRuns.AnyAsync(j => j.WorkflowVersionId == workflowVersionId); i++)
++                await Task.Delay(10);
++        }
++
++        using var db2 = Db(dbName);
++        var second = await Service(db2, runner).ExecuteTriggerAsync(triggerId, "cron");
++        Assert.Equal(TriggerExecutionOutcome.Queued, second.Outcome);
++
++        // İlk çalıştırmanın tamamlanmasına izin ver; bu da zincirleme olarak kuyruktaki JobRun'ı başlatmalı.
++        runner.Gate.SetResult(true);
++        var first = await task1;
++        Assert.Equal(TriggerExecutionOutcome.Executed, first.Outcome);
++
++        using var db3 = Db(dbName);
++        JobRun? queuedRow = null;
++        for (var i = 0; i < 100; i++)
++        {
++            queuedRow = await db3.JobRuns.FirstAsync(j => j.Id == second.JobRun!.Id);
++            if (queuedRow.Status == "Successful") break;
++            await Task.Delay(10);
++        }
++
++        Assert.Equal("Successful", queuedRow!.Status);
++        Assert.Equal(2, runner.CallCount);
++    }
++
++    [Fact]
++    public async Task OverlapPolicy_Parallel_FiresRegardlessOfRunning()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db, TriggerType.Cron);
++        await SeedSchedule(db, trigger.Id, "parallel");
++
++        db.JobRuns.Add(new JobRun { WorkflowVersionId = trigger.WorkflowVersionId, Status = "Running", TriggeredBy = "cron", StartedAt = DateTime.UtcNow, ElasticsearchCorrelationId = "x" });
++        await db.SaveChangesAsync();
++
++        var runner = new FakeWorkflowRunner();
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "cron");
++
++        Assert.Equal(TriggerExecutionOutcome.Executed, result.Outcome);
++        Assert.Equal(1, runner.CallCount);
++        Assert.Equal(2, await db.JobRuns.CountAsync());
++    }
++}
+diff --git a/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs b/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs
+new file mode 100644
+index 0000000..b8f50d9
+--- /dev/null
++++ b/tests/RPA.WebAPI.Tests/TriggersControllerIntegrationTests.cs
+@@ -0,0 +1,178 @@
++namespace RPA.WebAPI.Tests;
++
++using System.Net;
++using System.Net.Http.Json;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.Extensions.DependencyInjection;
++using Moq;
++using RPA.Domain.Entities;
++using RPA.Domain.Interfaces;
++using RPA.WebAPI.Triggers;
++
++/// <summary>
++/// TriggersController HTTP-seviyesi testleri (Task 3.3). ITriggerRepository/ITriggerService stub'lanır.
++/// </summary>
++public class TriggersControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
++{
++    private readonly WebApplicationFactory<Program> _factory;
++
++    public TriggersControllerIntegrationTests(WebApplicationFactory<Program> factory)
++    {
++        _factory = factory;
++    }
++
++    private HttpClient CreateClient(ITriggerRepository repository, ITriggerService? triggerService = null)
++    {
++        return _factory.WithWebHostBuilder(builder =>
++        {
++            builder.ConfigureServices(services =>
++            {
++                foreach (var t in new[] { typeof(ITriggerRepository), typeof(ITriggerService) })
++                {
++                    var descriptor = services.SingleOrDefault(d => d.ServiceType == t);
++                    if (descriptor is not null) services.Remove(descriptor);
++                }
++                services.AddScoped(_ => repository);
++                services.AddScoped(_ => triggerService ?? new Mock<ITriggerService>().Object);
++            });
++        }).CreateClient();
++    }
++
++    [Fact]
++    public async Task Create_ManualTrigger_Returns201()
++    {
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.AddTriggerAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
++            .Callback<Trigger, CancellationToken>((t, _) => { }).Returns(Task.CompletedTask);
++        var client = CreateClient(repo.Object);
++
++        var response = await client.PostAsJsonAsync("/api/triggers", new CreateTriggerRequest
++        {
++            ProjectId = Guid.NewGuid(),
++            WorkflowVersionId = Guid.NewGuid(),
++            Type = "Manual",
++            EnvironmentId = Guid.NewGuid(),
++        });
++
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        var body = await response.Content.ReadFromJsonAsync<TriggerDto>();
++        Assert.Equal("Manual", body!.Type);
++        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task Create_CronTriggerWithoutSchedule_Returns400()
++    {
++        var repo = new Mock<ITriggerRepository>();
++        var client = CreateClient(repo.Object);
++
++        var response = await client.PostAsJsonAsync("/api/triggers", new CreateTriggerRequest
++        {
++            ProjectId = Guid.NewGuid(),
++            WorkflowVersionId = Guid.NewGuid(),
++            Type = "Cron",
++            EnvironmentId = Guid.NewGuid(),
++        });
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Create_CronTriggerWithSchedule_Returns201WithSchedule()
++    {
++        var repo = new Mock<ITriggerRepository>();
++        var client = CreateClient(repo.Object);
++
++        var response = await client.PostAsJsonAsync("/api/triggers", new CreateTriggerRequest
++        {
++            ProjectId = Guid.NewGuid(),
++            WorkflowVersionId = Guid.NewGuid(),
++            Type = "Cron",
++            EnvironmentId = Guid.NewGuid(),
++            Schedule = new ScheduleRequest { CronExpression = "0 9 * * *", TimeZone = "UTC", OverlapPolicy = "skip" },
++        });
++
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        var body = await response.Content.ReadFromJsonAsync<TriggerDto>();
++        Assert.NotNull(body!.Schedule);
++        Assert.Equal("0 9 * * *", body.Schedule!.CronExpression);
++        repo.Verify(r => r.AddScheduleAsync(It.IsAny<Schedule>(), It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task GetByWorkflowVersion_ReturnsTriggers()
++    {
++        var workflowVersionId = Guid.NewGuid();
++        var trigger = new Trigger { WorkflowVersionId = workflowVersionId, Type = RPA.Domain.Enums.TriggerType.Manual, IsActive = true };
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindTriggersByWorkflowVersionAsync(workflowVersionId, It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new List<Trigger> { trigger });
++        var client = CreateClient(repo.Object);
++
++        var response = await client.GetAsync($"/api/workflows/{workflowVersionId}/triggers");
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        var body = await response.Content.ReadFromJsonAsync<List<TriggerDto>>();
++        Assert.Single(body!);
++        Assert.Equal(trigger.Id, body![0].Id);
++    }
++
++    [Fact]
++    public async Task Update_UnknownTrigger_Returns404()
++    {
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindTriggerByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Trigger?)null);
++        var client = CreateClient(repo.Object);
++
++        var response = await client.PatchAsync($"/api/triggers/{Guid.NewGuid()}", JsonContent.Create(new UpdateTriggerRequest { IsActive = false }));
++        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Update_ExistingTrigger_UpdatesIsActive()
++    {
++        var trigger = new Trigger { IsActive = true, Type = RPA.Domain.Enums.TriggerType.Manual };
++        var repo = new Mock<ITriggerRepository>();
++        repo.Setup(r => r.FindTriggerByIdAsync(trigger.Id, It.IsAny<CancellationToken>())).ReturnsAsync(trigger);
++        repo.Setup(r => r.FindScheduleByTriggerIdAsync(trigger.Id, It.IsAny<CancellationToken>())).ReturnsAsync((Schedule?)null);
++        var client = CreateClient(repo.Object);
++
++        var response = await client.PatchAsync($"/api/triggers/{trigger.Id}", JsonContent.Create(new UpdateTriggerRequest { IsActive = false }));
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.False(trigger.IsActive);
++        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
++    }
++
++    [Fact]
++    public async Task Fire_UnknownTrigger_Returns404()
++    {
++        var repo = new Mock<ITriggerRepository>();
++        var svc = new Mock<ITriggerService>();
++        svc.Setup(s => s.ExecuteTriggerAsync(It.IsAny<Guid>(), "manual", It.IsAny<CancellationToken>()))
++            .ReturnsAsync(TriggerExecutionResult.NotFound());
++        var client = CreateClient(repo.Object, svc.Object);
++
++        var response = await client.PostAsync($"/api/triggers/{Guid.NewGuid()}/fire", null);
++        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
++    }
++
++    [Fact]
++    public async Task Fire_KnownTrigger_ReturnsExecutedOutcome()
++    {
++        var triggerId = Guid.NewGuid();
++        var jobRun = new JobRun { Status = "Successful" };
++        var repo = new Mock<ITriggerRepository>();
++        var svc = new Mock<ITriggerService>();
++        svc.Setup(s => s.ExecuteTriggerAsync(triggerId, "manual", It.IsAny<CancellationToken>()))
++            .ReturnsAsync(TriggerExecutionResult.Executed(jobRun));
++        var client = CreateClient(repo.Object, svc.Object);
++
++        var response = await client.PostAsync($"/api/triggers/{triggerId}/fire", null);
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        var body = await response.Content.ReadFromJsonAsync<TriggerFireResultDto>();
++        Assert.Equal("Executed", body!.Outcome);
++        Assert.Equal(jobRun.Id, body.JobRunId);
++    }
++}

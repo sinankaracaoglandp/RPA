@@ -1,0 +1,1633 @@
+# Review package: f13abc1..d122ba5
+
+## Commits
+d122ba5 feat(agent): WinForms tray/JobList/UserPrompt UI kabugu (Task 3.6)
+bdd019f feat(agent): RobotHub SignalR istemcisi + is olayi yonlendirme + DI kablolamasi (Task 3.6)
+32ea78a feat(agent): SignalR baglanti durum koordinatoru + tray genisletmesi (Task 3.6)
+1537aad feat(agent): i18n sozlugu, UserPrompt servisi ve Job List view model (Task 3.6)
+
+## Files changed
+ src/RPA.Agent/AgentServiceCollectionExtensions.cs  |  15 +++
+ src/RPA.Agent/Hosting/JobHubHostedService.cs       |  70 +++++++++++++
+ src/RPA.Agent/Hosting/TrayUiHostedService.cs       |  88 ++++++++++++++++
+ src/RPA.Agent/Hub/ConnectionStatus.cs              |   9 ++
+ .../Hub/HubConnectionStatusCoordinator.cs          |  57 ++++++++++
+ src/RPA.Agent/Hub/IJobHubClient.cs                 |   8 ++
+ src/RPA.Agent/Hub/JobEventDto.cs                   |  14 +++
+ src/RPA.Agent/Hub/JobEventRouter.cs                |  45 ++++++++
+ src/RPA.Agent/Hub/RobotHubClient.cs                |  74 +++++++++++++
+ src/RPA.Agent/JobList/JobListItem.cs               |  20 ++++
+ src/RPA.Agent/JobList/JobListStatus.cs             |   9 ++
+ src/RPA.Agent/JobList/JobListViewModel.cs          |  59 +++++++++++
+ src/RPA.Agent/Localization/AgentLanguage.cs        |   8 ++
+ src/RPA.Agent/Localization/AgentStrings.cs         |  42 ++++++++
+ src/RPA.Agent/Prompts/IUserPromptChannel.cs        |  13 +++
+ src/RPA.Agent/Prompts/UserPromptKind.cs            |   9 ++
+ src/RPA.Agent/Prompts/UserPromptRequest.cs         |  32 ++++++
+ src/RPA.Agent/Prompts/UserPromptResponse.cs        |  21 ++++
+ src/RPA.Agent/Prompts/UserPromptService.cs         |  63 +++++++++++
+ src/RPA.Agent/RPA.Agent.csproj                     |   4 +-
+ src/RPA.Agent/Tray/TrayStatusPresenter.cs          |  33 +++++-
+ src/RPA.Agent/Ui/JobListForm.cs                    |  62 +++++++++++
+ src/RPA.Agent/Ui/TrayIconHost.cs                   | 115 +++++++++++++++++++++
+ src/RPA.Agent/Ui/UserPromptForm.cs                 |  67 ++++++++++++
+ .../Hub/HubConnectionStatusCoordinatorTests.cs     |  66 ++++++++++++
+ tests/RPA.Agent.Tests/Hub/JobEventRouterTests.cs   |  61 +++++++++++
+ .../JobList/JobListViewModelTests.cs               |  70 +++++++++++++
+ .../Localization/AgentStringsTests.cs              |  27 +++++
+ .../Prompts/UserPromptServiceTests.cs              |  63 +++++++++++
+ tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj       |   2 +-
+ .../Tray/TrayStatusPresenterConnectionTests.cs     |  52 ++++++++++
+ 31 files changed, 1274 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Agent/AgentServiceCollectionExtensions.cs b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+index 81b0785..fa7445f 100644
+--- a/src/RPA.Agent/AgentServiceCollectionExtensions.cs
++++ b/src/RPA.Agent/AgentServiceCollectionExtensions.cs
+@@ -1,18 +1,21 @@
+ namespace RPA.Agent;
+ 
+ using Microsoft.Extensions.Configuration;
+ using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.Hosting;
+ using RPA.Agent.Configuration;
+ using RPA.Agent.Hosting;
++using RPA.Agent.Hub;
++using RPA.Agent.JobList;
+ using RPA.Agent.Jobs;
++using RPA.Agent.Prompts;
+ using RPA.Agent.Registration;
+ using RPA.Agent.Session;
+ using RPA.Agent.State;
+ using RPA.Agent.Tray;
+ using RPA.Domain.Interfaces;
+ using RPA.Infrastructure.Retry;
+ 
+ /// <summary>
+ /// Ajan servislerini DI konteynerine kaydeder. Hosted service sırası önemlidir:
+ /// önce kayıt (RegistrationHostedService), sonra heartbeat ve yoklama döngüleri.
+@@ -36,31 +39,43 @@ public static class AgentServiceCollectionExtensions
+ 
+         // Kayıt + iş çalıştırma + iş kaynağı — scoped bağımlılıklar (IRobotService/IQueueService/
+         // IWorkflowRunner) taşıdıkları için scoped; hosted service'ler bunları scope içinde çözer.
+         services.AddScoped<IRobotRegistrar, RobotRegistrar>();
+         services.AddScoped<JobExecutor>();
+         services.AddScoped<IAgentJobSource, QueueAgentJobSource>();
+ 
+         // Tray sunucusu (attended mod).
+         services.AddSingleton<TrayStatusPresenter>();
+ 
++        // Attended UX (Task 3.6 — tray, iş listesi, UserPrompt): gerçek zamanlı iş listesi modeli,
++        // kullanıcı girdi kanalı, SignalR bağlantı durumu ve iş olayı yönlendirme — tümü tekil (uygulama
++        // ömrü boyunca tek örnek; tray/pencereler bu örnekleri paylaşır).
++        services.AddSingleton<JobListViewModel>();
++        services.AddSingleton<UserPromptService>();
++        services.AddSingleton<IUserPromptChannel>(sp => sp.GetRequiredService<UserPromptService>());
++        services.AddSingleton<HubConnectionStatusCoordinator>();
++        services.AddSingleton<JobEventRouter>();
++        services.AddSingleton<IJobHubClient, RobotHubClient>();
++
+         // Oturum yönetimi (RDP/AutoLogon/tscon — Spec Bölüm 9).
+         services.AddOptions<SessionManagerOptions>()
+             .Bind(configuration.GetSection(SessionManagerOptions.SectionName));
+         services.AddSingleton<SessionCredentialProvider>();
+         services.AddSingleton<ISessionManager, WindowsSessionManager>();
+         if (OperatingSystem.IsWindows())
+         {
+             // Gerçek Windows interop implementasyonları yalnızca Windows'ta bağlanır.
+             services.AddSingleton<IAutoLogonRegistry, WinlogonAutoLogonRegistry>();
+             services.AddSingleton<ISessionSwitcher, TsconSessionSwitcher>();
+             services.AddSingleton<ISessionInfoProvider, WtsSessionInfoProvider>();
+         }
+ 
+         // Hosted service sırası: kayıt önce.
+         services.AddHostedService<RegistrationHostedService>();
+         services.AddHostedService<HeartbeatBackgroundService>();
+         services.AddHostedService<QueuePollingBackgroundService>();
++        services.AddHostedService<JobHubHostedService>();
++        services.AddHostedService<TrayUiHostedService>();
+ 
+         return services;
+     }
+ }
+diff --git a/src/RPA.Agent/Hosting/JobHubHostedService.cs b/src/RPA.Agent/Hosting/JobHubHostedService.cs
+new file mode 100644
+index 0000000..4e4f363
+--- /dev/null
++++ b/src/RPA.Agent/Hosting/JobHubHostedService.cs
+@@ -0,0 +1,70 @@
++namespace RPA.Agent.Hosting;
++
++using Microsoft.Extensions.Hosting;
++using Microsoft.Extensions.Logging;
++using RPA.Agent.Hub;
++using RPA.Agent.State;
++using RPA.Agent.Tray;
++
++/// <summary>
++/// RobotHub SignalR istemcisini ajan kaydından sonra başlatır (Task 3.6). Bağlantı durumu
++/// değişikliklerini tray sunucusuna (<see cref="TrayStatusPresenter"/>) yansıtır — Offline/Reconnecting
++/// tray tooltip'inde görünür (Spec Bölüm 9). RobotId atanana kadar bekler.
++/// </summary>
++public sealed class JobHubHostedService : BackgroundService
++{
++    private readonly IJobHubClient _hubClient;
++    private readonly HubConnectionStatusCoordinator _statusCoordinator;
++    private readonly TrayStatusPresenter _trayPresenter;
++    private readonly IAgentState _state;
++    private readonly ILogger<JobHubHostedService> _logger;
++
++    public JobHubHostedService(
++        IJobHubClient hubClient,
++        HubConnectionStatusCoordinator statusCoordinator,
++        TrayStatusPresenter trayPresenter,
++        IAgentState state,
++        ILogger<JobHubHostedService> logger)
++    {
++        _hubClient = hubClient ?? throw new ArgumentNullException(nameof(hubClient));
++        _statusCoordinator = statusCoordinator ?? throw new ArgumentNullException(nameof(statusCoordinator));
++        _trayPresenter = trayPresenter ?? throw new ArgumentNullException(nameof(trayPresenter));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++
++        _statusCoordinator.StatusChanged += _trayPresenter.UpdateConnectionStatus;
++    }
++
++    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
++    {
++        // RobotRegistrar kaydı tamamlayana kadar bekle (RegistrationHostedService önce çalışır).
++        try
++        {
++            while (_state.RobotId is null && !stoppingToken.IsCancellationRequested)
++                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
++        }
++        catch (OperationCanceledException)
++        {
++            return;
++        }
++
++        if (stoppingToken.IsCancellationRequested || _state.RobotId is null)
++            return;
++
++        try
++        {
++            await _hubClient.StartAsync(_state.RobotId.Value, stoppingToken);
++            _logger.LogInformation("RobotHub SignalR bağlantısı başlatıldı.");
++        }
++        catch (Exception ex)
++        {
++            _logger.LogError(ex, "RobotHub SignalR bağlantısı başlatılamadı — çevrimdışı modda devam edilecek.");
++        }
++    }
++
++    public override async Task StopAsync(CancellationToken cancellationToken)
++    {
++        await base.StopAsync(cancellationToken);
++        await _hubClient.StopAsync(cancellationToken);
++    }
++}
+diff --git a/src/RPA.Agent/Hosting/TrayUiHostedService.cs b/src/RPA.Agent/Hosting/TrayUiHostedService.cs
+new file mode 100644
+index 0000000..916b3e7
+--- /dev/null
++++ b/src/RPA.Agent/Hosting/TrayUiHostedService.cs
+@@ -0,0 +1,88 @@
++namespace RPA.Agent.Hosting;
++
++using System.Threading;
++using Microsoft.Extensions.Hosting;
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using RPA.Agent.Configuration;
++using RPA.Agent.JobList;
++using RPA.Agent.Prompts;
++using RPA.Agent.State;
++using RPA.Agent.Tray;
++using RPA.Agent.Ui;
++using RPA.Domain.Enums;
++
++/// <summary>
++/// Attended modda (Spec Bölüm 9) tray ikonunu bir STA (Single Threaded Apartment) iş parçacığında
++/// çalıştırır — WinForms mesaj döngüsü STA gerektirir, ana host ise MTA olabilir. Unattended modda
++/// (RobotMode.Unattended) hiçbir UI oluşturmaz; servis olarak sessizce çalışır.
++/// </summary>
++public sealed class TrayUiHostedService : IHostedService
++{
++    private readonly TrayStatusPresenter _presenter;
++    private readonly IAgentState _state;
++    private readonly JobListViewModel _jobList;
++    private readonly UserPromptService _promptService;
++    private readonly AgentOptions _options;
++    private readonly ILogger<TrayUiHostedService> _logger;
++    private Thread? _uiThread;
++    private TrayIconHost? _trayIconHost;
++
++    public TrayUiHostedService(
++        TrayStatusPresenter presenter,
++        IAgentState state,
++        JobListViewModel jobList,
++        UserPromptService promptService,
++        IOptions<AgentOptions> options,
++        ILogger<TrayUiHostedService> logger)
++    {
++        _presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _jobList = jobList ?? throw new ArgumentNullException(nameof(jobList));
++        _promptService = promptService ?? throw new ArgumentNullException(nameof(promptService));
++        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public Task StartAsync(CancellationToken cancellationToken)
++    {
++        if (_options.Mode != RobotMode.Attended || !OperatingSystem.IsWindows())
++        {
++            _logger.LogInformation("Tray UI başlatılmadı (Mode={Mode}, Windows={IsWindows}).", _options.Mode, OperatingSystem.IsWindows());
++            return Task.CompletedTask;
++        }
++
++        _uiThread = new Thread(RunUiThread) { IsBackground = true };
++        _uiThread.SetApartmentState(ApartmentState.STA);
++        _uiThread.Start();
++        return Task.CompletedTask;
++    }
++
++    private void RunUiThread()
++    {
++        System.Windows.Forms.Application.EnableVisualStyles();
++        _trayIconHost = new TrayIconHost(_presenter, _state, _jobList, _promptService);
++        System.Windows.Forms.Application.Run();
++    }
++
++    public Task StopAsync(CancellationToken cancellationToken)
++    {
++        if (_uiThread is null)
++            return Task.CompletedTask;
++
++        try
++        {
++            System.Windows.Forms.Application.Exit();
++        }
++        catch (Exception ex)
++        {
++            _logger.LogWarning(ex, "Tray UI kapatılırken hata (yok sayıldı).");
++        }
++        finally
++        {
++            _trayIconHost?.Dispose();
++        }
++
++        return Task.CompletedTask;
++    }
++}
+diff --git a/src/RPA.Agent/Hub/ConnectionStatus.cs b/src/RPA.Agent/Hub/ConnectionStatus.cs
+new file mode 100644
+index 0000000..8991fd4
+--- /dev/null
++++ b/src/RPA.Agent/Hub/ConnectionStatus.cs
+@@ -0,0 +1,9 @@
++namespace RPA.Agent.Hub;
++
++/// <summary>Tray'de gösterilen SignalR bağlantı durumu (Spec Bölüm 9 — otomatik yeniden bağlanma).</summary>
++public enum ConnectionStatus
++{
++    Online,
++    Reconnecting,
++    Offline,
++}
+diff --git a/src/RPA.Agent/Hub/HubConnectionStatusCoordinator.cs b/src/RPA.Agent/Hub/HubConnectionStatusCoordinator.cs
+new file mode 100644
+index 0000000..efcf4a3
+--- /dev/null
++++ b/src/RPA.Agent/Hub/HubConnectionStatusCoordinator.cs
+@@ -0,0 +1,57 @@
++namespace RPA.Agent.Hub;
++
++using Microsoft.Extensions.Logging;
++
++/// <summary>
++/// SignalR (RobotHub) istemci bağlantısının yaşam döngüsü olaylarını (Closed/Reconnecting/Reconnected)
++/// tray'in gösterdiği <see cref="ConnectionStatus"/>'a çevirir. Microsoft.AspNetCore.SignalR.Client'ın
++/// HubConnection'ından bağımsızdır — böylece gerçek ağ olmadan birim test edilebilir. Gerçek
++/// HubConnection'ın Closed/Reconnecting/Reconnected olayları bu sınıfın karşılık gelen metotlarını çağırır.
++/// </summary>
++public sealed class HubConnectionStatusCoordinator
++{
++    private readonly ILogger<HubConnectionStatusCoordinator> _logger;
++    private ConnectionStatus _status = ConnectionStatus.Offline;
++
++    public HubConnectionStatusCoordinator(ILogger<HubConnectionStatusCoordinator> logger)
++        => _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++
++    public ConnectionStatus Status
++    {
++        get => _status;
++        private set
++        {
++            if (_status == value)
++                return;
++            _status = value;
++            StatusChanged?.Invoke(value);
++        }
++    }
++
++    /// <summary>Durum her değiştiğinde tetiklenir (tray tooltip/ikonunu güncellemek için).</summary>
++    public event Action<ConnectionStatus>? StatusChanged;
++
++    public void OnConnected()
++    {
++        _logger.LogInformation("RobotHub bağlantısı kuruldu.");
++        Status = ConnectionStatus.Online;
++    }
++
++    public void OnReconnecting(Exception? error)
++    {
++        _logger.LogWarning(error, "RobotHub bağlantısı koptu, yeniden bağlanılıyor…");
++        Status = ConnectionStatus.Reconnecting;
++    }
++
++    public void OnReconnected()
++    {
++        _logger.LogInformation("RobotHub bağlantısı yeniden kuruldu.");
++        Status = ConnectionStatus.Online;
++    }
++
++    public void OnClosed(Exception? error)
++    {
++        _logger.LogError(error, "RobotHub bağlantısı kapandı — çevrimdışı.");
++        Status = ConnectionStatus.Offline;
++    }
++}
+diff --git a/src/RPA.Agent/Hub/IJobHubClient.cs b/src/RPA.Agent/Hub/IJobHubClient.cs
+new file mode 100644
+index 0000000..3738849
+--- /dev/null
++++ b/src/RPA.Agent/Hub/IJobHubClient.cs
+@@ -0,0 +1,8 @@
++namespace RPA.Agent.Hub;
++
++/// <summary>Ajanın RobotHub'a (SignalR) bağlanıp iş olaylarını dinlediği istemci sözleşmesi.</summary>
++public interface IJobHubClient : IAsyncDisposable
++{
++    Task StartAsync(Guid robotId, CancellationToken cancellationToken = default);
++    Task StopAsync(CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Agent/Hub/JobEventDto.cs b/src/RPA.Agent/Hub/JobEventDto.cs
+new file mode 100644
+index 0000000..c90e6fc
+--- /dev/null
++++ b/src/RPA.Agent/Hub/JobEventDto.cs
+@@ -0,0 +1,14 @@
++namespace RPA.Agent.Hub;
++
++/// <summary>
++/// RobotHub'ın "JobStatusChanged" mesajının yükü (Spec Bölüm 9). Orchestrator/JobExecutor tarafında
++/// üretilir, agent tarafında SignalR istemcisi ile alınır ve <see cref="JobEventRouter"/> aracılığıyla
++/// Job List penceresine yansıtılır.
++/// </summary>
++public sealed class JobEventDto
++{
++    public Guid JobId { get; set; }
++    public string WorkflowName { get; set; } = string.Empty;
++    public string EventType { get; set; } = string.Empty; // "Started" | "StepChanged" | "Completed" | "Failed"
++    public string? CurrentStep { get; set; }
++}
+diff --git a/src/RPA.Agent/Hub/JobEventRouter.cs b/src/RPA.Agent/Hub/JobEventRouter.cs
+new file mode 100644
+index 0000000..0d46312
+--- /dev/null
++++ b/src/RPA.Agent/Hub/JobEventRouter.cs
+@@ -0,0 +1,45 @@
++namespace RPA.Agent.Hub;
++
++using Microsoft.Extensions.Logging;
++using RPA.Agent.JobList;
++
++/// <summary>
++/// SignalR üzerinden alınan <see cref="JobEventDto"/> mesajlarını <see cref="JobListViewModel"/>
++/// güncellemelerine çevirir (Spec Bölüm 9 — Job List gerçek zamanlı güncelleme). SignalR istemcisinden
++/// bağımsızdır — böylece mesaj yönlendirme mantığı gerçek ağ olmadan test edilebilir.
++/// </summary>
++public sealed class JobEventRouter
++{
++    private readonly JobListViewModel _jobList;
++    private readonly ILogger<JobEventRouter> _logger;
++
++    public JobEventRouter(JobListViewModel jobList, ILogger<JobEventRouter> logger)
++    {
++        _jobList = jobList ?? throw new ArgumentNullException(nameof(jobList));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++    }
++
++    public void Handle(JobEventDto jobEvent)
++    {
++        ArgumentNullException.ThrowIfNull(jobEvent);
++
++        switch (jobEvent.EventType)
++        {
++            case "Started":
++                _jobList.AddOrUpdate(new JobListItem(jobEvent.JobId, jobEvent.WorkflowName, DateTime.UtcNow));
++                break;
++            case "StepChanged":
++                _jobList.UpdateStep(jobEvent.JobId, jobEvent.CurrentStep ?? string.Empty);
++                break;
++            case "Completed":
++                _jobList.Complete(jobEvent.JobId, success: true);
++                break;
++            case "Failed":
++                _jobList.Complete(jobEvent.JobId, success: false);
++                break;
++            default:
++                _logger.LogWarning("Bilinmeyen JobEvent türü: {EventType} (JobId={JobId})", jobEvent.EventType, jobEvent.JobId);
++                break;
++        }
++    }
++}
+diff --git a/src/RPA.Agent/Hub/RobotHubClient.cs b/src/RPA.Agent/Hub/RobotHubClient.cs
+new file mode 100644
+index 0000000..bf7d35c
+--- /dev/null
++++ b/src/RPA.Agent/Hub/RobotHubClient.cs
+@@ -0,0 +1,74 @@
++namespace RPA.Agent.Hub;
++
++using Microsoft.AspNetCore.SignalR.Client;
++using Microsoft.Extensions.Logging;
++using RPA.Agent.Configuration;
++using RPA.Agent.Prompts;
++
++/// <summary>
++/// RobotHub'a (Task 3.1 SignalR hub) bağlanan gerçek istemci sarmalayıcısı (Spec Bölüm 9).
++/// Otomatik yeniden bağlanma (<see cref="HubConnectionBuilderExtensions.WithAutomaticReconnect"/>)
++/// kullanır; yaşam döngüsü olaylarını <see cref="HubConnectionStatusCoordinator"/>'a, iş olaylarını
++/// <see cref="JobEventRouter"/>'a, kullanıcı girdi isteklerini <see cref="UserPromptService"/>'e yönlendirir.
++/// İnce bir bağlama (wiring) sınıfıdır — asıl mantık test edilen coordinator/router/service sınıflarındadır.
++/// </summary>
++public sealed class RobotHubClient : IJobHubClient
++{
++    private readonly HubConnection _connection;
++    private readonly HubConnectionStatusCoordinator _statusCoordinator;
++    private readonly JobEventRouter _jobEventRouter;
++    private readonly UserPromptService _userPromptService;
++    private readonly ILogger<RobotHubClient> _logger;
++
++    public RobotHubClient(
++        Microsoft.Extensions.Options.IOptions<AgentOptions> options,
++        HubConnectionStatusCoordinator statusCoordinator,
++        JobEventRouter jobEventRouter,
++        UserPromptService userPromptService,
++        ILogger<RobotHubClient> logger)
++    {
++        var optionsValue = options?.Value ?? throw new ArgumentNullException(nameof(options));
++        _statusCoordinator = statusCoordinator ?? throw new ArgumentNullException(nameof(statusCoordinator));
++        _jobEventRouter = jobEventRouter ?? throw new ArgumentNullException(nameof(jobEventRouter));
++        _userPromptService = userPromptService ?? throw new ArgumentNullException(nameof(userPromptService));
++        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++
++        _connection = new HubConnectionBuilder()
++            .WithUrl($"{optionsValue.OrchestratorUrl.TrimEnd('/')}/hubs/robot")
++            .WithAutomaticReconnect()
++            .Build();
++
++        _connection.Reconnecting += error => { _statusCoordinator.OnReconnecting(error); return Task.CompletedTask; };
++        _connection.Reconnected += _ => { _statusCoordinator.OnReconnected(); return Task.CompletedTask; };
++        _connection.Closed += error => { _statusCoordinator.OnClosed(error); return Task.CompletedTask; };
++
++        _connection.On<JobEventDto>("JobStatusChanged", jobEvent =>
++        {
++            try { _jobEventRouter.Handle(jobEvent); }
++            catch (Exception ex) { _logger.LogError(ex, "JobStatusChanged işlenirken hata."); }
++        });
++
++        _connection.On<Guid, string, string, string?>("UserPromptRequested", (requestId, title, message, kind) =>
++        {
++            // Sunucu tarafında üretilen istek ID'si korunur; UI bu event'i UserPromptService.PromptRaised
++            // üzerinden değil, doğrudan requestId eşleşmesiyle görür (RequestAsync sunucu tarafında da
++            // çağrılmış olabilir — burada yalnızca bildirim amaçlıdır, gerçek akış çalışan bağlam JobExecutor'dadır).
++            _logger.LogInformation("Sunucudan UserPrompt bildirimi alındı {RequestId} ({Title})", requestId, title);
++        });
++    }
++
++    public async Task StartAsync(Guid robotId, CancellationToken cancellationToken = default)
++    {
++        await _connection.StartAsync(cancellationToken);
++        _statusCoordinator.OnConnected();
++        await _connection.InvokeAsync("Heartbeat", robotId, cancellationToken);
++    }
++
++    public async Task StopAsync(CancellationToken cancellationToken = default)
++    {
++        await _connection.StopAsync(cancellationToken);
++        _statusCoordinator.OnClosed(null);
++    }
++
++    public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
++}
+diff --git a/src/RPA.Agent/JobList/JobListItem.cs b/src/RPA.Agent/JobList/JobListItem.cs
+new file mode 100644
+index 0000000..9b630f0
+--- /dev/null
++++ b/src/RPA.Agent/JobList/JobListItem.cs
+@@ -0,0 +1,20 @@
++namespace RPA.Agent.JobList;
++
++/// <summary>Job List penceresinde bir satır: iş, workflow adı, başlangıç zamanı, geçerli adım, durum.</summary>
++public sealed class JobListItem
++{
++    public JobListItem(Guid jobId, string workflowName, DateTime startedUtc)
++    {
++        JobId = jobId;
++        WorkflowName = workflowName ?? throw new ArgumentNullException(nameof(workflowName));
++        StartedUtc = startedUtc;
++        CurrentStep = string.Empty;
++        Status = JobListStatus.Running;
++    }
++
++    public Guid JobId { get; }
++    public string WorkflowName { get; }
++    public DateTime StartedUtc { get; }
++    public string CurrentStep { get; set; }
++    public JobListStatus Status { get; set; }
++}
+diff --git a/src/RPA.Agent/JobList/JobListStatus.cs b/src/RPA.Agent/JobList/JobListStatus.cs
+new file mode 100644
+index 0000000..a7da6bf
+--- /dev/null
++++ b/src/RPA.Agent/JobList/JobListStatus.cs
+@@ -0,0 +1,9 @@
++namespace RPA.Agent.JobList;
++
++/// <summary>Job List penceresinde gösterilen iş durumu (Spec Bölüm 9).</summary>
++public enum JobListStatus
++{
++    Running,
++    Completed,
++    Failed,
++}
+diff --git a/src/RPA.Agent/JobList/JobListViewModel.cs b/src/RPA.Agent/JobList/JobListViewModel.cs
+new file mode 100644
+index 0000000..089e404
+--- /dev/null
++++ b/src/RPA.Agent/JobList/JobListViewModel.cs
+@@ -0,0 +1,59 @@
++namespace RPA.Agent.JobList;
++
++/// <summary>
++/// Job List penceresinin gerçek zamanlı veri modeli (Spec Bölüm 9). SignalR'dan gelen olaylar
++/// (JobStatusChanged) bu modele yansıtılır; UI <see cref="Changed"/> olayına abone olup
++/// dispatcher üzerinden yeniden çizer. Thread-safe: birden fazla iş parçacığından güncellenebilir.
++/// </summary>
++public sealed class JobListViewModel
++{
++    private readonly object _gate = new();
++    private readonly Dictionary<Guid, JobListItem> _items = new();
++
++    /// <summary>Liste her değiştiğinde tetiklenir (UI thread'ine marshal edilmesi UI'nin sorumluluğundadır).</summary>
++    public event Action? Changed;
++
++    public void AddOrUpdate(JobListItem item)
++    {
++        ArgumentNullException.ThrowIfNull(item);
++        lock (_gate)
++            _items[item.JobId] = item;
++        Changed?.Invoke();
++    }
++
++    public void UpdateStep(Guid jobId, string currentStep)
++    {
++        lock (_gate)
++        {
++            if (_items.TryGetValue(jobId, out var item))
++                item.CurrentStep = currentStep;
++        }
++        Changed?.Invoke();
++    }
++
++    public void Complete(Guid jobId, bool success)
++    {
++        lock (_gate)
++        {
++            if (_items.TryGetValue(jobId, out var item))
++                item.Status = success ? JobListStatus.Completed : JobListStatus.Failed;
++        }
++        Changed?.Invoke();
++    }
++
++    public void Remove(Guid jobId)
++    {
++        bool removed;
++        lock (_gate)
++            removed = _items.Remove(jobId);
++        if (removed)
++            Changed?.Invoke();
++    }
++
++    /// <summary>Anlık listenin salt-okunur kopyası (UI thread'inde güvenle numaralandırılabilir).</summary>
++    public IReadOnlyList<JobListItem> GetSnapshot()
++    {
++        lock (_gate)
++            return _items.Values.ToList();
++    }
++}
+diff --git a/src/RPA.Agent/Localization/AgentLanguage.cs b/src/RPA.Agent/Localization/AgentLanguage.cs
+new file mode 100644
+index 0000000..c47a32a
+--- /dev/null
++++ b/src/RPA.Agent/Localization/AgentLanguage.cs
+@@ -0,0 +1,8 @@
++namespace RPA.Agent.Localization;
++
++/// <summary>Attended arayüz için desteklenen diller (Spec Bölüm 8 — i18n zorunlu).</summary>
++public enum AgentLanguage
++{
++    Turkish,
++    English,
++}
+diff --git a/src/RPA.Agent/Localization/AgentStrings.cs b/src/RPA.Agent/Localization/AgentStrings.cs
+new file mode 100644
+index 0000000..f840f99
+--- /dev/null
++++ b/src/RPA.Agent/Localization/AgentStrings.cs
+@@ -0,0 +1,42 @@
++namespace RPA.Agent.Localization;
++
++/// <summary>
++/// Tray/Job List/UserPrompt pencereleri için basit i18n sözlüğü (Türkçe + İngilizce, Spec Bölüm 8).
++/// Kaynak dosyası (.resx) yerine kod içi sözlük kullanılır — derleme/paketleme basitliği için;
++/// anahtarlar aynı sözleşmeyi (key) korur, ileride .resx'e taşınabilir.
++/// </summary>
++public static class AgentStrings
++{
++    private static readonly Dictionary<string, (string Tr, string En)> Entries = new()
++    {
++        ["Tray.PauseJob"] = ("Duraklat", "Pause"),
++        ["Tray.ResumeJob"] = ("Devam Et", "Resume"),
++        ["Tray.StopJob"] = ("İşi Durdur", "Stop Job"),
++        ["Tray.OpenJobList"] = ("İş Listesini Aç", "Open Job List"),
++        ["Tray.Settings"] = ("Ayarlar", "Settings"),
++        ["Tray.ExitAgent"] = ("Ajanı Kapat", "Exit Agent"),
++        ["Tray.Offline"] = ("Çevrimdışı", "Offline"),
++        ["Tray.Online"] = ("Çevrimiçi", "Online"),
++        ["Tray.Reconnecting"] = ("Yeniden bağlanılıyor…", "Reconnecting…"),
++        ["JobList.Title"] = ("İş Listesi", "Job List"),
++        ["JobList.ColumnJobId"] = ("İş No", "Job ID"),
++        ["JobList.ColumnWorkflow"] = ("Workflow", "Workflow"),
++        ["JobList.ColumnStartedAt"] = ("Başlangıç", "Started"),
++        ["JobList.ColumnCurrentStep"] = ("Geçerli Adım", "Current Step"),
++        ["JobList.ColumnStatus"] = ("Durum", "Status"),
++        ["UserPrompt.Title"] = ("Kullanıcı Girdisi Gerekli", "User Input Required"),
++        ["UserPrompt.Submit"] = ("Gönder", "Submit"),
++        ["UserPrompt.Cancel"] = ("İptal", "Cancel"),
++        ["UserPrompt.TimedOut"] = ("Süre doldu", "Timed out"),
++    };
++
++    /// <summary>Verilen anahtar için dile göre metni döndürür. Bilinmeyen anahtar için anahtarın kendisini döndürür.</summary>
++    public static string Get(string key, AgentLanguage language)
++    {
++        ArgumentNullException.ThrowIfNull(key);
++        if (!Entries.TryGetValue(key, out var value))
++            return key;
++
++        return language == AgentLanguage.Turkish ? value.Tr : value.En;
++    }
++}
+diff --git a/src/RPA.Agent/Prompts/IUserPromptChannel.cs b/src/RPA.Agent/Prompts/IUserPromptChannel.cs
+new file mode 100644
+index 0000000..c8638af
+--- /dev/null
++++ b/src/RPA.Agent/Prompts/IUserPromptChannel.cs
+@@ -0,0 +1,13 @@
++namespace RPA.Agent.Prompts;
++
++/// <summary>
++/// Workflow motoru (UserPrompt node) tarafından çağrılan kanal. UI çatısından bağımsızdır —
++/// gerçek modal pencere <see cref="UserPromptService.PromptRaised"/> olayına abone olarak devreye girer.
++/// </summary>
++public interface IUserPromptChannel
++{
++    /// <summary>
++    /// İsteği yayınlar ve kullanıcı cevabını (veya zaman aşımında null) asenkron olarak bekler.
++    /// </summary>
++    Task<UserPromptResponse?> RequestAsync(UserPromptRequest request, CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Agent/Prompts/UserPromptKind.cs b/src/RPA.Agent/Prompts/UserPromptKind.cs
+new file mode 100644
+index 0000000..98cb4b2
+--- /dev/null
++++ b/src/RPA.Agent/Prompts/UserPromptKind.cs
+@@ -0,0 +1,9 @@
++namespace RPA.Agent.Prompts;
++
++/// <summary>Workflow'un UserPrompt node'unun istediği girdi türü (Spec Bölüm 8/9).</summary>
++public enum UserPromptKind
++{
++    Text,
++    Choice,
++    Confirmation,
++}
+diff --git a/src/RPA.Agent/Prompts/UserPromptRequest.cs b/src/RPA.Agent/Prompts/UserPromptRequest.cs
+new file mode 100644
+index 0000000..66b3b08
+--- /dev/null
++++ b/src/RPA.Agent/Prompts/UserPromptRequest.cs
+@@ -0,0 +1,32 @@
++namespace RPA.Agent.Prompts;
++
++/// <summary>
++/// Workflow yürütmesi sırasında attended kullanıcıdan girdi istemek için üretilen istek
++/// (Spec Bölüm 9 — UserPrompt node). <see cref="IUserPromptChannel.RequestAsync"/> bu isteği
++/// yayınlar; UI (modal pencere) kullanıcıdan cevabı toplayıp <see cref="UserPromptService.Submit"/>
++/// ile geri bildirir.
++/// </summary>
++public sealed class UserPromptRequest
++{
++    public UserPromptRequest(
++        string title,
++        string message,
++        UserPromptKind kind,
++        IReadOnlyList<string>? choices = null,
++        TimeSpan? timeout = null)
++    {
++        Id = Guid.NewGuid();
++        Title = title ?? throw new ArgumentNullException(nameof(title));
++        Message = message ?? throw new ArgumentNullException(nameof(message));
++        Kind = kind;
++        Choices = choices ?? Array.Empty<string>();
++        Timeout = timeout ?? TimeSpan.FromMinutes(5); // Spec: 5 dk timeout.
++    }
++
++    public Guid Id { get; }
++    public string Title { get; }
++    public string Message { get; }
++    public UserPromptKind Kind { get; }
++    public IReadOnlyList<string> Choices { get; }
++    public TimeSpan Timeout { get; }
++}
+diff --git a/src/RPA.Agent/Prompts/UserPromptResponse.cs b/src/RPA.Agent/Prompts/UserPromptResponse.cs
+new file mode 100644
+index 0000000..dab1531
+--- /dev/null
++++ b/src/RPA.Agent/Prompts/UserPromptResponse.cs
+@@ -0,0 +1,21 @@
++namespace RPA.Agent.Prompts;
++
++/// <summary>Kullanıcının UserPrompt modalına verdiği cevap (veya zaman aşımı sonucu).</summary>
++public sealed class UserPromptResponse
++{
++    public UserPromptResponse(Guid requestId, bool confirmed, string? text = null, string? selectedChoice = null)
++    {
++        RequestId = requestId;
++        Confirmed = confirmed;
++        Text = text;
++        SelectedChoice = selectedChoice;
++    }
++
++    public Guid RequestId { get; }
++
++    /// <summary>Confirmation türü için onay; Text/Choice türlerinde "iptal edilmedi" anlamına gelir.</summary>
++    public bool Confirmed { get; }
++
++    public string? Text { get; }
++    public string? SelectedChoice { get; }
++}
+diff --git a/src/RPA.Agent/Prompts/UserPromptService.cs b/src/RPA.Agent/Prompts/UserPromptService.cs
+new file mode 100644
+index 0000000..1fd1d8a
+--- /dev/null
++++ b/src/RPA.Agent/Prompts/UserPromptService.cs
+@@ -0,0 +1,63 @@
++namespace RPA.Agent.Prompts;
++
++using System.Collections.Concurrent;
++using Microsoft.Extensions.Logging;
++
++/// <summary>
++/// <see cref="IUserPromptChannel"/> implementasyonu: bekleyen istekleri korelasyon (istek) ID'sine
++/// göre tutar; UI (modal pencere) <see cref="PromptRaised"/> olayına abone olup kullanıcı cevabını
++/// <see cref="Submit"/> ile geri bildirir. 5 dakika içinde cevap gelmezse istek zaman aşımına uğrar
++/// ve <see cref="RequestAsync"/> null döner (Spec Bölüm 9 — UserPrompt node).
++/// </summary>
++public sealed class UserPromptService : IUserPromptChannel
++{
++    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<UserPromptResponse?>> _pending = new();
++    private readonly ILogger<UserPromptService> _logger;
++
++    public UserPromptService(ILogger<UserPromptService> logger)
++        => _logger = logger ?? throw new ArgumentNullException(nameof(logger));
++
++    /// <summary>UI'nin abone olup modal göstermesi için tetiklenen olay.</summary>
++    public event Action<UserPromptRequest>? PromptRaised;
++
++    public async Task<UserPromptResponse?> RequestAsync(UserPromptRequest request, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(request);
++
++        var tcs = new TaskCompletionSource<UserPromptResponse?>(TaskCreationOptions.RunContinuationsAsynchronously);
++        if (!_pending.TryAdd(request.Id, tcs))
++            throw new InvalidOperationException($"İstek zaten bekliyor: {request.Id}");
++
++        _logger.LogInformation(
++            "UserPrompt isteği oluşturuldu {RequestId} — Başlık: {Title}, Süre: {Timeout}",
++            request.Id, request.Title, request.Timeout);
++
++        using var timeoutCts = new CancellationTokenSource(request.Timeout);
++        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
++        await using var registration = linkedCts.Token.Register(() => tcs.TrySetResult(null));
++
++        try
++        {
++            PromptRaised?.Invoke(request);
++            var response = await tcs.Task;
++            if (response is null)
++                _logger.LogWarning("UserPrompt isteği zaman aşımına uğradı {RequestId}", request.Id);
++            else
++                _logger.LogInformation("UserPrompt isteği cevaplandı {RequestId}", request.Id);
++            return response;
++        }
++        finally
++        {
++            _pending.TryRemove(request.Id, out _);
++        }
++    }
++
++    /// <summary>UI'nin kullanıcı cevabını bildirmesi için çağrılır. Bilinmeyen/zamanı geçmiş istek için false döner.</summary>
++    public bool Submit(UserPromptResponse response)
++    {
++        ArgumentNullException.ThrowIfNull(response);
++        if (_pending.TryGetValue(response.RequestId, out var tcs))
++            return tcs.TrySetResult(response);
++        return false;
++    }
++}
+diff --git a/src/RPA.Agent/RPA.Agent.csproj b/src/RPA.Agent/RPA.Agent.csproj
+index fe50796..fd87da1 100644
+--- a/src/RPA.Agent/RPA.Agent.csproj
++++ b/src/RPA.Agent/RPA.Agent.csproj
+@@ -1,22 +1,24 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+     <OutputType>Exe</OutputType>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net10.0-windows</TargetFramework>
++    <UseWindowsForms>true</UseWindowsForms>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <RootNamespace>RPA.Agent</RootNamespace>
+     <AssemblyName>RPA.Agent</AssemblyName>
+   </PropertyGroup>
+ 
+   <ItemGroup>
++    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+     <PackageReference Include="Serilog" Version="4.3.1" />
+     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+     <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
+     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+     <PackageReference Include="Serilog.Sinks.Elasticsearch" Version="10.0.0" />
+   </ItemGroup>
+diff --git a/src/RPA.Agent/Tray/TrayStatusPresenter.cs b/src/RPA.Agent/Tray/TrayStatusPresenter.cs
+index bf2af4d..0969ac4 100644
+--- a/src/RPA.Agent/Tray/TrayStatusPresenter.cs
++++ b/src/RPA.Agent/Tray/TrayStatusPresenter.cs
+@@ -1,48 +1,77 @@
+ namespace RPA.Agent.Tray;
+ 
+ using System.Globalization;
++using RPA.Agent.Hub;
+ using RPA.Agent.State;
+ 
+ /// <summary>
+ /// Tray ikonu için durum metnini/ipucunu biçimlendirir (attended mod, Spec Bölüm 5.6). UI çatısından
+ /// (WinForms NotifyIcon) bağımsız — böylece Windows dışında da test edilebilir. Gerçek NotifyIcon
+-/// bu sunucudan metni okuyup gösterir; duraklat/devam komutlarını <see cref="IAgentState"/>'e iletir.
++/// bu sunucudan metni okuyup gösterir; duraklat/devam/durdur komutlarını <see cref="IAgentState"/>'e iletir.
+ /// </summary>
+ public sealed class TrayStatusPresenter
+ {
+     private readonly IAgentState _state;
++    private ConnectionStatus _connectionStatus = ConnectionStatus.Online;
+ 
+     public TrayStatusPresenter(IAgentState state)
+         => _state = state ?? throw new ArgumentNullException(nameof(state));
+ 
++    /// <summary>SignalR bağlantı durumunu günceller (tooltip/menüye yansır). Coordinator olayına bağlanır.</summary>
++    public void UpdateConnectionStatus(ConnectionStatus status) => _connectionStatus = status;
++
+     /// <summary>Tray tooltip metni (ikonun üzerine gelince görünür).</summary>
+     public string GetTooltip()
+     {
+         var robot = _state.RobotId is { } id ? id.ToString()[..8] : "kayıtsız";
+         var activity = DescribeActivity(_state.Activity);
+         var jobs = string.Format(
+             CultureInfo.InvariantCulture,
+             "Tamamlanan: {0}  Başarısız: {1}",
+             _state.CompletedJobCount, _state.FailedJobCount);
+-        return $"RPA Robot [{robot}]\n{activity}\n{jobs}";
++        var connection = DescribeConnection(_connectionStatus);
++        return $"RPA Robot [{robot}]\n{activity}\n{jobs}\n{connection}";
+     }
+ 
++    /// <summary>Bağlantı durumuna karşılık gelen kısa etiket (Çevrimiçi/Yeniden bağlanılıyor/Çevrimdışı).</summary>
++    public string GetConnectionLabel() => DescribeConnection(_connectionStatus);
++
+     /// <summary>İkon renk/duruma karşılık gelen kısa etiket.</summary>
+     public string GetStatusLabel() => DescribeActivity(_state.Activity);
+ 
+     /// <summary>Duraklat/devam menü öğesinin başlığı.</summary>
+     public string GetPauseResumeCaption() => _state.IsPaused ? "Devam Et" : "Duraklat";
+ 
+     /// <summary>Tray'den duraklat/devam geçişini uygular.</summary>
+     public void TogglePause() => _state.SetPaused(!_state.IsPaused);
+ 
++    /// <summary>"İşi Durdur" menü öğesinin başlığı.</summary>
++    public string GetStopJobCaption() => Localization.AgentStrings.Get("Tray.StopJob", Localization.AgentLanguage.Turkish);
++
++    /// <summary>"İş Listesini Aç" menü öğesinin başlığı.</summary>
++    public string GetOpenJobListCaption() => Localization.AgentStrings.Get("Tray.OpenJobList", Localization.AgentLanguage.Turkish);
++
++    /// <summary>"Ajanı Kapat" menü öğesinin başlığı.</summary>
++    public string GetExitCaption() => Localization.AgentStrings.Get("Tray.ExitAgent", Localization.AgentLanguage.Turkish);
++
++    /// <summary>Şu anda çalışan işin durdurulmasının anlamlı olup olmadığı (iş yoksa menü devre dışı bırakılabilir).</summary>
++    public bool CanStopJob() => _state.CurrentJobId is not null;
++
++    private static string DescribeConnection(ConnectionStatus status) => status switch
++    {
++        ConnectionStatus.Online => Localization.AgentStrings.Get("Tray.Online", Localization.AgentLanguage.Turkish),
++        ConnectionStatus.Reconnecting => Localization.AgentStrings.Get("Tray.Reconnecting", Localization.AgentLanguage.Turkish),
++        ConnectionStatus.Offline => Localization.AgentStrings.Get("Tray.Offline", Localization.AgentLanguage.Turkish),
++        _ => status.ToString(),
++    };
++
+     private static string DescribeActivity(AgentActivity activity) => activity switch
+     {
+         AgentActivity.Starting => "Başlatılıyor…",
+         AgentActivity.Registering => "Kaydolunuyor…",
+         AgentActivity.Idle => "Boşta (iş bekleniyor)",
+         AgentActivity.Running => "Çalışıyor…",
+         AgentActivity.Paused => "Duraklatıldı",
+         AgentActivity.Stopped => "Durduruldu",
+         _ => activity.ToString(),
+     };
+diff --git a/src/RPA.Agent/Ui/JobListForm.cs b/src/RPA.Agent/Ui/JobListForm.cs
+new file mode 100644
+index 0000000..ea6c6fa
+--- /dev/null
++++ b/src/RPA.Agent/Ui/JobListForm.cs
+@@ -0,0 +1,62 @@
++namespace RPA.Agent.Ui;
++
++using System.Windows.Forms;
++using RPA.Agent.JobList;
++using RPA.Agent.Localization;
++
++/// <summary>
++/// İş listesi penceresi (Spec Bölüm 9): çalışan/tamamlanan işleri gerçek zamanlı gösterir.
++/// <see cref="JobListViewModel.Changed"/> olayı arka plan iş parçacığından tetiklenebileceğinden
++/// yeniden çizim her zaman <see cref="Control.Invoke(Delegate)"/> ile UI thread'ine marshal edilir.
++/// </summary>
++public sealed class JobListForm : Form
++{
++    private readonly JobListViewModel _viewModel;
++    private readonly ListView _listView;
++
++    public JobListForm(JobListViewModel viewModel, AgentLanguage language = AgentLanguage.Turkish)
++    {
++        _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
++        Text = AgentStrings.Get("JobList.Title", language);
++        Width = 720;
++        Height = 400;
++
++        _listView = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true };
++        _listView.Columns.Add(AgentStrings.Get("JobList.ColumnJobId", language), 90);
++        _listView.Columns.Add(AgentStrings.Get("JobList.ColumnWorkflow", language), 180);
++        _listView.Columns.Add(AgentStrings.Get("JobList.ColumnStartedAt", language), 130);
++        _listView.Columns.Add(AgentStrings.Get("JobList.ColumnCurrentStep", language), 220);
++        _listView.Columns.Add(AgentStrings.Get("JobList.ColumnStatus", language), 90);
++        Controls.Add(_listView);
++
++        _viewModel.Changed += OnChanged;
++        FormClosed += (_, _) => _viewModel.Changed -= OnChanged;
++
++        Refresh_();
++    }
++
++    private void OnChanged()
++    {
++        if (IsDisposed)
++            return;
++        if (InvokeRequired)
++            BeginInvoke(Refresh_);
++        else
++            Refresh_();
++    }
++
++    /// <summary>ListView'i mevcut anlık görüntüye göre yeniden doldurur (test/manuel tetikleme için public).</summary>
++    public void Refresh_()
++    {
++        _listView.Items.Clear();
++        foreach (var item in _viewModel.GetSnapshot())
++        {
++            var row = new ListViewItem(item.JobId.ToString()[..8]);
++            row.SubItems.Add(item.WorkflowName);
++            row.SubItems.Add(item.StartedUtc.ToLocalTime().ToString("g"));
++            row.SubItems.Add(item.CurrentStep);
++            row.SubItems.Add(item.Status.ToString());
++            _listView.Items.Add(row);
++        }
++    }
++}
+diff --git a/src/RPA.Agent/Ui/TrayIconHost.cs b/src/RPA.Agent/Ui/TrayIconHost.cs
+new file mode 100644
+index 0000000..b300b53
+--- /dev/null
++++ b/src/RPA.Agent/Ui/TrayIconHost.cs
+@@ -0,0 +1,115 @@
++namespace RPA.Agent.Ui;
++
++using System.Windows.Forms;
++using RPA.Agent.JobList;
++using RPA.Agent.Localization;
++using RPA.Agent.Prompts;
++using RPA.Agent.State;
++using RPA.Agent.Tray;
++
++/// <summary>
++/// Gerçek WinForms tray ikonu (NotifyIcon) + bağlam menüsü (Spec Bölüm 9). Metinleri/durumu
++/// <see cref="TrayStatusPresenter"/>'dan okur; komutları ona (ve <see cref="IAgentState"/>'e) iletir.
++/// <see cref="UserPromptService.PromptRaised"/> olayına abone olarak modal pencereyi UI thread'inde açar.
++/// Bu sınıf ince bir bağlama katmanıdır — iş mantığı test edilen presenter/service sınıflarındadır.
++/// </summary>
++public sealed class TrayIconHost : IDisposable
++{
++    private readonly NotifyIcon _notifyIcon;
++    private readonly System.Windows.Forms.Timer _refreshTimer;
++    private readonly TrayStatusPresenter _presenter;
++    private readonly IAgentState _state;
++    private readonly JobListViewModel _jobList;
++    private readonly UserPromptService _promptService;
++    private readonly AgentLanguage _language;
++    private JobListForm? _jobListForm;
++
++    public TrayIconHost(
++        TrayStatusPresenter presenter,
++        IAgentState state,
++        JobListViewModel jobList,
++        UserPromptService promptService,
++        AgentLanguage language = AgentLanguage.Turkish)
++    {
++        _presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
++        _state = state ?? throw new ArgumentNullException(nameof(state));
++        _jobList = jobList ?? throw new ArgumentNullException(nameof(jobList));
++        _promptService = promptService ?? throw new ArgumentNullException(nameof(promptService));
++        _language = language;
++
++        var menu = new ContextMenuStrip();
++        var pauseResumeItem = new ToolStripMenuItem(_presenter.GetPauseResumeCaption());
++        pauseResumeItem.Click += (_, _) =>
++        {
++            _presenter.TogglePause();
++            pauseResumeItem.Text = _presenter.GetPauseResumeCaption();
++        };
++        menu.Items.Add(pauseResumeItem);
++
++        var stopJobItem = new ToolStripMenuItem(_presenter.GetStopJobCaption());
++        stopJobItem.Click += (_, _) => _state.SetCurrentJob(null);
++        menu.Items.Add(stopJobItem);
++
++        var openJobListItem = new ToolStripMenuItem(_presenter.GetOpenJobListCaption());
++        openJobListItem.Click += (_, _) => ShowJobList();
++        menu.Items.Add(openJobListItem);
++
++        menu.Items.Add(new ToolStripSeparator());
++
++        var exitItem = new ToolStripMenuItem(_presenter.GetExitCaption());
++        exitItem.Click += (_, _) => Application.Exit();
++        menu.Items.Add(exitItem);
++
++        _notifyIcon = new NotifyIcon
++        {
++            Icon = System.Drawing.SystemIcons.Application,
++            ContextMenuStrip = menu,
++            Visible = true,
++            Text = Truncate(_presenter.GetTooltip()),
++        };
++
++        _promptService.PromptRaised += OnPromptRaised;
++
++        _refreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
++        _refreshTimer.Tick += (_, _) =>
++        {
++            _notifyIcon.Text = Truncate(_presenter.GetTooltip());
++            pauseResumeItem.Text = _presenter.GetPauseResumeCaption();
++            stopJobItem.Enabled = _presenter.CanStopJob();
++        };
++        _refreshTimer.Start();
++    }
++
++    private void ShowJobList()
++    {
++        if (_jobListForm is { IsDisposed: false })
++        {
++            _jobListForm.BringToFront();
++            return;
++        }
++
++        _jobListForm = new JobListForm(_jobList, _language);
++        _jobListForm.Show();
++    }
++
++    private void OnPromptRaised(UserPromptRequest request)
++    {
++        // SignalR/BaseRunner arka plan iş parçacığından tetiklenir — UI oluşturmak UI thread gerektirir.
++        _notifyIcon.ContextMenuStrip?.Invoke(() =>
++        {
++            var form = new UserPromptForm(_promptService, request, _language);
++            form.Show();
++        });
++    }
++
++    private static string Truncate(string text) => text.Length <= 127 ? text : text[..127];
++
++    public void Dispose()
++    {
++        _refreshTimer.Dispose();
++        _notifyIcon.Visible = false;
++        _notifyIcon.Dispose();
++        _promptService.PromptRaised -= OnPromptRaised;
++        _jobListForm?.Dispose();
++    }
++}
+diff --git a/src/RPA.Agent/Ui/UserPromptForm.cs b/src/RPA.Agent/Ui/UserPromptForm.cs
+new file mode 100644
+index 0000000..cb45ded
+--- /dev/null
++++ b/src/RPA.Agent/Ui/UserPromptForm.cs
+@@ -0,0 +1,67 @@
++namespace RPA.Agent.Ui;
++
++using System.Windows.Forms;
++using RPA.Agent.Localization;
++using RPA.Agent.Prompts;
++
++/// <summary>
++/// UserPrompt modal penceresi (Spec Bölüm 9): workflow yürütmesi bir kullanıcı girdisi bekliyorken
++/// gösterilir. Girdi türüne göre metin kutusu / seçim listesi / onay düğmeleri sunar. Kullanıcı
++/// Gönder'e bastığında <see cref="UserPromptService.Submit"/> çağrılır ve pencere kapanır.
++/// </summary>
++public sealed class UserPromptForm : Form
++{
++    private readonly UserPromptService _promptService;
++    private readonly UserPromptRequest _request;
++    private readonly TextBox? _textBox;
++    private readonly ComboBox? _comboBox;
++
++    public UserPromptForm(UserPromptService promptService, UserPromptRequest request, AgentLanguage language = AgentLanguage.Turkish)
++    {
++        _promptService = promptService ?? throw new ArgumentNullException(nameof(promptService));
++        _request = request ?? throw new ArgumentNullException(nameof(request));
++
++        Text = string.IsNullOrWhiteSpace(request.Title) ? AgentStrings.Get("UserPrompt.Title", language) : request.Title;
++        Width = 420;
++        Height = 220;
++        FormBorderStyle = FormBorderStyle.FixedDialog;
++        StartPosition = FormStartPosition.CenterScreen;
++
++        var messageLabel = new Label { Text = request.Message, Dock = DockStyle.Top, Height = 60, Padding = new Padding(10) };
++        Controls.Add(messageLabel);
++
++        if (request.Kind == UserPromptKind.Text)
++        {
++            _textBox = new TextBox { Dock = DockStyle.Top };
++            Controls.Add(_textBox);
++        }
++        else if (request.Kind == UserPromptKind.Choice)
++        {
++            _comboBox = new ComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
++            foreach (var choice in request.Choices)
++                _comboBox.Items.Add(choice);
++            if (_comboBox.Items.Count > 0)
++                _comboBox.SelectedIndex = 0;
++            Controls.Add(_comboBox);
++        }
++
++        var submitButton = new Button { Text = AgentStrings.Get("UserPrompt.Submit", language), Dock = DockStyle.Bottom };
++        submitButton.Click += (_, _) => Submit(confirmed: true);
++        Controls.Add(submitButton);
++
++        var cancelButton = new Button { Text = AgentStrings.Get("UserPrompt.Cancel", language), Dock = DockStyle.Bottom };
++        cancelButton.Click += (_, _) => Submit(confirmed: false);
++        Controls.Add(cancelButton);
++    }
++
++    private void Submit(bool confirmed)
++    {
++        var response = new UserPromptResponse(
++            _request.Id,
++            confirmed,
++            text: _textBox?.Text,
++            selectedChoice: _comboBox?.SelectedItem as string);
++        _promptService.Submit(response);
++        Close();
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Hub/HubConnectionStatusCoordinatorTests.cs b/tests/RPA.Agent.Tests/Hub/HubConnectionStatusCoordinatorTests.cs
+new file mode 100644
+index 0000000..3bb6cb9
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Hub/HubConnectionStatusCoordinatorTests.cs
+@@ -0,0 +1,66 @@
++namespace RPA.Agent.Tests.Hub;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using RPA.Agent.Hub;
++
++public class HubConnectionStatusCoordinatorTests
++{
++    private static HubConnectionStatusCoordinator Create() => new(NullLogger<HubConnectionStatusCoordinator>.Instance);
++
++    [Fact]
++    public void Baslangic_Durumu_Offline()
++    {
++        var coordinator = Create();
++        Assert.Equal(ConnectionStatus.Offline, coordinator.Status);
++    }
++
++    [Fact]
++    public void OnConnected_Online_Yapar_Ve_Olay_Tetikler()
++    {
++        var coordinator = Create();
++        ConnectionStatus? seen = null;
++        coordinator.StatusChanged += s => seen = s;
++
++        coordinator.OnConnected();
++
++        Assert.Equal(ConnectionStatus.Online, coordinator.Status);
++        Assert.Equal(ConnectionStatus.Online, seen);
++    }
++
++    [Fact]
++    public void OnReconnecting_Sonra_OnReconnected_Online_Doner()
++    {
++        var coordinator = Create();
++        coordinator.OnConnected();
++
++        coordinator.OnReconnecting(new InvalidOperationException("kopma"));
++        Assert.Equal(ConnectionStatus.Reconnecting, coordinator.Status);
++
++        coordinator.OnReconnected();
++        Assert.Equal(ConnectionStatus.Online, coordinator.Status);
++    }
++
++    [Fact]
++    public void OnClosed_Offline_Yapar()
++    {
++        var coordinator = Create();
++        coordinator.OnConnected();
++
++        coordinator.OnClosed(new Exception("bağlantı koptu"));
++
++        Assert.Equal(ConnectionStatus.Offline, coordinator.Status);
++    }
++
++    [Fact]
++    public void Ayni_Duruma_Tekrar_Gecis_Olay_Tetiklemez()
++    {
++        var coordinator = Create();
++        coordinator.OnConnected();
++        var raised = 0;
++        coordinator.StatusChanged += _ => raised++;
++
++        coordinator.OnConnected();
++
++        Assert.Equal(0, raised);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Hub/JobEventRouterTests.cs b/tests/RPA.Agent.Tests/Hub/JobEventRouterTests.cs
+new file mode 100644
+index 0000000..90607d5
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Hub/JobEventRouterTests.cs
+@@ -0,0 +1,61 @@
++namespace RPA.Agent.Tests.Hub;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using RPA.Agent.Hub;
++using RPA.Agent.JobList;
++
++public class JobEventRouterTests
++{
++    private static JobEventRouter Create(JobListViewModel vm) => new(vm, NullLogger<JobEventRouter>.Instance);
++
++    [Fact]
++    public void Started_Olayi_Job_Listesine_Yeni_Satir_Ekler()
++    {
++        var vm = new JobListViewModel();
++        var router = Create(vm);
++        var jobId = Guid.NewGuid();
++
++        router.Handle(new JobEventDto { JobId = jobId, WorkflowName = "Fatura İşleme", EventType = "Started" });
++
++        var item = Assert.Single(vm.GetSnapshot());
++        Assert.Equal(jobId, item.JobId);
++        Assert.Equal("Fatura İşleme", item.WorkflowName);
++    }
++
++    [Fact]
++    public void StepChanged_Olayi_Geçerli_Adimi_Gunceller()
++    {
++        var vm = new JobListViewModel();
++        var router = Create(vm);
++        var jobId = Guid.NewGuid();
++        router.Handle(new JobEventDto { JobId = jobId, WorkflowName = "X", EventType = "Started" });
++
++        router.Handle(new JobEventDto { JobId = jobId, EventType = "StepChanged", CurrentStep = "SAP'ye bağlanılıyor" });
++
++        Assert.Equal("SAP'ye bağlanılıyor", vm.GetSnapshot().Single().CurrentStep);
++    }
++
++    [Fact]
++    public void Completed_Ve_Failed_Durumu_Dogru_Isaretler()
++    {
++        var vm = new JobListViewModel();
++        var router = Create(vm);
++        var jobId = Guid.NewGuid();
++        router.Handle(new JobEventDto { JobId = jobId, WorkflowName = "X", EventType = "Started" });
++
++        router.Handle(new JobEventDto { JobId = jobId, EventType = "Failed" });
++
++        Assert.Equal(JobListStatus.Failed, vm.GetSnapshot().Single().Status);
++    }
++
++    [Fact]
++    public void Bilinmeyen_Olay_Turu_Istisna_Firlatmaz()
++    {
++        var vm = new JobListViewModel();
++        var router = Create(vm);
++
++        var ex = Record.Exception(() => router.Handle(new JobEventDto { JobId = Guid.NewGuid(), EventType = "Unknown" }));
++
++        Assert.Null(ex);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/JobList/JobListViewModelTests.cs b/tests/RPA.Agent.Tests/JobList/JobListViewModelTests.cs
+new file mode 100644
+index 0000000..102d884
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/JobList/JobListViewModelTests.cs
+@@ -0,0 +1,70 @@
++namespace RPA.Agent.Tests.JobList;
++
++using RPA.Agent.JobList;
++
++public class JobListViewModelTests
++{
++    [Fact]
++    public void AddOrUpdate_Snapshotta_Gorunur_Ve_Changed_Tetiklenir()
++    {
++        var vm = new JobListViewModel();
++        var raised = 0;
++        vm.Changed += () => raised++;
++        var jobId = Guid.NewGuid();
++
++        vm.AddOrUpdate(new JobListItem(jobId, "Fatura İşleme", DateTime.UtcNow));
++
++        var snapshot = vm.GetSnapshot();
++        Assert.Single(snapshot);
++        Assert.Equal(jobId, snapshot[0].JobId);
++        Assert.Equal(1, raised);
++    }
++
++    [Fact]
++    public void UpdateStep_Mevcut_Isin_Adimini_Gunceller()
++    {
++        var vm = new JobListViewModel();
++        var jobId = Guid.NewGuid();
++        vm.AddOrUpdate(new JobListItem(jobId, "Fatura İşleme", DateTime.UtcNow));
++
++        vm.UpdateStep(jobId, "SAP'ye bağlanılıyor");
++
++        Assert.Equal("SAP'ye bağlanılıyor", vm.GetSnapshot().Single().CurrentStep);
++    }
++
++    [Fact]
++    public void Complete_Durumu_Basarili_Veya_Basarisiz_Olarak_Isaretler()
++    {
++        var vm = new JobListViewModel();
++        var jobId = Guid.NewGuid();
++        vm.AddOrUpdate(new JobListItem(jobId, "Fatura İşleme", DateTime.UtcNow));
++
++        vm.Complete(jobId, success: false);
++
++        Assert.Equal(JobListStatus.Failed, vm.GetSnapshot().Single().Status);
++    }
++
++    [Fact]
++    public void Remove_Olmayan_Is_Icin_Changed_Tetiklemez()
++    {
++        var vm = new JobListViewModel();
++        var raised = 0;
++        vm.Changed += () => raised++;
++
++        vm.Remove(Guid.NewGuid());
++
++        Assert.Equal(0, raised);
++    }
++
++    [Fact]
++    public void Remove_Var_Olan_Isi_Listeden_Cikarir()
++    {
++        var vm = new JobListViewModel();
++        var jobId = Guid.NewGuid();
++        vm.AddOrUpdate(new JobListItem(jobId, "Fatura İşleme", DateTime.UtcNow));
++
++        vm.Remove(jobId);
++
++        Assert.Empty(vm.GetSnapshot());
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Localization/AgentStringsTests.cs b/tests/RPA.Agent.Tests/Localization/AgentStringsTests.cs
+new file mode 100644
+index 0000000..ee51f2b
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Localization/AgentStringsTests.cs
+@@ -0,0 +1,27 @@
++namespace RPA.Agent.Tests.Localization;
++
++using RPA.Agent.Localization;
++
++public class AgentStringsTests
++{
++    [Theory]
++    [InlineData("Tray.PauseJob")]
++    [InlineData("Tray.StopJob")]
++    [InlineData("JobList.Title")]
++    [InlineData("UserPrompt.Title")]
++    public void Bilinen_Anahtar_Iki_Dilde_De_Farkli_Ve_Bos_Olmayan_Metin_Dondurur(string key)
++    {
++        var tr = AgentStrings.Get(key, AgentLanguage.Turkish);
++        var en = AgentStrings.Get(key, AgentLanguage.English);
++
++        Assert.False(string.IsNullOrWhiteSpace(tr));
++        Assert.False(string.IsNullOrWhiteSpace(en));
++        Assert.NotEqual(tr, en);
++    }
++
++    [Fact]
++    public void Bilinmeyen_Anahtar_Icin_Anahtarin_Kendisi_Dondurulur()
++    {
++        Assert.Equal("Nonexistent.Key", AgentStrings.Get("Nonexistent.Key", AgentLanguage.English));
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/Prompts/UserPromptServiceTests.cs b/tests/RPA.Agent.Tests/Prompts/UserPromptServiceTests.cs
+new file mode 100644
+index 0000000..c48cfa5
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Prompts/UserPromptServiceTests.cs
+@@ -0,0 +1,63 @@
++namespace RPA.Agent.Tests.Prompts;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using RPA.Agent.Prompts;
++
++public class UserPromptServiceTests
++{
++    private static UserPromptService CreateService() => new(NullLogger<UserPromptService>.Instance);
++
++    [Fact]
++    public async Task Submit_Zamaninda_Cagrilirsa_RequestAsync_Cevabi_Dondurur()
++    {
++        var service = CreateService();
++        var request = new UserPromptRequest("Başlık", "Mesaj", UserPromptKind.Text, timeout: TimeSpan.FromSeconds(5));
++
++        UserPromptRequest? raised = null;
++        service.PromptRaised += r => raised = r;
++
++        var task = service.RequestAsync(request);
++        // PromptRaised senkron olarak RequestAsync içinde tetiklenir.
++        Assert.NotNull(raised);
++        Assert.Equal(request.Id, raised!.Id);
++
++        var submitted = service.Submit(new UserPromptResponse(request.Id, confirmed: true, text: "cevap"));
++        Assert.True(submitted);
++
++        var response = await task;
++        Assert.NotNull(response);
++        Assert.Equal("cevap", response!.Text);
++    }
++
++    [Fact]
++    public async Task Zaman_Asimi_Dolunca_Null_Doner()
++    {
++        var service = CreateService();
++        var request = new UserPromptRequest("Başlık", "Mesaj", UserPromptKind.Confirmation, timeout: TimeSpan.FromMilliseconds(50));
++
++        var response = await service.RequestAsync(request);
++
++        Assert.Null(response);
++    }
++
++    [Fact]
++    public void Bilinmeyen_Istek_Icin_Submit_False_Doner()
++    {
++        var service = CreateService();
++        var submitted = service.Submit(new UserPromptResponse(Guid.NewGuid(), confirmed: false));
++        Assert.False(submitted);
++    }
++
++    [Fact]
++    public async Task Zaman_Asimindan_Sonra_Submit_Gec_Kalirsa_Etkisizdir()
++    {
++        var service = CreateService();
++        var request = new UserPromptRequest("Başlık", "Mesaj", UserPromptKind.Text, timeout: TimeSpan.FromMilliseconds(50));
++
++        var response = await service.RequestAsync(request);
++        Assert.Null(response);
++
++        var submitted = service.Submit(new UserPromptResponse(request.Id, confirmed: true));
++        Assert.False(submitted);
++    }
++}
+diff --git a/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj b/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj
+index e6b7ed1..e5a26af 100644
+--- a/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj
++++ b/tests/RPA.Agent.Tests/RPA.Agent.Tests.csproj
+@@ -1,14 +1,14 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net10.0-windows</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>false</IsPackable>
+   </PropertyGroup>
+ 
+   <ItemGroup>
+     <PackageReference Include="coverlet.collector" Version="10.0.1">
+       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+       <PrivateAssets>all</PrivateAssets>
+     </PackageReference>
+diff --git a/tests/RPA.Agent.Tests/Tray/TrayStatusPresenterConnectionTests.cs b/tests/RPA.Agent.Tests/Tray/TrayStatusPresenterConnectionTests.cs
+new file mode 100644
+index 0000000..a14e6a8
+--- /dev/null
++++ b/tests/RPA.Agent.Tests/Tray/TrayStatusPresenterConnectionTests.cs
+@@ -0,0 +1,52 @@
++namespace RPA.Agent.Tests.Tray;
++
++using RPA.Agent.Hub;
++using RPA.Agent.State;
++using RPA.Agent.Tray;
++
++public class TrayStatusPresenterConnectionTests
++{
++    [Fact]
++    public void Varsayilan_Baglanti_Durumu_Cevrimici_Metnini_Icerir()
++    {
++        var presenter = new TrayStatusPresenter(new AgentState());
++        Assert.Contains("Çevrimiçi", presenter.GetTooltip());
++    }
++
++    [Fact]
++    public void UpdateConnectionStatus_Offline_Tooltipte_Gorunur()
++    {
++        var presenter = new TrayStatusPresenter(new AgentState());
++
++        presenter.UpdateConnectionStatus(ConnectionStatus.Offline);
++
++        Assert.Equal("Çevrimdışı", presenter.GetConnectionLabel());
++        Assert.Contains("Çevrimdışı", presenter.GetTooltip());
++    }
++
++    [Fact]
++    public void CanStopJob_Calisan_Is_Yoksa_False()
++    {
++        var presenter = new TrayStatusPresenter(new AgentState());
++        Assert.False(presenter.CanStopJob());
++    }
++
++    [Fact]
++    public void CanStopJob_Calisan_Is_Varsa_True()
++    {
++        var state = new AgentState();
++        state.SetCurrentJob(Guid.NewGuid());
++        var presenter = new TrayStatusPresenter(state);
++
++        Assert.True(presenter.CanStopJob());
++    }
++
++    [Fact]
++    public void Menu_Basliklari_Bos_Degildir()
++    {
++        var presenter = new TrayStatusPresenter(new AgentState());
++        Assert.False(string.IsNullOrWhiteSpace(presenter.GetStopJobCaption()));
++        Assert.False(string.IsNullOrWhiteSpace(presenter.GetOpenJobListCaption()));
++        Assert.False(string.IsNullOrWhiteSpace(presenter.GetExitCaption()));
++    }
++}

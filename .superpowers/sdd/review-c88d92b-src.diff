@@ -1,0 +1,48 @@
+# Commit
+c88d92b feat(hub): StudioHub text-offset spy kind whitelist
+
+# Diff (bin/obj excluded)
+diff --git a/src/RPA.WebAPI/Hubs/StudioHub.cs b/src/RPA.WebAPI/Hubs/StudioHub.cs
+index e5fb39d..1ced756 100644
+--- a/src/RPA.WebAPI/Hubs/StudioHub.cs
++++ b/src/RPA.WebAPI/Hubs/StudioHub.cs
+@@ -23,16 +23,17 @@ public class StudioHub : Hub
+ 
+     private static readonly ConcurrentDictionary<Guid, string> SessionOwners = new();
+     private static readonly HashSet<string> SupportedKinds = new(StringComparer.OrdinalIgnoreCase)
+     {
+         "sap",
+         "web",
+         "desktop",
+         "image",
++        "text-offset",
+     };
+ 
+     private readonly ILogger<StudioHub> _logger;
+ 
+     public StudioHub(ILogger<StudioHub> logger)
+     {
+         _logger = logger;
+     }
+diff --git a/tests/RPA.WebAPI.Tests/UiSpyTests.cs b/tests/RPA.WebAPI.Tests/UiSpyTests.cs
+index 0916b00..0077a4a 100644
+--- a/tests/RPA.WebAPI.Tests/UiSpyTests.cs
++++ b/tests/RPA.WebAPI.Tests/UiSpyTests.cs
+@@ -213,16 +213,17 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
+         await connection.DisposeAsync();
+     }
+ 
+     [Theory]
+     [InlineData("sap")]
+     [InlineData("web")]
+     [InlineData("desktop")]
+     [InlineData("image")]
++    [InlineData("text-offset")]
+     public async Task StudioHub_StartSpy_AcceptsSupportedKind(string kind)
+     {
+         var connection = CreateHubConnection(GenerateToken());
+         await connection.StartAsync();
+ 
+         // Desteklenen tip HubException fırlatmamalı (image = Paket F görüntü/OCR picker'ı).
+         await connection.InvokeAsync(StudioHub_StartSpyCommand, Guid.NewGuid(), kind, (string?)null);
+ 

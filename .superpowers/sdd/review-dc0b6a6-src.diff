@@ -1,0 +1,393 @@
+# Commit
+dc0b6a6 feat(studio): expression-input satir-ici autocomplete
+
+# Stat
+ .../properties/expression-input.component.html     | 12 +++
+ .../properties/expression-input.component.scss     | 47 ++++++++++
+ .../properties/expression-input.component.spec.ts  | 60 +++++++++++++
+ .../properties/expression-input.component.ts       | 99 +++++++++++++++++++++-
+ 4 files changed, 216 insertions(+), 2 deletions(-)
+
+# Diff
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html
+index f582ae9..62160c2 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html
+@@ -3,42 +3,54 @@
+     {{ label }}
+     @if (required) {
+       <span aria-hidden="true">*</span>
+     }
+   </label>
+   <div class="expression-input__row" data-testid="expression-input">
+     <input
+       [id]="inputId"
+       type="text"
+       [attr.data-testid]="inputId + '-input'"
+       [value]="value"
+       (input)="handleInput($any($event.target).value)"
++      (keydown)="onKeydown($event)"
+       (blur)="handleBlur()"
+       [placeholder]="placeholder"
+       [disabled]="disabled"
+       [attr.aria-label]="label"
+       [attr.aria-required]="required"
+       [attr.aria-invalid]="invalid"
+       [attr.aria-describedby]="invalid ? inputId + '-error' : (hint ? inputId + '-hint' : null)"
+     />
+     <button
+       type="button"
+       class="expression-input__variable-btn"
+       data-testid="expression-insert-variable"
+       [attr.aria-label]="'web.insertVariable' | translate"
+       [disabled]="disabled"
+       (click)="insertVariableToken()"
+     >
+       {{ 'web.insertVariable' | translate }}
+     </button>
++    @if (suggestionsOpen) {
++      <ul class="suggestion-list" role="listbox">
++        @for (s of suggestions; track s.label + s.kind; let i = $index) {
++          <li role="option" [class.active]="i === activeIndex" (mousedown)="applySuggestion(s)">
++            <span class="s-label">{{ s.label }}</span>
++            <span class="s-kind" [class.fn]="s.kind === 'function'">{{ s.kind === 'function' ? 'ƒ' : '{}' }}</span>
++            <span class="s-detail">{{ s.detail }}</span>
++          </li>
++        }
++      </ul>
++    }
+     @if (variablePickerOpen) {
+       <select
+         class="expression-input__variable-select"
+         data-testid="expression-variable-select"
+         aria-label="Degisken sec"
+         (change)="selectVariable($any($event.target).value)"
+       >
+         <option value="">Degisken sec</option>
+         @for (variable of variables; track variable.name) {
+           <option [value]="variable.name">{{ variable.name }}</option>
+         }
+       </select>
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss
+index d88919c..fa1d908 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss
+@@ -7,24 +7,25 @@
+   label {
+     color: #243247;
+     font-size: 0.78rem;
+     font-weight: 750;
+   }
+ 
+   label span {
+     color: #b42318;
+     margin-left: 0.16rem;
+   }
+ 
+   &__row {
++    position: relative;
+     display: flex;
+     gap: 0.45rem;
+ 
+     input {
+       width: 100%;
+       min-height: 2.35rem;
+       border: 1px solid #aebbc9;
+       border-radius: 0.5rem;
+       background:
+         linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+       color: #162033;
+       font-size: 0.84rem;
+@@ -246,12 +247,58 @@
+       cursor: pointer;
+       font-size: 0.82rem;
+       font-weight: 750;
+     }
+ 
+     button:last-child {
+       border-color: #1f6feb;
+       background: #1f6feb;
+       color: #ffffff;
+     }
+   }
+ }
++
++.suggestion-list {
++  position: absolute;
++  top: 100%;
++  left: 0;
++  z-index: 20;
++  margin: 2px 0 0;
++  padding: 4px 0;
++  max-height: 220px;
++  overflow-y: auto;
++  min-width: 220px;
++  background: var(--surface, #fff);
++  border: 1px solid var(--border, #ccc);
++  border-radius: 6px;
++  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
++  list-style: none;
++
++  li {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    padding: 4px 10px;
++    cursor: pointer;
++    font-size: 13px;
++
++    &.active,
++    &:hover {
++      background: var(--hover, #eef2ff);
++    }
++
++    .s-kind {
++      font-family: monospace;
++      opacity: 0.6;
++
++      &.fn {
++        color: #6d28d9;
++      }
++    }
++
++    .s-detail {
++      margin-left: auto;
++      opacity: 0.65;
++      font-size: 12px;
++    }
++  }
++}
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.spec.ts
+new file mode 100644
+index 0000000..3f23b89
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.spec.ts
+@@ -0,0 +1,60 @@
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { ExpressionInputComponent } from './expression-input.component';
++import { ExpressionFunctionInfo, ExpressionFunctionService } from '../../../shared/services/expression-function.service';
++
++function fnInfo(name: string, category: string): ExpressionFunctionInfo {
++  return { name, category, returnType: 'string', parameters: [], description: '', example: `${name}()` };
++}
++
++describe('ExpressionInputComponent autocomplete', () => {
++  let fixture: ComponentFixture<ExpressionInputComponent>;
++  let component: ExpressionInputComponent;
++  const fnService = {
++    load: () => ({ subscribe: () => undefined }),
++    filter: (prefix: string) =>
++      [fnInfo('Format', 'Tarih'), fnInfo('Upper', 'Metin')].filter((f) =>
++        f.name.toLowerCase().startsWith(prefix.toLowerCase()),
++      ),
++  };
++
++  beforeEach(async () => {
++    await TestBed.configureTestingModule({
++      imports: [ExpressionInputComponent],
++      providers: [{ provide: ExpressionFunctionService, useValue: fnService }],
++    }).compileComponents();
++    fixture = TestBed.createComponent(ExpressionInputComponent);
++    component = fixture.componentInstance;
++    component.inputId = 'expr';
++    component.label = 'Ifade';
++    component.variables = [{ name: 'ad', type: 'string' } as never];
++  });
++
++  it('suggests matching functions and variables for a partial word', () => {
++    component.updateSuggestions('Up');
++    expect(component.suggestions.some((s) => s.kind === 'function' && s.label === 'Upper')).toBe(true);
++    expect(component.suggestionsOpen).toBe(true);
++  });
++
++  it('suggests variables by partial name', () => {
++    component.updateSuggestions('a');
++    expect(component.suggestions.some((s) => s.kind === 'variable' && s.label === 'ad')).toBe(true);
++  });
++
++  it('inserting a function replaces the trailing partial word with Name()', () => {
++    const emitted: string[] = [];
++    component.valueChange.subscribe((v) => emitted.push(v));
++    // Kullanıcı "x = Up" yazdı; öneri son kelime "Up"a göre açıldı.
++    component.value = 'x = Up';
++    component.updateSuggestions('Up');
++    const upper = component.suggestions.find((s) => s.label === 'Upper')!;
++    component.applySuggestion(upper);
++    // "Up" silinip "Upper()" ile değişmeli → "x = Upper()" (UpUpper() DEĞİL).
++    expect(emitted[emitted.length - 1]).toBe('x = Upper()');
++  });
++
++  it('Escape closes the suggestion list', () => {
++    component.updateSuggestions('Up');
++    component.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
++    expect(component.suggestionsOpen).toBe(false);
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts
+index 6e696f6..1355797 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts
+@@ -1,41 +1,60 @@
+ import { CommonModule } from '@angular/common';
+-import { ChangeDetectorRef, Component, EventEmitter, Input, Output, forwardRef, inject } from '@angular/core';
++import { ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output, forwardRef, inject } from '@angular/core';
+ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+ import { TranslatePipe } from '../../../core/translate.pipe';
+ import { WorkflowVariable } from '../../../shared/models/workflow.model';
++import { ExpressionFunctionInfo, ExpressionFunctionService } from '../../../shared/services/expression-function.service';
++
++export interface AutocompleteItem {
++  kind: 'variable' | 'function';
++  label: string;
++  detail: string;
++  insert: string;
++  caretOffsetFromEnd: number; // eklenen metnin sonundan imleç kaç karakter geri
++}
+ 
+ /**
+  * Reusable text input supporting workflow expressions (e.g. `{{variableName}}`).
+  * Wraps a plain text control as a ControlValueAccessor so it can be bound via
+  * `formControlName` like any other reactive-forms input, while exposing a
+  * dedicated `data-testid="expression-input"` hook plus an "insert variable"
+  * affordance for future variable-picker integration (Faz 5 property editors).
+  */
+ @Component({
+   selector: 'app-expression-input',
+   standalone: true,
+   imports: [CommonModule, TranslatePipe],
+   templateUrl: './expression-input.component.html',
+   styleUrls: ['./expression-input.component.scss'],
+   providers: [
+     {
+       provide: NG_VALUE_ACCESSOR,
+       useExisting: forwardRef(() => ExpressionInputComponent),
+       multi: true,
+     },
+   ],
+ })
+-export class ExpressionInputComponent implements ControlValueAccessor {
++export class ExpressionInputComponent implements ControlValueAccessor, OnInit {
+   private readonly cdr = inject(ChangeDetectorRef);
++  private readonly fnService = inject(ExpressionFunctionService);
++
++  suggestionsOpen = false;
++  activeIndex = 0;
++  suggestions: AutocompleteItem[] = [];
++  private currentPartial = '';
++
++  ngOnInit(): void {
++    this.fnService.load().subscribe();
++  }
+ 
+   @Input({ required: true }) inputId!: string;
+   @Input({ required: true }) label!: string;
+   @Input() placeholder = '';
+   @Input() required = false;
+   @Input() invalid = false;
+   @Input() hint = '';
+   @Input() errorMessage = '';
+   @Input() variables: WorkflowVariable[] = [];
+ 
+   @Output() readonly valueChange = new EventEmitter<string>();
+ 
+@@ -61,24 +80,100 @@ export class ExpressionInputComponent implements ControlValueAccessor {
+ 
+   registerOnTouched(fn: () => void): void {
+     this.onTouched = fn;
+   }
+ 
+   setDisabledState(isDisabled: boolean): void {
+     this.disabled = isDisabled;
+   }
+ 
+   handleInput(value: string): void {
+     this.applyValue(value);
+     this.clearVariableError();
++    this.updateSuggestions(this.currentPartialWord(value));
++  }
++
++  /** İmleç altındaki kısmi kelimeye göre değişken + fonksiyon önerilerini hesaplar. */
++  updateSuggestions(partial: string): void {
++    const q = (partial ?? '').trim();
++    this.currentPartial = q;
++    const vars: AutocompleteItem[] = (this.variables ?? [])
++      .filter((v) => v.name.toLowerCase().startsWith(q.toLowerCase()))
++      .map((v) => ({
++        kind: 'variable',
++        label: v.name,
++        detail: v.type ?? 'değişken',
++        insert: `{{${v.name}}}`,
++        caretOffsetFromEnd: 0,
++      }));
++    const fns: AutocompleteItem[] = this.fnService.filter(q).map((f: ExpressionFunctionInfo) => ({
++      kind: 'function',
++      label: f.name,
++      detail: `${f.category} · ${this.signature(f)}`,
++      insert: `${f.name}()`,
++      caretOffsetFromEnd: 1, // parantez içine konumlan
++    }));
++    this.suggestions = [...vars, ...fns];
++    this.activeIndex = 0;
++    this.suggestionsOpen = this.suggestions.length > 0 && q.length > 0;
++    this.cdr.markForCheck();
++  }
++
++  applySuggestion(item: AutocompleteItem): void {
++    // İmleç sonundaki kısmi kelimeyi (currentPartial) öneriyle değiştir; yoksa sona ekle.
++    const base =
++      this.currentPartial.length > 0 && this.value.endsWith(this.currentPartial)
++        ? this.value.slice(0, this.value.length - this.currentPartial.length)
++        : this.value;
++    this.applyValue(`${base}${item.insert}`);
++    this.suggestionsOpen = false;
++    this.cdr.markForCheck();
++  }
++
++  onKeydown(event: KeyboardEvent): void {
++    if (!this.suggestionsOpen) {
++      return;
++    }
++    switch (event.key) {
++      case 'ArrowDown':
++        event.preventDefault();
++        this.activeIndex = Math.min(this.activeIndex + 1, this.suggestions.length - 1);
++        break;
++      case 'ArrowUp':
++        event.preventDefault();
++        this.activeIndex = Math.max(this.activeIndex - 1, 0);
++        break;
++      case 'Enter':
++      case 'Tab':
++        if (this.suggestions[this.activeIndex]) {
++          event.preventDefault();
++          this.applySuggestion(this.suggestions[this.activeIndex]);
++        }
++        break;
++      case 'Escape':
++        this.suggestionsOpen = false;
++        break;
++    }
++    this.cdr.markForCheck();
++  }
++
++  private signature(f: ExpressionFunctionInfo): string {
++    const ps = f.parameters.map((p) => (p.optional ? `[${p.name}]` : p.name)).join(', ');
++    return `${f.name}(${ps})`;
++  }
++
++  /** İmleç sonundaki (son) kelime parçasını döndürür — basit v1: son harf öbeği. */
++  private currentPartialWord(value: string): string {
++    const m = /([A-Za-z_ğüşöçıİĞÜŞÖÇ][A-Za-z0-9_ğüşöçıİĞÜŞÖÇ]*)$/.exec(value ?? '');
++    return m ? m[1] : '';
+   }
+ 
+   handleBlur(): void {
+     this.onTouched();
+   }
+ 
+   insertVariableToken(): void {
+     if (this.disabled) {
+       return;
+     }
+     if (!this.hasVariables) {
+       this.showVariableError();

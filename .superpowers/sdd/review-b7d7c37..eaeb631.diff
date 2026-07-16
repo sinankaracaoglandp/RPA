@@ -1,0 +1,216 @@
+# Review package: b7d7c37..eaeb631
+
+## Commits
+eaeb631 feat(infra): TriggerService uygun ajani secip AssignedRobotId doldurur (aday yoksa Pending)
+
+## Files changed
+ .../SchedulerServiceCollectionExtensions.cs        |  1 +
+ .../Scheduling/TriggerService.cs                   | 20 +++++++--
+ .../TriggerServiceTests.cs                         | 47 +++++++++++++++++++++-
+ 3 files changed, 63 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs
+index b6fea01..7f74a0e 100644
+--- a/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs
++++ b/src/RPA.Infrastructure/Scheduling/SchedulerServiceCollectionExtensions.cs
+@@ -3,15 +3,16 @@ namespace RPA.Infrastructure.Scheduling;
+ using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.Hosting;
+ using RPA.Domain.Interfaces;
+ 
+ /// <summary>Zamanlayıcı + tetikleyiciler DI kaydı (Task 3.3, Spec Bölüm 7).</summary>
+ public static class SchedulerServiceCollectionExtensions
+ {
+     public static IServiceCollection AddSchedulerServices(this IServiceCollection services)
+     {
+         services.AddScoped<ITriggerRepository, Persistence.EfTriggerRepository>();
++        services.AddScoped<IRobotDispatcher, RobotDispatcher>();
+         services.AddScoped<ITriggerService, TriggerService>();
+         services.AddHostedService<SchedulerHostedService>();
+         return services;
+     }
+ }
+diff --git a/src/RPA.Infrastructure/Scheduling/TriggerService.cs b/src/RPA.Infrastructure/Scheduling/TriggerService.cs
+index f251a38..49d0a25 100644
+--- a/src/RPA.Infrastructure/Scheduling/TriggerService.cs
++++ b/src/RPA.Infrastructure/Scheduling/TriggerService.cs
+@@ -12,26 +12,29 @@ using RPA.Domain.Interfaces;
+ /// atlar (skip) ya da kuyruğa alır (queue). Correlation ID = JobRun.Id.
+ /// </summary>
+ public sealed class TriggerService : ITriggerService
+ {
+     private const string PolicySkip = "skip";
+     private const string PolicyQueue = "queue";
+     private const string PolicyParallel = "parallel";
+ 
+     private readonly ITriggerRepository _repository;
+     private readonly IWorkflowRunner _workflowRunner;
++    private readonly IRobotDispatcher _dispatcher;
+     private readonly ILogger<TriggerService> _logger;
+ 
+-    public TriggerService(ITriggerRepository repository, IWorkflowRunner workflowRunner, ILogger<TriggerService> logger)
++    public TriggerService(ITriggerRepository repository, IWorkflowRunner workflowRunner,
++        IRobotDispatcher dispatcher, ILogger<TriggerService> logger)
+     {
+         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+         _workflowRunner = workflowRunner ?? throw new ArgumentNullException(nameof(workflowRunner));
++        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+     }
+ 
+     public async Task<TriggerExecutionResult> ExecuteTriggerAsync(
+         Guid triggerId, string triggeredBy, CancellationToken cancellationToken = default)
+     {
+         var trigger = await _repository.FindTriggerByIdAsync(triggerId, cancellationToken);
+         if (trigger is null)
+         {
+             _logger.LogWarning("ExecuteTrigger: bilinmeyen Trigger {TriggerId}.", triggerId);
+@@ -64,24 +67,35 @@ public sealed class TriggerService : ITriggerService
+         {
+             var queued = NewJobRun(trigger, triggeredBy, status: "Queued");
+             await _repository.AddJobRunAsync(queued, cancellationToken);
+             await _repository.SaveChangesAsync(cancellationToken);
+             _logger.LogInformation(
+                 "Trigger {TriggerId}: çalışan JobRun mevcut, OverlapPolicy=queue — JobRun {JobRunId} kuyruğa alındı.",
+                 triggerId, queued.Id);
+             return TriggerExecutionResult.Queued(queued);
+         }
+ 
+-        // parallel ya da hiç çalışan yok: hemen başlat.
+-        var jobRun = NewJobRun(trigger, triggeredBy, status: "Running");
++        // parallel ya da hiç çalışan yok: uygun ajan seç ve başlat.
++        var robot = await _dispatcher.SelectRobotAsync(trigger, cancellationToken);
++        var status = robot is null ? "Pending" : "Running";
++        var jobRun = NewJobRun(trigger, triggeredBy, status: status);
++        jobRun.AssignedRobotId = robot?.Id;
+         await _repository.AddJobRunAsync(jobRun, cancellationToken);
+         await _repository.SaveChangesAsync(cancellationToken);
++
++        if (robot is null)
++        {
++            _logger.LogInformation(
++                "Trigger {TriggerId}: uygun ajan yok — JobRun {JobRunId} Pending.", triggerId, jobRun.Id);
++            return TriggerExecutionResult.Executed(jobRun);
++        }
++
+         _logger.LogInformation(
+             "Trigger {TriggerId} ateşlendi — JobRun {JobRunId} başlatıldı (correlationId={CorrelationId}).",
+             triggerId, jobRun.Id, jobRun.ElasticsearchCorrelationId);
+ 
+         await RunAndFinalizeAsync(jobRun, cancellationToken);
+         return TriggerExecutionResult.Executed(jobRun);
+     }
+ 
+     private JobRun NewJobRun(Trigger trigger, string triggeredBy, string status) => new()
+     {
+diff --git a/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs b/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs
+index e392db1..4f2914b 100644
+--- a/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs
++++ b/tests/RPA.Infrastructure.Tests/TriggerServiceTests.cs
+@@ -1,25 +1,36 @@
+ namespace RPA.Infrastructure.Tests;
+ 
+ using Microsoft.EntityFrameworkCore;
++using Moq;
+ using RPA.Domain.Entities;
+ using RPA.Domain.Enums;
+ using RPA.Domain.Interfaces;
+ using RPA.Infrastructure.Persistence;
+ using RPA.Infrastructure.Scheduling;
+ 
+ /// <summary>
+ /// Task 3.3 — TriggerService: JobRun oluşturma ve OverlapPolicy (skip/queue/parallel) testleri
+ /// (Spec Bölüm 7).
+ /// </summary>
+ public class TriggerServiceTests
+ {
++    private readonly Mock<IRobotDispatcher> _dispatcher = new();
++
++    public TriggerServiceTests()
++    {
++        // Varsayılan: mevcut testlerin beklentileri değişmesin diye her zaman bir robot döner
++        // (Running kalsın). Testler gerektiğinde bunu override eder.
++        _dispatcher.Setup(d => d.SelectRobotAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
++            .ReturnsAsync(new Robot { Id = Guid.NewGuid(), MachineName = "VM1", Status = RobotStatus.Online, Capacity = 1 });
++    }
++
+     private static RpaDbContext Db(string name)
+     {
+         var options = new DbContextOptionsBuilder<RpaDbContext>()
+             .UseInMemoryDatabase(databaseName: name)
+             .Options;
+         var db = new RpaDbContext(options);
+         db.Database.EnsureCreated();
+         return db;
+     }
+ 
+@@ -68,22 +79,22 @@ public class TriggerServiceTests
+             TriggerId = triggerId,
+             CronExpression = "0 9 * * *",
+             TimeZone = "UTC",
+             OverlapPolicy = overlapPolicy,
+         };
+         db.Schedules.Add(schedule);
+         await db.SaveChangesAsync();
+         return schedule;
+     }
+ 
+-    private static TriggerService Service(RpaDbContext db, FakeWorkflowRunner runner)
+-        => new(new EfTriggerRepository(db), runner, new MockLogger<TriggerService>());
++    private TriggerService Service(RpaDbContext db, FakeWorkflowRunner runner)
++        => new(new EfTriggerRepository(db), runner, _dispatcher.Object, new MockLogger<TriggerService>());
+ 
+     [Fact]
+     public async Task ExecuteTrigger_UnknownTrigger_ReturnsNotFound()
+     {
+         using var db = Db(Guid.NewGuid().ToString());
+         var result = await Service(db, new FakeWorkflowRunner()).ExecuteTriggerAsync(Guid.NewGuid(), "manual");
+         Assert.Equal(TriggerExecutionOutcome.NotFound, result.Outcome);
+     }
+ 
+     [Fact]
+@@ -225,11 +236,43 @@ public class TriggerServiceTests
+         db.JobRuns.Add(new JobRun { WorkflowVersionId = trigger.WorkflowVersionId, Status = "Running", TriggeredBy = "cron", StartedAt = DateTime.UtcNow, ElasticsearchCorrelationId = "x" });
+         await db.SaveChangesAsync();
+ 
+         var runner = new FakeWorkflowRunner();
+         var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "cron");
+ 
+         Assert.Equal(TriggerExecutionOutcome.Executed, result.Outcome);
+         Assert.Equal(1, runner.CallCount);
+         Assert.Equal(2, await db.JobRuns.CountAsync());
+     }
++
++    [Fact]
++    public async Task ExecuteTrigger_AssignsSelectedRobot()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db);
++        var runner = new FakeWorkflowRunner();
++
++        var robot = new Robot { Id = Guid.NewGuid(), MachineName = "VM1", Status = RobotStatus.Online, Capacity = 1 };
++        _dispatcher.Setup(d => d.SelectRobotAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
++                   .ReturnsAsync(robot);
++
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "manual");
++
++        Assert.Equal(robot.Id, result.JobRun!.AssignedRobotId);
++    }
++
++    [Fact]
++    public async Task ExecuteTrigger_NoRobot_JobRunPending()
++    {
++        using var db = Db(Guid.NewGuid().ToString());
++        var trigger = await SeedTrigger(db);
++        var runner = new FakeWorkflowRunner();
++
++        _dispatcher.Setup(d => d.SelectRobotAsync(It.IsAny<Trigger>(), It.IsAny<CancellationToken>()))
++                   .ReturnsAsync((Robot?)null);
++
++        var result = await Service(db, runner).ExecuteTriggerAsync(trigger.Id, "manual");
++
++        Assert.Equal("Pending", result.JobRun!.Status);
++        Assert.Null(result.JobRun.AssignedRobotId);
++    }
+ }

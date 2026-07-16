@@ -1,0 +1,188 @@
+# Review package: 69fefe8..e13cfb4
+
+## Commits
+e13cfb4 feat(studio): orchestrator servisi trigger listeleme/olusturma/fire metotlari
+
+## Files changed
+ .../src/app/orchestrator/orchestrator.models.ts    | 44 ++++++++++++++++++++++
+ .../app/orchestrator/orchestrator.service.spec.ts  | 26 +++++++++++++
+ .../src/app/orchestrator/orchestrator.service.ts   | 30 +++++++++++++++
+ 3 files changed, 100 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/orchestrator/orchestrator.models.ts b/src/RPA.Studio/src/app/orchestrator/orchestrator.models.ts
+index aeb7e8b..604aa54 100644
+--- a/src/RPA.Studio/src/app/orchestrator/orchestrator.models.ts
++++ b/src/RPA.Studio/src/app/orchestrator/orchestrator.models.ts
+@@ -126,10 +126,54 @@ export interface CredentialReference {
+ }
+ 
+ export interface StoreCredentialRequest {
+   key: string;
+   secret: string;
+   type?: string;
+   environment?: string;
+   description?: string;
+   metadata?: Record<string, string>;
+ }
++
++// WP-6.6 — Job tanımları (trigger) yönetimi
++export interface TriggerScheduleDto {
++  cronExpression: string;
++  timeZone: string;
++  overlapPolicy: string;
++}
++
++export interface TriggerDefinition {
++  id: string;
++  workflowVersionId: string;
++  type: string;
++  configuration: string;
++  isActive: boolean;
++  targetRobotTags: string;
++  priority: number;
++  schedule?: TriggerScheduleDto | null;
++}
++
++export interface CreateTriggerRequest {
++  projectId: string;
++  workflowVersionId: string;
++  type: string;
++  configuration?: string;
++  environmentId: string;
++  isActive: boolean;
++  targetRobotTags: string;
++  priority: number;
++  schedule?: TriggerScheduleDto | null;
++}
++
++export interface UpdateTriggerRequest {
++  isActive?: boolean;
++  configuration?: string;
++  targetRobotTags?: string;
++  priority?: number;
++  schedule?: TriggerScheduleDto | null;
++}
++
++export interface TriggerListQuery {
++  projectId?: string;
++  environmentId?: string;
++  isActive?: boolean;
++}
+diff --git a/src/RPA.Studio/src/app/orchestrator/orchestrator.service.spec.ts b/src/RPA.Studio/src/app/orchestrator/orchestrator.service.spec.ts
+index fb5c4e9..ddbbf2c 100644
+--- a/src/RPA.Studio/src/app/orchestrator/orchestrator.service.spec.ts
++++ b/src/RPA.Studio/src/app/orchestrator/orchestrator.service.spec.ts
+@@ -144,11 +144,37 @@ describe('OrchestratorService', () => {
+     expect(req.request.method).toBe('POST');
+     req.flush({});
+   });
+ 
+   it('approves a workflow version to prod', () => {
+     service.approveWorkflowVersion('wf1', '1.0.0').subscribe();
+     const req = httpMock.expectOne('/api/workflows/wf1/versions/1.0.0/approve');
+     expect(req.request.method).toBe('POST');
+     req.flush({});
+   });
++
++  it('listTriggers GET /api/triggers ile filtreleri geçirir', () => {
++    service.listTriggers({ isActive: true }).subscribe();
++    const req = httpMock.expectOne((r) => r.url === '/api/triggers');
++    expect(req.request.params.get('isActive')).toBe('true');
++    req.flush([]);
++  });
++
++  it('createTrigger POST /api/triggers ile gövdeyi gönderir', () => {
++    const body = {
++      projectId: 'p', workflowVersionId: 'w', type: 'Manual',
++      environmentId: 'e', isActive: true, targetRobotTags: 'prod-vm', priority: 1,
++    };
++    service.createTrigger(body as any).subscribe();
++    const req = httpMock.expectOne('/api/triggers');
++    expect(req.request.method).toBe('POST');
++    expect(req.request.body.targetRobotTags).toBe('prod-vm');
++    req.flush({});
++  });
++
++  it('fireTrigger POST /api/triggers/{id}/fire çağırır', () => {
++    service.fireTrigger('t1').subscribe();
++    const req = httpMock.expectOne('/api/triggers/t1/fire');
++    expect(req.request.method).toBe('POST');
++    req.flush({});
++  });
+ });
+diff --git a/src/RPA.Studio/src/app/orchestrator/orchestrator.service.ts b/src/RPA.Studio/src/app/orchestrator/orchestrator.service.ts
+index a5f6feb..691e95b 100644
+--- a/src/RPA.Studio/src/app/orchestrator/orchestrator.service.ts
++++ b/src/RPA.Studio/src/app/orchestrator/orchestrator.service.ts
+@@ -1,28 +1,32 @@
+ import { HttpClient, HttpParams } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ import {
+   ActionItem,
+   AlertRule,
+   CreateAlertRuleRequest,
++  CreateTriggerRequest,
+   CredentialReference,
+   DashboardSummary,
+   Environment,
+   JobRun,
+   JobRunListResponse,
+   JobRunQuery,
+   QueueItemListResponse,
+   QueueItem,
+   QueueSummary,
+   Robot,
+   StoreCredentialRequest,
++  TriggerDefinition,
++  TriggerListQuery,
++  UpdateTriggerRequest,
+   WorkflowVersion,
+ } from './orchestrator.models';
+ 
+ /**
+  * Orchestrator read-side API sarmalayıcısı (WP-6.1). Backend uçları:
+  * GET /api/jobruns, /api/jobruns/{id}, /api/jobruns/dashboard,
+  * GET /api/robots, GET /api/queues/{id}/items.
+  */
+ @Injectable({ providedIn: 'root' })
+ export class OrchestratorService {
+@@ -170,11 +174,37 @@ export class OrchestratorService {
+ 
+   /** Secret degerini Vault'a yazar; response secret icermez. */
+   storeCredential(request: StoreCredentialRequest): Observable<CredentialReference> {
+     return this.http.post<CredentialReference>('/api/credentials', request);
+   }
+ 
+   /** Credential referansini Vault'tan siler. */
+   deleteCredential(key: string): Observable<void> {
+     return this.http.delete<void>(`/api/credentials/${encodeURIComponent(key)}`);
+   }
++
++  // --- WP-6.6: Job tanımları (trigger) yönetimi ---
++
++  /** Tüm job tanımları (trigger) — opsiyonel filtrelerle. */
++  listTriggers(query: TriggerListQuery = {}): Observable<TriggerDefinition[]> {
++    let params = new HttpParams();
++    if (query.projectId) params = params.set('projectId', query.projectId);
++    if (query.environmentId) params = params.set('environmentId', query.environmentId);
++    if (query.isActive != null) params = params.set('isActive', String(query.isActive));
++    return this.http.get<TriggerDefinition[]>('/api/triggers', { params });
++  }
++
++  /** Yeni job tanımı oluşturur. */
++  createTrigger(request: CreateTriggerRequest): Observable<TriggerDefinition> {
++    return this.http.post<TriggerDefinition>('/api/triggers', request);
++  }
++
++  /** Job tanımını günceller (aktif/pasif, hedef tag, öncelik, schedule). */
++  updateTrigger(id: string, request: UpdateTriggerRequest): Observable<TriggerDefinition> {
++    return this.http.patch<TriggerDefinition>(`/api/triggers/${encodeURIComponent(id)}`, request);
++  }
++
++  /** Job'ı manuel çalıştırır. */
++  fireTrigger(id: string): Observable<unknown> {
++    return this.http.post(`/api/triggers/${encodeURIComponent(id)}/fire`, {});
++  }
+ }

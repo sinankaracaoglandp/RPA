@@ -1,0 +1,1793 @@
+# Feature: İfade fonksiyon kütüphanesi + kod tamamlama
+# Commits
+dc0b6a6 feat(studio): expression-input satir-ici autocomplete
+f52b0a5 feat(studio): ExpressionFunctionService — katalog istemcisi + cache + filtre
+80e62af feat(api): GET /api/expression/functions fonksiyon katalogu
+2d2ad5e fix(expr): FunctionArgs.DefaultCulture override-bagimsiz (deterministik tr-TR)
+020ae2b feat(expr): donusum + yardimci fonksiyonlar (ToInt/ToDecimal/ToStr/Coalesce)
+b03e168 fix(expr): PadLeft/PadRight negatif uzunluk → BusinessException
+ec21f62 feat(expr): metin fonksiyonlari (Upper/Substring/Replace/Concat/...)
+f224304 feat(expr): tarih fonksiyonlari (Now/AddDays/Format/ToDate/...)
+6ada950 feat(expr): AST evaluator + FunctionRegistry iskeleti + Evaluator delegasyonu
+43655cb feat(expr): ifade tokenizer + AST + parser
+
+# Stat (bin/obj excluded)
+ src/RPA.Infrastructure/RPA.Infrastructure.csproj   |   4 +
+ .../Workflow/ExpressionEvaluator.cs                |  37 +-----
+ .../Workflow/Expressions/ConversionFunctions.cs    |  70 +++++++++++
+ .../Workflow/Expressions/DateFunctions.cs          |  61 +++++++++
+ .../Workflow/Expressions/ExpressionAst.cs          |  21 ++++
+ .../Workflow/Expressions/ExpressionEngine.cs       | 138 +++++++++++++++++++++
+ .../Workflow/Expressions/ExpressionErrors.cs       |  10 ++
+ .../Workflow/Expressions/ExpressionParser.cs       | 126 +++++++++++++++++++
+ .../Workflow/Expressions/ExpressionToken.cs        |  83 +++++++++++++
+ .../Workflow/Expressions/FunctionArgs.cs           |  42 +++++++
+ .../Workflow/Expressions/FunctionRegistry.cs       |  38 ++++++
+ .../Workflow/Expressions/HelperFunctions.cs        |  22 ++++
+ .../Workflow/Expressions/StringFunctions.cs        |  76 ++++++++++++
+ .../services/expression-function.service.spec.ts   |  38 ++++++
+ .../shared/services/expression-function.service.ts |  50 ++++++++
+ .../properties/expression-input.component.html     |  12 ++
+ .../properties/expression-input.component.scss     |  47 +++++++
+ .../properties/expression-input.component.spec.ts  |  60 +++++++++
+ .../properties/expression-input.component.ts       |  99 ++++++++++++++-
+ src/RPA.WebAPI/Controllers/ExpressionController.cs |  20 +++
+ .../Expressions/ConversionFunctionsTests.cs        |  28 +++++
+ .../Workflow/Expressions/DateFunctionsTests.cs     |  49 ++++++++
+ .../Workflow/Expressions/ExpressionEngineTests.cs  |  44 +++++++
+ .../Workflow/Expressions/ExpressionParserTests.cs  |  79 ++++++++++++
+ .../Workflow/Expressions/StringFunctionsTests.cs   |  36 ++++++
+ .../RPA.WebAPI.Tests/ExpressionControllerTests.cs  |  52 ++++++++
+ 26 files changed, 1308 insertions(+), 34 deletions(-)
+
+# Diff (bin/obj excluded)
+diff --git a/src/RPA.Infrastructure/RPA.Infrastructure.csproj b/src/RPA.Infrastructure/RPA.Infrastructure.csproj
+index f8915a8..cac8e5f 100644
+--- a/src/RPA.Infrastructure/RPA.Infrastructure.csproj
++++ b/src/RPA.Infrastructure/RPA.Infrastructure.csproj
+@@ -34,11 +34,15 @@
+   <ItemGroup>
+     <!-- Kontrat şeması (değişmez referans) — embedded resource olarak paketlenir; dosya değiştirilmez. -->
+     <EmbeddedResource Include="..\RPA.Domain\WorkflowSchema.json" Link="Workflow\WorkflowSchema.json" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <ProjectReference Include="..\RPA.Domain\RPA.Domain.csproj" />
+     <ProjectReference Include="..\RPA.Application\RPA.Application.csproj" />
+   </ItemGroup>
+ 
++  <ItemGroup>
++    <InternalsVisibleTo Include="RPA.Infrastructure.Tests" />
++  </ItemGroup>
++
+ </Project>
+diff --git a/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs b/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs
+index 707b37f..c4e10b8 100644
+--- a/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs
++++ b/src/RPA.Infrastructure/Workflow/ExpressionEvaluator.cs
+@@ -1,15 +1,14 @@
+ namespace RPA.Infrastructure.Workflow;
+ 
+ using System.Globalization;
+ using System.Text.RegularExpressions;
+-using Newtonsoft.Json.Linq;
+ 
+ /// <summary>
+ /// MVP ifade değerlendiricisi (Spec Bölüm 5.2 — tam ifade dili S2'ye ertelendi).
+ ///
+ /// Desteklenen:
+ /// - Şablon: <c>${degisken}</c> → değişken değeriyle değiştirilir.
+ /// - JSON yolu: <c>${data.alan}</c> → iç içe özellik erişimi.
+ /// - Karşılaştırma (If/While koşulu): <c>${a} == ${b}</c>, <c>!=</c>, <c>&gt;</c>, <c>&lt;</c>, <c>&gt;=</c>, <c>&lt;=</c>.
+ /// - Literaller: sayılar, <c>true/false</c>, tırnaklı stringler.
+ /// </summary>
+@@ -20,43 +19,45 @@ public sealed class ExpressionEvaluator
+ 
+     private static readonly Regex SingleTokenPattern =
+         new(@"^\s*\$\{([^}]+)\}\s*$", RegexOptions.Compiled);
+ 
+     private static readonly Regex MustacheTokenPattern =
+         new(@"\{\{\s*([^}]+?)\s*\}\}", RegexOptions.Compiled);
+ 
+     private static readonly string[] Operators = { "==", "!=", ">=", "<=", ">", "<" };
+ 
+     private readonly VariableScope _scope;
++    private readonly Expressions.ExpressionEngine _engine;
+ 
+     public ExpressionEvaluator(VariableScope scope)
+     {
+         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
++        _engine = new Expressions.ExpressionEngine(scope);
+     }
+ 
+     /// <summary>
+     /// İfadeyi tipini koruyarak değerlendirir. Tümüyle tek bir <c>${...}</c> ise ham değer;
+     /// aksi halde şablon değiştirmesiyle string döner.
+     /// </summary>
+     public object? EvaluateValue(string? expression)
+     {
+         if (expression is null)
+         {
+             return null;
+         }
+ 
+         expression = NormalizeExpression(expression);
+ 
+         var single = SingleTokenPattern.Match(expression);
+         if (single.Success)
+         {
+-            return ResolvePath(single.Groups[1].Value.Trim());
++            return _engine.Evaluate(single.Groups[1].Value.Trim());
+         }
+ 
+         if (!TokenPattern.IsMatch(expression))
+         {
+             // Düz literal — sayı/bool/string olarak yorumla.
+             return ParseLiteral(expression);
+         }
+ 
+         return EvaluateString(expression);
+     }
+@@ -66,21 +67,21 @@ public sealed class ExpressionEvaluator
+     {
+         if (string.IsNullOrEmpty(expression))
+         {
+             return expression ?? "";
+         }
+ 
+         expression = NormalizeExpression(expression);
+ 
+         return TokenPattern.Replace(expression, m =>
+         {
+-            var value = ResolvePath(m.Groups[1].Value.Trim());
++            var value = _engine.Evaluate(m.Groups[1].Value.Trim());
+             return value?.ToString() ?? "";
+         });
+     }
+ 
+     /// <summary>Boolean koşulu değerlendirir (If/While).</summary>
+     public bool EvaluateCondition(string? condition)
+     {
+         if (string.IsNullOrWhiteSpace(condition))
+         {
+             return false;
+@@ -142,21 +143,21 @@ public sealed class ExpressionEvaluator
+         if (string.IsNullOrEmpty(raw))
+         {
+             return null;
+         }
+ 
+         raw = NormalizeExpression(raw);
+ 
+         var single = SingleTokenPattern.Match(raw);
+         if (single.Success)
+         {
+-            return ResolvePath(single.Groups[1].Value.Trim());
++            return _engine.Evaluate(single.Groups[1].Value.Trim());
+         }
+ 
+         if (TokenPattern.IsMatch(raw))
+         {
+             return EvaluateString(raw);
+         }
+ 
+         // Check if operand contains comparison operators (for nested conditions)
+         foreach (var op in new[] { ">=", "<=", ">", "<", "==", "!=" })
+         {
+@@ -201,48 +202,20 @@ public sealed class ExpressionEvaluator
+         }
+ 
+         if (double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+         {
+             return d;
+         }
+ 
+         return raw;
+     }
+ 
+-    /// <summary>Nokta ile ayrılmış yolu çözer: değişken + iç içe JSON alanları.</summary>
+-    private object? ResolvePath(string path)
+-    {
+-        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
+-        if (parts.Length == 0)
+-        {
+-            return null;
+-        }
+-
+-        if (!_scope.TryGetVariable(parts[0], out var current))
+-        {
+-            return null;
+-        }
+-
+-        for (var i = 1; i < parts.Length && current is not null; i++)
+-        {
+-            current = current switch
+-            {
+-                JObject jo => jo[parts[i]],
+-                IReadOnlyDictionary<string, object?> dict =>
+-                    dict.TryGetValue(parts[i], out var v) ? v : null,
+-                _ => null,
+-            };
+-        }
+-
+-        return current is JToken token ? VariableScope.JTokenToNative(token) : current;
+-    }
+-
+     private static bool Compare(object? left, object? right, string op)
+     {
+         if (TryToDouble(left, out var dl) && TryToDouble(right, out var dr))
+         {
+             return op switch
+             {
+                 "==" => dl == dr,
+                 "!=" => dl != dr,
+                 ">=" => dl >= dr,
+                 "<=" => dl <= dr,
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ConversionFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/ConversionFunctions.cs
+new file mode 100644
+index 0000000..e859cb6
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ConversionFunctions.cs
+@@ -0,0 +1,70 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using static RPA.Infrastructure.Workflow.Expressions.FunctionArgs;
++
++/// <summary>Tip dönüşüm ifade fonksiyonları (kategori "Dönüşüm").</summary>
++internal static class ConversionFunctions
++{
++    private const string Cat = "Dönüşüm";
++
++    public static IReadOnlyList<ExpressionFunction> All => new[]
++    {
++        Fn("ToInt", "int", new() { P("deger", "any") }, "Tam sayıya çevirir.", "ToInt(miktar)", a => ToInt(a[0])),
++        Fn("ToDecimal", "decimal", new() { P("deger", "any"), P("kültür", "string", true) },
++            "Ondalık sayıya çevirir.", "ToDecimal(tutar)", a => ToDecimalImpl(a, "ToDecimal")),
++        Fn("ToDouble", "double", new() { P("deger", "any"), P("kültür", "string", true) },
++            "Double'a çevirir.", "ToDouble(oran)", a => (double)(decimal)ToDecimalImpl(a, "ToDouble")),
++        Fn("ToStr", "string", new() { P("deger", "any"), P("desen", "string", true), P("kültür", "string", true) },
++            "Metne çevirir (opsiyonel format).", "ToStr(tutar, \"N2\")", a => ToStr(a)),
++        Fn("ToBool", "bool", new() { P("deger", "any") }, "Boolean'a çevirir.", "ToBool(bayrak)", a => ToBool(a[0])),
++    };
++
++    private static object ToInt(object? v)
++    {
++        if (ExpressionEngine.TryToDouble(v, out var d)) { return (long)Math.Truncate(d); }
++        throw ExpressionErrors.Business($"ToInt: '{v}' sayıya çevrilemedi.");
++    }
++
++    private static object ToDecimalImpl(IReadOnlyList<object?> a, string fn)
++    {
++        var culture = Culture(fn, a, 1);
++        switch (a[0])
++        {
++            case decimal m: return m;
++            case double d: return (decimal)d;
++            case long l: return (decimal)l;
++            case int i: return (decimal)i;
++            case string s when decimal.TryParse(s, NumberStyles.Any, culture, out var p): return p;
++            default: throw ExpressionErrors.Business($"{fn}: '{a[0]}' sayıya çevrilemedi.");
++        }
++    }
++
++    private static object ToStr(IReadOnlyList<object?> a)
++    {
++        var culture = Culture("ToStr", a, 2);
++        var value = a[0];
++        if (a.Count >= 2 && a[1] is not null && value is IFormattable f)
++        {
++            return f.ToString(AsString(a[1]), culture);
++        }
++        return value is IFormattable g ? g.ToString(null, culture) : AsString(value);
++    }
++
++    private static object ToBool(object? v)
++    {
++        switch (v)
++        {
++            case bool b: return b;
++            case string s when bool.TryParse(s, out var p): return p;
++            case string s: return s.Length > 0 && !string.Equals(s, "false", StringComparison.OrdinalIgnoreCase) && s != "0";
++            default: return ExpressionEngine.TryToDouble(v, out var d) ? d != 0 : v is not null;
++        }
++    }
++
++    private static ExpressionFunction Fn(string name, string ret, List<ExpressionFunctionParam> ps,
++        string desc, string ex, Func<IReadOnlyList<object?>, object?> invoke)
++        => new(new ExpressionFunctionInfo(name, Cat, ret, ps, desc, ex), invoke);
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/DateFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/DateFunctions.cs
+new file mode 100644
+index 0000000..e23e5cd
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/DateFunctions.cs
+@@ -0,0 +1,61 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using static RPA.Infrastructure.Workflow.Expressions.FunctionArgs;
++
++/// <summary>Tarih/zaman ifade fonksiyonları (kategori "Tarih"). Varsayılan kültür tr-TR.</summary>
++internal static class DateFunctions
++{
++    private const string Cat = "Tarih";
++
++    public static IReadOnlyList<ExpressionFunction> All => new[]
++    {
++        Fn("Now", "date", new List<ExpressionFunctionParam>(), "Şu anki tarih-saat.", "Now()",
++            _ => DateTime.Now),
++        Fn("Today", "date", new List<ExpressionFunctionParam>(), "Bugünün tarihi (saat 00:00).", "Today()",
++            _ => DateTime.Today),
++        Fn("AddDays", "date", new() { P("tarih", "date"), P("gun", "int") }, "Tarihe gün ekler.", "AddDays(Now(), 7)",
++            a => AsDate("AddDays", a[0]).AddDays(AsInt("AddDays", a[1]))),
++        Fn("AddMonths", "date", new() { P("tarih", "date"), P("ay", "int") }, "Tarihe ay ekler.", "AddMonths(Now(), 1)",
++            a => AsDate("AddMonths", a[0]).AddMonths(AsInt("AddMonths", a[1]))),
++        Fn("AddYears", "date", new() { P("tarih", "date"), P("yil", "int") }, "Tarihe yıl ekler.", "AddYears(Now(), 1)",
++            a => AsDate("AddYears", a[0]).AddYears(AsInt("AddYears", a[1]))),
++        Fn("AddHours", "date", new() { P("tarih", "date"), P("saat", "int") }, "Tarihe saat ekler.", "AddHours(Now(), 3)",
++            a => AsDate("AddHours", a[0]).AddHours(AsInt("AddHours", a[1]))),
++        Fn("AddMinutes", "date", new() { P("tarih", "date"), P("dakika", "int") }, "Tarihe dakika ekler.", "AddMinutes(Now(), 30)",
++            a => AsDate("AddMinutes", a[0]).AddMinutes(AsInt("AddMinutes", a[1]))),
++        Fn("Format", "string", new() { P("tarih", "date"), P("desen", "string"), P("kültür", "string", true) },
++            "Tarihi verilen desene göre biçimler.", "Format(Now(), \"dd.MM.yyyy\")",
++            a => AsDate("Format", a[0]).ToString(AsString(a[1]), Culture("Format", a, 2))),
++        Fn("ToDate", "date", new() { P("metin", "string"), P("desen", "string", true), P("kültür", "string", true) },
++            "Metni tarihe çevirir.", "ToDate(\"15.01.2026\", \"dd.MM.yyyy\")",
++            a => ParseDate(a)),
++        Fn("Year", "int", new() { P("tarih", "date") }, "Yıl bileşeni.", "Year(Now())", a => (long)AsDate("Year", a[0]).Year),
++        Fn("Month", "int", new() { P("tarih", "date") }, "Ay bileşeni.", "Month(Now())", a => (long)AsDate("Month", a[0]).Month),
++        Fn("Day", "int", new() { P("tarih", "date") }, "Gün bileşeni.", "Day(Now())", a => (long)AsDate("Day", a[0]).Day),
++        Fn("DayOfWeek", "int", new() { P("tarih", "date") }, "Haftanın günü (0=Pazar).", "DayOfWeek(Now())",
++            a => (long)(int)AsDate("DayOfWeek", a[0]).DayOfWeek),
++        Fn("DateDiffDays", "int", new() { P("a", "date"), P("b", "date") }, "İki tarih arası gün farkı (a-b).", "DateDiffDays(a, b)",
++            a => (long)Math.Round((AsDate("DateDiffDays", a[0]) - AsDate("DateDiffDays", a[1])).TotalDays)),
++    };
++
++    private static object ParseDate(IReadOnlyList<object?> a)
++    {
++        var s = AsString(a[0]);
++        var culture = Culture("ToDate", a, 2);
++        if (a.Count >= 2 && a[1] is not null)
++        {
++            var pattern = AsString(a[1]);
++            if (DateTime.TryParseExact(s, pattern, culture, DateTimeStyles.None, out var exact)) { return exact; }
++            throw ExpressionErrors.Business($"ToDate: '{s}' '{pattern}' desenine uymuyor.");
++        }
++        if (DateTime.TryParse(s, culture, DateTimeStyles.None, out var p)) { return p; }
++        throw ExpressionErrors.Business($"ToDate: '{s}' tarihe çevrilemedi.");
++    }
++
++    private static ExpressionFunction Fn(string name, string ret, List<ExpressionFunctionParam> ps,
++        string desc, string ex, Func<IReadOnlyList<object?>, object?> invoke)
++        => new(new ExpressionFunctionInfo(name, Cat, ret, ps, desc, ex), invoke);
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ExpressionAst.cs b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionAst.cs
+new file mode 100644
+index 0000000..4fef16a
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionAst.cs
+@@ -0,0 +1,21 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++
++/// <summary>İfade soyut söz dizim ağacı düğümleri.</summary>
++internal abstract record ExprNode;
++
++/// <summary>Sabit değer (sayı long/double, bool, string).</summary>
++internal sealed record LiteralNode(object? Value) : ExprNode;
++
++/// <summary>Nokta ile ayrılmış değişken/JSON yolu (örn. "data.alan").</summary>
++internal sealed record VariableNode(string Path) : ExprNode;
++
++/// <summary>Fonksiyon çağrısı: ad + değerlendirilecek argümanlar.</summary>
++internal sealed record FunctionNode(string Name, IReadOnlyList<ExprNode> Args) : ExprNode;
++
++/// <summary>Tekli operatör (şu an yalnız "-").</summary>
++internal sealed record UnaryNode(string Op, ExprNode Operand) : ExprNode;
++
++/// <summary>İkili operatör: + - * / == != > < >= <=.</summary>
++internal sealed record BinaryNode(string Op, ExprNode Left, ExprNode Right) : ExprNode;
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ExpressionEngine.cs b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionEngine.cs
+new file mode 100644
+index 0000000..fc9f77d
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionEngine.cs
+@@ -0,0 +1,138 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.Linq;
++using Newtonsoft.Json.Linq;
++
++/// <summary>AST değerlendirici. Değişken çözümü VariableScope + JSON yolu; fonksiyonlar FunctionRegistry.
++/// Aritmetik/karşılaştırma ExpressionEvaluator'ın eski Compare mantığıyla tutarlı.</summary>
++internal sealed class ExpressionEngine
++{
++    private readonly VariableScope _scope;
++
++    public ExpressionEngine(VariableScope scope)
++        => _scope = scope ?? throw new ArgumentNullException(nameof(scope));
++
++    public object? Evaluate(string rawExpression) => Evaluate(ExpressionParser.Parse(rawExpression));
++
++    public object? Evaluate(ExprNode node) => node switch
++    {
++        LiteralNode l => l.Value,
++        VariableNode v => ResolvePath(v.Path),
++        UnaryNode u => EvalUnary(u),
++        FunctionNode f => EvalFunction(f),
++        BinaryNode b => EvalBinary(b),
++        _ => null,
++    };
++
++    private object? EvalUnary(UnaryNode u)
++    {
++        var v = Evaluate(u.Operand);
++        if (TryToDouble(v, out var d)) { return NormalizeNumber(-d); }
++        throw ExpressionErrors.Business("Tekli '-' yalnız sayıya uygulanır.");
++    }
++
++    private object? EvalFunction(FunctionNode f)
++    {
++        if (!FunctionRegistry.TryGet(f.Name, out var fn))
++        {
++            throw ExpressionErrors.Business($"Bilinmeyen fonksiyon: '{f.Name}'");
++        }
++        var args = f.Args.Select(Evaluate).ToList();
++        var required = fn.Info.Parameters.Count(p => !p.Optional);
++        var total = fn.Info.Parameters.Count;
++        // Son parametre "params" (Concat) değilse argüman sayısını doğrula.
++        if (args.Count < required || (total >= 0 && args.Count > total && !IsVariadic(fn)))
++        {
++            throw ExpressionErrors.Business($"{f.Name} {required}-{total} argüman alır, {args.Count} verildi.");
++        }
++        return fn.Invoke(args);
++    }
++
++    private static bool IsVariadic(ExpressionFunction fn) =>
++        fn.Info.Parameters.Count == 1 && fn.Info.Parameters[0].Name == "...";
++
++    private object? EvalBinary(BinaryNode b)
++    {
++        var left = Evaluate(b.Left);
++        var right = Evaluate(b.Right);
++        switch (b.Op)
++        {
++            case "+":
++                if (left is string || right is string) { return Str(left) + Str(right); }
++                return Arithmetic(left, right, "+");
++            case "-": case "*": case "/":
++                return Arithmetic(left, right, b.Op);
++            default:
++                return Compare(left, right, b.Op);
++        }
++    }
++
++    private static object NormalizeNumber(double d) =>
++        d == Math.Floor(d) && !double.IsInfinity(d) ? (object)(long)d : d;
++
++    private static object Arithmetic(object? left, object? right, string op)
++    {
++        if (!TryToDouble(left, out var l) || !TryToDouble(right, out var r))
++        {
++            throw ExpressionErrors.Business($"Aritmetik '{op}' sayısal olmayan değere uygulandı.");
++        }
++        var result = op switch
++        {
++            "+" => l + r,
++            "-" => l - r,
++            "*" => l * r,
++            "/" => r == 0 ? throw ExpressionErrors.Business("Sıfıra bölme.") : l / r,
++            _ => 0d,
++        };
++        // Tam sayı operandlar + bölme değilse long döndür (ToInt/karşılaştırma tutarlılığı).
++        var integral = left is long or int && right is long or int;
++        return integral && op != "/" ? NormalizeNumber(result) : result;
++    }
++
++    private static string Str(object? v) => v?.ToString() ?? "";
++
++    /// <summary>Nokta yolunu çözer: değişken + iç içe JSON alanları (eski ResolvePath ile birebir).</summary>
++    private object? ResolvePath(string path)
++    {
++        var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
++        if (parts.Length == 0) { return null; }
++        if (!_scope.TryGetVariable(parts[0], out var current)) { return null; }
++        for (var i = 1; i < parts.Length && current is not null; i++)
++        {
++            current = current switch
++            {
++                JObject jo => jo[parts[i]],
++                IReadOnlyDictionary<string, object?> dict => dict.TryGetValue(parts[i], out var v) ? v : null,
++                _ => null,
++            };
++        }
++        return current is JToken token ? VariableScope.JTokenToNative(token) : current;
++    }
++
++    private static bool Compare(object? left, object? right, string op)
++    {
++        if (TryToDouble(left, out var dl) && TryToDouble(right, out var dr))
++        {
++            return op switch { "==" => dl == dr, "!=" => dl != dr, ">=" => dl >= dr, "<=" => dl <= dr, ">" => dl > dr, "<" => dl < dr, _ => false };
++        }
++        var cmp = string.Compare(left?.ToString() ?? "", right?.ToString() ?? "", StringComparison.Ordinal);
++        return op switch { "==" => cmp == 0, "!=" => cmp != 0, ">=" => cmp >= 0, "<=" => cmp <= 0, ">" => cmp > 0, "<" => cmp < 0, _ => false };
++    }
++
++    internal static bool TryToDouble(object? value, out double result)
++    {
++        switch (value)
++        {
++            case null: result = 0; return false;
++            case bool b: result = b ? 1 : 0; return true;
++            case double d: result = d; return true;
++            case long l: result = l; return true;
++            case int i: result = i; return true;
++            case decimal m: result = (double)m; return true;
++            default: return double.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result);
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ExpressionErrors.cs b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionErrors.cs
+new file mode 100644
+index 0000000..b79f6d8
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionErrors.cs
+@@ -0,0 +1,10 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using BusinessException = RPA.Domain.Exceptions.BusinessException;
++
++/// <summary>İfade motoru hataları — tümü kullanıcı-yazımı config olduğu için BusinessException.</summary>
++internal static class ExpressionErrors
++{
++    public static BusinessException Parse(string detail) => new($"İfade ayrıştırılamadı: {detail}");
++    public static BusinessException Business(string message) => new(message);
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ExpressionParser.cs b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionParser.cs
+new file mode 100644
+index 0000000..12b7c54
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionParser.cs
+@@ -0,0 +1,126 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++
++/// <summary>Recursive-descent parser. Öncelik (düşükten yükseğe): eşitlik(==,!=) &lt; ilişkisel(&gt;,&lt;,&gt;=,&lt;=)
++/// &lt; toplama(+,-) &lt; çarpma(*,/) &lt; tekli(-) &lt; birincil. Tümü sol-birleşimli.</summary>
++internal static class ExpressionParser
++{
++    public static ExprNode Parse(string input)
++    {
++        var tokens = ExpressionTokenizer.Tokenize(input);
++        var pos = 0;
++        var node = ParseEquality(tokens, ref pos);
++        if (pos != tokens.Count) { throw ExpressionErrors.Parse("fazladan girdi"); }
++        return node;
++    }
++
++    private static ExprNode ParseEquality(List<ExprToken> t, ref int p)
++    {
++        var left = ParseRelational(t, ref p);
++        while (p < t.Count && t[p].Type == ExprTokenType.Op && (t[p].Text == "==" || t[p].Text == "!="))
++        {
++            var op = t[p++].Text;
++            var right = ParseRelational(t, ref p);
++            left = new BinaryNode(op, left, right);
++        }
++        return left;
++    }
++
++    private static ExprNode ParseRelational(List<ExprToken> t, ref int p)
++    {
++        var left = ParseAdditive(t, ref p);
++        while (p < t.Count && t[p].Type == ExprTokenType.Op &&
++               (t[p].Text is ">" or "<" or ">=" or "<="))
++        {
++            var op = t[p++].Text;
++            var right = ParseAdditive(t, ref p);
++            left = new BinaryNode(op, left, right);
++        }
++        return left;
++    }
++
++    private static ExprNode ParseAdditive(List<ExprToken> t, ref int p)
++    {
++        var left = ParseMultiplicative(t, ref p);
++        while (p < t.Count && t[p].Type == ExprTokenType.Op && (t[p].Text == "+" || t[p].Text == "-"))
++        {
++            var op = t[p++].Text;
++            var right = ParseMultiplicative(t, ref p);
++            left = new BinaryNode(op, left, right);
++        }
++        return left;
++    }
++
++    private static ExprNode ParseMultiplicative(List<ExprToken> t, ref int p)
++    {
++        var left = ParseUnary(t, ref p);
++        while (p < t.Count && t[p].Type == ExprTokenType.Op && (t[p].Text == "*" || t[p].Text == "/"))
++        {
++            var op = t[p++].Text;
++            var right = ParseUnary(t, ref p);
++            left = new BinaryNode(op, left, right);
++        }
++        return left;
++    }
++
++    private static ExprNode ParseUnary(List<ExprToken> t, ref int p)
++    {
++        if (p < t.Count && t[p].Type == ExprTokenType.Op && t[p].Text == "-")
++        {
++            p++;
++            return new UnaryNode("-", ParseUnary(t, ref p));
++        }
++        return ParsePrimary(t, ref p);
++    }
++
++    private static ExprNode ParsePrimary(List<ExprToken> t, ref int p)
++    {
++        if (p >= t.Count) { throw ExpressionErrors.Parse("ifade beklendi"); }
++        var tok = t[p];
++
++        if (tok.Type == ExprTokenType.Number) { p++; return new LiteralNode(ExpressionTokenizer.ParseNumber(tok.Text)); }
++        if (tok.Type == ExprTokenType.String) { p++; return new LiteralNode(tok.Text); }
++
++        if (tok.Type == ExprTokenType.LParen)
++        {
++            p++;
++            var inner = ParseEquality(t, ref p);
++            Expect(t, ref p, ExprTokenType.RParen, ")");
++            return inner;
++        }
++
++        if (tok.Type == ExprTokenType.Ident)
++        {
++            p++;
++            if (string.Equals(tok.Text, "true", System.StringComparison.OrdinalIgnoreCase)) { return new LiteralNode(true); }
++            if (string.Equals(tok.Text, "false", System.StringComparison.OrdinalIgnoreCase)) { return new LiteralNode(false); }
++
++            if (p < t.Count && t[p].Type == ExprTokenType.LParen)
++            {
++                p++;
++                var args = new List<ExprNode>();
++                if (!(p < t.Count && t[p].Type == ExprTokenType.RParen))
++                {
++                    args.Add(ParseEquality(t, ref p));
++                    while (p < t.Count && t[p].Type == ExprTokenType.Comma)
++                    {
++                        p++;
++                        args.Add(ParseEquality(t, ref p));
++                    }
++                }
++                Expect(t, ref p, ExprTokenType.RParen, ")");
++                return new FunctionNode(tok.Text, args);
++            }
++            return new VariableNode(tok.Text);
++        }
++
++        throw ExpressionErrors.Parse($"beklenmeyen '{tok.Text}'");
++    }
++
++    private static void Expect(List<ExprToken> t, ref int p, ExprTokenType type, string what)
++    {
++        if (p >= t.Count || t[p].Type != type) { throw ExpressionErrors.Parse($"'{what}' beklendi"); }
++        p++;
++    }
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/ExpressionToken.cs b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionToken.cs
+new file mode 100644
+index 0000000..12d2c7e
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/ExpressionToken.cs
+@@ -0,0 +1,83 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System.Collections.Generic;
++using System.Globalization;
++using System.Text;
++
++internal enum ExprTokenType { Number, String, Ident, Op, LParen, RParen, Comma }
++
++internal readonly record struct ExprToken(ExprTokenType Type, string Text);
++
++/// <summary>İfade metnini token'lara ayırır. Sayılar (long/double), tırnaklı stringler
++/// ("..."/'...'), nokta-yollu identifier'lar, operatörler ve ayraçlar.</summary>
++internal static class ExpressionTokenizer
++{
++    private static readonly string[] MultiCharOps = { "==", "!=", ">=", "<=" };
++
++    public static List<ExprToken> Tokenize(string input)
++    {
++        var tokens = new List<ExprToken>();
++        var i = 0;
++        while (i < input.Length)
++        {
++            var c = input[i];
++            if (char.IsWhiteSpace(c)) { i++; continue; }
++
++            if (c == '(') { tokens.Add(new(ExprTokenType.LParen, "(")); i++; continue; }
++            if (c == ')') { tokens.Add(new(ExprTokenType.RParen, ")")); i++; continue; }
++            if (c == ',') { tokens.Add(new(ExprTokenType.Comma, ",")); i++; continue; }
++
++            if (c == '"' || c == '\'')
++            {
++                var sb = new StringBuilder();
++                var quote = c; i++;
++                while (i < input.Length && input[i] != quote)
++                {
++                    if (input[i] == '\\' && i + 1 < input.Length) { sb.Append(input[i + 1]); i += 2; }
++                    else { sb.Append(input[i]); i++; }
++                }
++                if (i >= input.Length) { throw ExpressionErrors.Parse("kapanmayan tırnak"); }
++                i++; // kapanış tırnağı
++                tokens.Add(new(ExprTokenType.String, sb.ToString()));
++                continue;
++            }
++
++            if (char.IsDigit(c) || (c == '.' && i + 1 < input.Length && char.IsDigit(input[i + 1])))
++            {
++                var start = i;
++                while (i < input.Length && (char.IsDigit(input[i]) || input[i] == '.')) { i++; }
++                tokens.Add(new(ExprTokenType.Number, input[start..i]));
++                continue;
++            }
++
++            if (char.IsLetter(c) || c == '_')
++            {
++                var start = i;
++                while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] == '_' || input[i] == '.')) { i++; }
++                tokens.Add(new(ExprTokenType.Ident, input[start..i]));
++                continue;
++            }
++
++            var two = i + 1 < input.Length ? input.Substring(i, 2) : null;
++            if (two is not null && System.Array.IndexOf(MultiCharOps, two) >= 0)
++            {
++                tokens.Add(new(ExprTokenType.Op, two)); i += 2; continue;
++            }
++            if ("+-*/<>".IndexOf(c) >= 0)
++            {
++                tokens.Add(new(ExprTokenType.Op, c.ToString())); i++; continue;
++            }
++
++            throw ExpressionErrors.Parse($"beklenmeyen karakter '{c}'");
++        }
++        return tokens;
++    }
++
++    // Newtonsoft/InvariantCulture ile sayı literali ayrıştırma (tokenizer sonrası parser kullanır).
++    public static object ParseNumber(string text)
++    {
++        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)) { return l; }
++        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) { return d; }
++        throw ExpressionErrors.Parse($"geçersiz sayı '{text}'");
++    }
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/FunctionArgs.cs b/src/RPA.Infrastructure/Workflow/Expressions/FunctionArgs.cs
+new file mode 100644
+index 0000000..cdf255d
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/FunctionArgs.cs
+@@ -0,0 +1,42 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++
++/// <summary>Fonksiyon gövdelerinde argüman çözme + kültür yardımcıları. Hatalar → Business.</summary>
++internal static class FunctionArgs
++{
++    // Robot makinesinin Windows bölgesel override'larından bağımsız, deterministik tr-TR
++    // (new CultureInfo("tr-TR") kullanıcı override'larını miras alır → makineler arası tutarsız).
++    public static readonly CultureInfo DefaultCulture = CultureInfo.GetCultureInfo("tr-TR");
++
++    public static ExpressionFunctionParam P(string name, string type, bool optional = false) => new(name, type, optional);
++
++    public static string AsString(object? v) => v?.ToString() ?? "";
++
++    public static int AsInt(string fn, object? v)
++    {
++        if (ExpressionEngine.TryToDouble(v, out var d) && d == Math.Floor(d)) { return (int)d; }
++        throw ExpressionErrors.Business($"{fn}: '{v}' tam sayı değil.");
++    }
++
++    public static DateTime AsDate(string fn, object? v)
++    {
++        switch (v)
++        {
++            case DateTime dt: return dt;
++            case string s when DateTime.TryParse(s, DefaultCulture, DateTimeStyles.None, out var p): return p;
++            case string s when DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var pi): return pi;
++            default: throw ExpressionErrors.Business($"{fn}: '{v}' tarihe çevrilemedi.");
++        }
++    }
++
++    public static CultureInfo Culture(string fn, IReadOnlyList<object?> args, int index)
++    {
++        if (index >= args.Count || args[index] is null) { return DefaultCulture; }
++        var name = AsString(args[index]);
++        try { return CultureInfo.GetCultureInfo(name); }
++        catch (CultureNotFoundException) { throw ExpressionErrors.Business($"Geçersiz kültür: '{name}'"); }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/FunctionRegistry.cs b/src/RPA.Infrastructure/Workflow/Expressions/FunctionRegistry.cs
+new file mode 100644
+index 0000000..39bbe8b
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/FunctionRegistry.cs
+@@ -0,0 +1,38 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Linq;
++
++/// <summary>Autocomplete + doküman için fonksiyon metadata'sı (public — WebAPI katalog uç noktası tüketir).</summary>
++public sealed record ExpressionFunctionInfo(
++    string Name, string Category, string ReturnType,
++    IReadOnlyList<ExpressionFunctionParam> Parameters, string Description, string Example);
++
++public sealed record ExpressionFunctionParam(string Name, string Type, bool Optional);
++
++/// <summary>Çalıştırılabilir fonksiyon = metadata + invoker (değerlendirilmiş argümanlar).</summary>
++internal sealed record ExpressionFunction(ExpressionFunctionInfo Info, Func<IReadOnlyList<object?>, object?> Invoke);
++
++/// <summary>Tüm ifade fonksiyonlarının kayıt defteri (case-insensitive ad). Kategori modülleri doldurur.
++/// Public — WebAPI ExpressionController Catalog'u doğrudan tüketir (Task 6).</summary>
++public static class FunctionRegistry
++{
++    private static readonly Dictionary<string, ExpressionFunction> Map = BuildMap();
++
++    private static Dictionary<string, ExpressionFunction> BuildMap()
++    {
++        var all = new List<ExpressionFunction>();
++        all.AddRange(DateFunctions.All);
++        all.AddRange(StringFunctions.All);
++        all.AddRange(ConversionFunctions.All);
++        all.AddRange(HelperFunctions.All);
++        return all.ToDictionary(f => f.Info.Name, f => f, StringComparer.OrdinalIgnoreCase);
++    }
++
++    internal static bool TryGet(string name, out ExpressionFunction fn) => Map.TryGetValue(name, out fn!);
++
++    /// <summary>Studio autocomplete kataloğu (ada göre sıralı, invoker'sız metadata).</summary>
++    public static IReadOnlyList<ExpressionFunctionInfo> Catalog =>
++        Map.Values.Select(f => f.Info).OrderBy(i => i.Category).ThenBy(i => i.Name).ToList();
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/HelperFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/HelperFunctions.cs
+new file mode 100644
+index 0000000..13850b0
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/HelperFunctions.cs
+@@ -0,0 +1,22 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using static RPA.Infrastructure.Workflow.Expressions.FunctionArgs;
++
++/// <summary>Yardımcı ifade fonksiyonları (kategori "Yardımcı").</summary>
++internal static class HelperFunctions
++{
++    private const string Cat = "Yardımcı";
++
++    public static IReadOnlyList<ExpressionFunction> All => new[]
++    {
++        Fn("Coalesce", "any", new() { P("deger", "any"), P("yedek", "any") },
++            "İlk değer null/boş ise yedeği döner.", "Coalesce(ad, \"-\")",
++            a => a[0] is null || (a[0] is string s && s.Length == 0) ? a[1] : a[0]),
++    };
++
++    private static ExpressionFunction Fn(string name, string ret, List<ExpressionFunctionParam> ps,
++        string desc, string ex, Func<IReadOnlyList<object?>, object?> invoke)
++        => new(new ExpressionFunctionInfo(name, Cat, ret, ps, desc, ex), invoke);
++}
+diff --git a/src/RPA.Infrastructure/Workflow/Expressions/StringFunctions.cs b/src/RPA.Infrastructure/Workflow/Expressions/StringFunctions.cs
+new file mode 100644
+index 0000000..2278ce2
+--- /dev/null
++++ b/src/RPA.Infrastructure/Workflow/Expressions/StringFunctions.cs
+@@ -0,0 +1,76 @@
++namespace RPA.Infrastructure.Workflow.Expressions;
++
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Text;
++using static RPA.Infrastructure.Workflow.Expressions.FunctionArgs;
++
++/// <summary>Metin ifade fonksiyonları (kategori "Metin").</summary>
++internal static class StringFunctions
++{
++    private const string Cat = "Metin";
++
++    public static IReadOnlyList<ExpressionFunction> All => new[]
++    {
++        Fn("Upper", "string", new() { P("metin", "string") }, "Büyük harfe çevirir (tr-TR).", "Upper(ad)",
++            a => AsString(a[0]).ToUpper(DefaultCulture)),
++        Fn("Lower", "string", new() { P("metin", "string") }, "Küçük harfe çevirir (tr-TR).", "Lower(ad)",
++            a => AsString(a[0]).ToLower(DefaultCulture)),
++        Fn("Trim", "string", new() { P("metin", "string") }, "Baş/son boşlukları atar.", "Trim(ad)",
++            a => AsString(a[0]).Trim()),
++        Fn("Length", "int", new() { P("metin", "string") }, "Karakter sayısı.", "Length(ad)",
++            a => (long)AsString(a[0]).Length),
++        Fn("Substring", "string", new() { P("metin", "string"), P("baslangic", "int"), P("uzunluk", "int", true) },
++            "Alt dize (0-tabanlı).", "Substring(ad, 0, 3)", a => Sub(a)),
++        Fn("Replace", "string", new() { P("metin", "string"), P("eski", "string"), P("yeni", "string") },
++            "Tüm eşleşmeleri değiştirir.", "Replace(ad, \"_\", \"-\")",
++            a => AsString(a[0]).Replace(AsString(a[1]), AsString(a[2]), StringComparison.Ordinal)),
++        Fn("Contains", "bool", new() { P("metin", "string"), P("alt", "string") }, "Alt dize içeriyor mu.", "Contains(ad, \"x\")",
++            a => AsString(a[0]).Contains(AsString(a[1]), StringComparison.Ordinal)),
++        Fn("StartsWith", "bool", new() { P("metin", "string"), P("on", "string") }, "İle başlıyor mu.", "StartsWith(ad, \"AB\")",
++            a => AsString(a[0]).StartsWith(AsString(a[1]), StringComparison.Ordinal)),
++        Fn("EndsWith", "bool", new() { P("metin", "string"), P("son", "string") }, "İle bitiyor mu.", "EndsWith(ad, \"z\")",
++            a => AsString(a[0]).EndsWith(AsString(a[1]), StringComparison.Ordinal)),
++        Fn("IndexOf", "int", new() { P("metin", "string"), P("alt", "string") }, "İlk konum (yoksa -1).", "IndexOf(ad, \"x\")",
++            a => (long)AsString(a[0]).IndexOf(AsString(a[1]), StringComparison.Ordinal)),
++        Fn("PadLeft", "string", new() { P("metin", "string"), P("uzunluk", "int"), P("karakter", "string", true) },
++            "Sola doldurur.", "PadLeft(no, 5, \"0\")", a => AsString(a[0]).PadLeft(PadLength("PadLeft", a[1]), PadChar(a, 2))),
++        Fn("PadRight", "string", new() { P("metin", "string"), P("uzunluk", "int"), P("karakter", "string", true) },
++            "Sağa doldurur.", "PadRight(no, 5, \".\")", a => AsString(a[0]).PadRight(PadLength("PadRight", a[1]), PadChar(a, 2))),
++        Fn("Concat", "string", new() { P("...", "any") }, "Tüm argümanları birleştirir.", "Concat(a, \"-\", b)",
++            a => string.Concat(a.Select(AsString))),
++    };
++
++    private static object Sub(IReadOnlyList<object?> a)
++    {
++        var s = AsString(a[0]);
++        var start = AsInt("Substring", a[1]);
++        if (start < 0 || start > s.Length) { throw ExpressionErrors.Business($"Substring: başlangıç {start} aralık dışı."); }
++        if (a.Count >= 3 && a[2] is not null)
++        {
++            var len = AsInt("Substring", a[2]);
++            if (len < 0 || start + len > s.Length) { throw ExpressionErrors.Business($"Substring: uzunluk {len} aralık dışı."); }
++            return s.Substring(start, len);
++        }
++        return s.Substring(start);
++    }
++
++    private static int PadLength(string fn, object? v)
++    {
++        var len = AsInt(fn, v);
++        if (len < 0) { throw ExpressionErrors.Business($"{fn}: uzunluk {len} negatif olamaz."); }
++        return len;
++    }
++
++    private static char PadChar(IReadOnlyList<object?> a, int index)
++    {
++        if (index >= a.Count || a[index] is null) { return ' '; }
++        var s = AsString(a[index]);
++        return s.Length > 0 ? s[0] : ' ';
++    }
++
++    private static ExpressionFunction Fn(string name, string ret, List<ExpressionFunctionParam> ps,
++        string desc, string ex, Func<IReadOnlyList<object?>, object?> invoke)
++        => new(new ExpressionFunctionInfo(name, Cat, ret, ps, desc, ex), invoke);
++}
+diff --git a/src/RPA.Studio/src/app/shared/services/expression-function.service.spec.ts b/src/RPA.Studio/src/app/shared/services/expression-function.service.spec.ts
+new file mode 100644
+index 0000000..50d245e
+--- /dev/null
++++ b/src/RPA.Studio/src/app/shared/services/expression-function.service.spec.ts
+@@ -0,0 +1,38 @@
++import { TestBed } from '@angular/core/testing';
++import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
++import { provideHttpClient } from '@angular/common/http';
++import { ExpressionFunctionService, ExpressionFunctionInfo } from './expression-function.service';
++
++const sample: ExpressionFunctionInfo[] = [
++  { name: 'Format', category: 'Tarih', returnType: 'string', parameters: [], description: '', example: 'Format(Now(), "dd.MM.yyyy")' },
++  { name: 'Upper', category: 'Metin', returnType: 'string', parameters: [], description: '', example: 'Upper(ad)' },
++  { name: 'ToInt', category: 'Dönüşüm', returnType: 'int', parameters: [], description: '', example: 'ToInt(x)' },
++];
++
++describe('ExpressionFunctionService', () => {
++  let service: ExpressionFunctionService;
++  let http: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({ providers: [ExpressionFunctionService, provideHttpClient(), provideHttpClientTesting()] });
++    service = TestBed.inject(ExpressionFunctionService);
++    http = TestBed.inject(HttpTestingController);
++  });
++
++  it('loads and caches the catalog', () => {
++    service.load().subscribe();
++    http.expectOne('/api/expression/functions').flush(sample);
++    service.load().subscribe(); // ikinci çağrı yeni istek YAPMAMALI
++    http.expectNone('/api/expression/functions');
++  });
++
++  it('filters by case-insensitive prefix', () => {
++    service.load().subscribe();
++    http.expectOne('/api/expression/functions').flush(sample);
++    expect(service.filter('up').map((f) => f.name)).toEqual(['Upper']);
++    expect(service.filter('to').map((f) => f.name)).toEqual(['ToInt']);
++    expect(service.filter('').length).toBe(3);
++  });
++
++  afterEach(() => http.verify());
++});
+diff --git a/src/RPA.Studio/src/app/shared/services/expression-function.service.ts b/src/RPA.Studio/src/app/shared/services/expression-function.service.ts
+new file mode 100644
+index 0000000..50baa18
+--- /dev/null
++++ b/src/RPA.Studio/src/app/shared/services/expression-function.service.ts
+@@ -0,0 +1,50 @@
++import { Injectable, inject } from '@angular/core';
++import { HttpClient } from '@angular/common/http';
++import { Observable, shareReplay, tap } from 'rxjs';
++
++export interface ExpressionFunctionParam {
++  name: string;
++  type: string;
++  optional: boolean;
++}
++
++export interface ExpressionFunctionInfo {
++  name: string;
++  category: string;
++  returnType: string;
++  parameters: ExpressionFunctionParam[];
++  description: string;
++  example: string;
++}
++
++/**
++ * İfade fonksiyon kataloğunu backend'den (GET /api/expression/functions) çeker, cache'ler ve
++ * autocomplete için ada göre filtre sağlar. Katalog tek kaynak (backend FunctionRegistry).
++ */
++@Injectable({ providedIn: 'root' })
++export class ExpressionFunctionService {
++  private readonly http = inject(HttpClient);
++  private cache$?: Observable<ExpressionFunctionInfo[]>;
++  private loaded: ExpressionFunctionInfo[] = [];
++
++  load(): Observable<ExpressionFunctionInfo[]> {
++    if (!this.cache$) {
++      this.cache$ = this.http
++        .get<ExpressionFunctionInfo[]>('/api/expression/functions')
++        .pipe(
++          tap((fns) => (this.loaded = fns ?? [])),
++          shareReplay(1),
++        );
++    }
++    return this.cache$;
++  }
++
++  /** Yüklenmiş kataloğu ada göre (case-insensitive önek) filtreler. */
++  filter(prefix: string): ExpressionFunctionInfo[] {
++    const q = (prefix ?? '').trim().toLowerCase();
++    if (q.length === 0) {
++      return [...this.loaded];
++    }
++    return this.loaded.filter((f) => f.name.toLowerCase().startsWith(q));
++  }
++}
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html
+index f582ae9..62160c2 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.html
+@@ -5,38 +5,50 @@
+       <span aria-hidden="true">*</span>
+     }
+   </label>
+   <div class="expression-input__row" data-testid="expression-input">
+     <input
+       [id]="inputId"
+       type="text"
+       [attr.data-testid]="inputId + '-input'"
+       [value]="value"
+       (input)="handleInput($any($event.target).value)"
++      (keydown)="onKeydown($event)"
+       (blur)="handleBlur()"
+       [placeholder]="placeholder"
+       [disabled]="disabled"
+       [attr.aria-label]="label"
+       [attr.aria-required]="required"
+       [attr.aria-invalid]="invalid"
+       [attr.aria-describedby]="invalid ? inputId + '-error' : (hint ? inputId + '-hint' : null)"
+     />
+     <button
+       type="button"
+       class="expression-input__variable-btn"
+       data-testid="expression-insert-variable"
+       [attr.aria-label]="'web.insertVariable' | translate"
+       [disabled]="disabled"
+       (click)="insertVariableToken()"
+     >
+       {{ 'web.insertVariable' | translate }}
+     </button>
++    @if (suggestionsOpen) {
++      <ul class="suggestion-list" role="listbox">
++        @for (s of suggestions; track s.label + s.kind; let i = $index) {
++          <li role="option" [class.active]="i === activeIndex" (mousedown)="applySuggestion(s)">
++            <span class="s-label">{{ s.label }}</span>
++            <span class="s-kind" [class.fn]="s.kind === 'function'">{{ s.kind === 'function' ? 'ƒ' : '{}' }}</span>
++            <span class="s-detail">{{ s.detail }}</span>
++          </li>
++        }
++      </ul>
++    }
+     @if (variablePickerOpen) {
+       <select
+         class="expression-input__variable-select"
+         data-testid="expression-variable-select"
+         aria-label="Degisken sec"
+         (change)="selectVariable($any($event.target).value)"
+       >
+         <option value="">Degisken sec</option>
+         @for (variable of variables; track variable.name) {
+           <option [value]="variable.name">{{ variable.name }}</option>
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss
+index d88919c..fa1d908 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.scss
+@@ -9,20 +9,21 @@
+     font-size: 0.78rem;
+     font-weight: 750;
+   }
+ 
+   label span {
+     color: #b42318;
+     margin-left: 0.16rem;
+   }
+ 
+   &__row {
++    position: relative;
+     display: flex;
+     gap: 0.45rem;
+ 
+     input {
+       width: 100%;
+       min-height: 2.35rem;
+       border: 1px solid #aebbc9;
+       border-radius: 0.5rem;
+       background:
+         linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+@@ -248,10 +249,56 @@
+       font-weight: 750;
+     }
+ 
+     button:last-child {
+       border-color: #1f6feb;
+       background: #1f6feb;
+       color: #ffffff;
+     }
+   }
+ }
++
++.suggestion-list {
++  position: absolute;
++  top: 100%;
++  left: 0;
++  z-index: 20;
++  margin: 2px 0 0;
++  padding: 4px 0;
++  max-height: 220px;
++  overflow-y: auto;
++  min-width: 220px;
++  background: var(--surface, #fff);
++  border: 1px solid var(--border, #ccc);
++  border-radius: 6px;
++  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
++  list-style: none;
++
++  li {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    padding: 4px 10px;
++    cursor: pointer;
++    font-size: 13px;
++
++    &.active,
++    &:hover {
++      background: var(--hover, #eef2ff);
++    }
++
++    .s-kind {
++      font-family: monospace;
++      opacity: 0.6;
++
++      &.fn {
++        color: #6d28d9;
++      }
++    }
++
++    .s-detail {
++      margin-left: auto;
++      opacity: 0.65;
++      font-size: 12px;
++    }
++  }
++}
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.spec.ts
+new file mode 100644
+index 0000000..3f23b89
+--- /dev/null
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.spec.ts
+@@ -0,0 +1,60 @@
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { ExpressionInputComponent } from './expression-input.component';
++import { ExpressionFunctionInfo, ExpressionFunctionService } from '../../../shared/services/expression-function.service';
++
++function fnInfo(name: string, category: string): ExpressionFunctionInfo {
++  return { name, category, returnType: 'string', parameters: [], description: '', example: `${name}()` };
++}
++
++describe('ExpressionInputComponent autocomplete', () => {
++  let fixture: ComponentFixture<ExpressionInputComponent>;
++  let component: ExpressionInputComponent;
++  const fnService = {
++    load: () => ({ subscribe: () => undefined }),
++    filter: (prefix: string) =>
++      [fnInfo('Format', 'Tarih'), fnInfo('Upper', 'Metin')].filter((f) =>
++        f.name.toLowerCase().startsWith(prefix.toLowerCase()),
++      ),
++  };
++
++  beforeEach(async () => {
++    await TestBed.configureTestingModule({
++      imports: [ExpressionInputComponent],
++      providers: [{ provide: ExpressionFunctionService, useValue: fnService }],
++    }).compileComponents();
++    fixture = TestBed.createComponent(ExpressionInputComponent);
++    component = fixture.componentInstance;
++    component.inputId = 'expr';
++    component.label = 'Ifade';
++    component.variables = [{ name: 'ad', type: 'string' } as never];
++  });
++
++  it('suggests matching functions and variables for a partial word', () => {
++    component.updateSuggestions('Up');
++    expect(component.suggestions.some((s) => s.kind === 'function' && s.label === 'Upper')).toBe(true);
++    expect(component.suggestionsOpen).toBe(true);
++  });
++
++  it('suggests variables by partial name', () => {
++    component.updateSuggestions('a');
++    expect(component.suggestions.some((s) => s.kind === 'variable' && s.label === 'ad')).toBe(true);
++  });
++
++  it('inserting a function replaces the trailing partial word with Name()', () => {
++    const emitted: string[] = [];
++    component.valueChange.subscribe((v) => emitted.push(v));
++    // Kullanıcı "x = Up" yazdı; öneri son kelime "Up"a göre açıldı.
++    component.value = 'x = Up';
++    component.updateSuggestions('Up');
++    const upper = component.suggestions.find((s) => s.label === 'Upper')!;
++    component.applySuggestion(upper);
++    // "Up" silinip "Upper()" ile değişmeli → "x = Upper()" (UpUpper() DEĞİL).
++    expect(emitted[emitted.length - 1]).toBe('x = Upper()');
++  });
++
++  it('Escape closes the suggestion list', () => {
++    component.updateSuggestions('Up');
++    component.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
++    expect(component.suggestionsOpen).toBe(false);
++  });
++});
+diff --git a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts
+index 6e696f6..1355797 100644
+--- a/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/properties/expression-input.component.ts
+@@ -1,15 +1,24 @@
+ import { CommonModule } from '@angular/common';
+-import { ChangeDetectorRef, Component, EventEmitter, Input, Output, forwardRef, inject } from '@angular/core';
++import { ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output, forwardRef, inject } from '@angular/core';
+ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+ import { TranslatePipe } from '../../../core/translate.pipe';
+ import { WorkflowVariable } from '../../../shared/models/workflow.model';
++import { ExpressionFunctionInfo, ExpressionFunctionService } from '../../../shared/services/expression-function.service';
++
++export interface AutocompleteItem {
++  kind: 'variable' | 'function';
++  label: string;
++  detail: string;
++  insert: string;
++  caretOffsetFromEnd: number; // eklenen metnin sonundan imleç kaç karakter geri
++}
+ 
+ /**
+  * Reusable text input supporting workflow expressions (e.g. `{{variableName}}`).
+  * Wraps a plain text control as a ControlValueAccessor so it can be bound via
+  * `formControlName` like any other reactive-forms input, while exposing a
+  * dedicated `data-testid="expression-input"` hook plus an "insert variable"
+  * affordance for future variable-picker integration (Faz 5 property editors).
+  */
+ @Component({
+   selector: 'app-expression-input',
+@@ -18,22 +27,32 @@ import { WorkflowVariable } from '../../../shared/models/workflow.model';
+   templateUrl: './expression-input.component.html',
+   styleUrls: ['./expression-input.component.scss'],
+   providers: [
+     {
+       provide: NG_VALUE_ACCESSOR,
+       useExisting: forwardRef(() => ExpressionInputComponent),
+       multi: true,
+     },
+   ],
+ })
+-export class ExpressionInputComponent implements ControlValueAccessor {
++export class ExpressionInputComponent implements ControlValueAccessor, OnInit {
+   private readonly cdr = inject(ChangeDetectorRef);
++  private readonly fnService = inject(ExpressionFunctionService);
++
++  suggestionsOpen = false;
++  activeIndex = 0;
++  suggestions: AutocompleteItem[] = [];
++  private currentPartial = '';
++
++  ngOnInit(): void {
++    this.fnService.load().subscribe();
++  }
+ 
+   @Input({ required: true }) inputId!: string;
+   @Input({ required: true }) label!: string;
+   @Input() placeholder = '';
+   @Input() required = false;
+   @Input() invalid = false;
+   @Input() hint = '';
+   @Input() errorMessage = '';
+   @Input() variables: WorkflowVariable[] = [];
+ 
+@@ -63,20 +82,96 @@ export class ExpressionInputComponent implements ControlValueAccessor {
+     this.onTouched = fn;
+   }
+ 
+   setDisabledState(isDisabled: boolean): void {
+     this.disabled = isDisabled;
+   }
+ 
+   handleInput(value: string): void {
+     this.applyValue(value);
+     this.clearVariableError();
++    this.updateSuggestions(this.currentPartialWord(value));
++  }
++
++  /** İmleç altındaki kısmi kelimeye göre değişken + fonksiyon önerilerini hesaplar. */
++  updateSuggestions(partial: string): void {
++    const q = (partial ?? '').trim();
++    this.currentPartial = q;
++    const vars: AutocompleteItem[] = (this.variables ?? [])
++      .filter((v) => v.name.toLowerCase().startsWith(q.toLowerCase()))
++      .map((v) => ({
++        kind: 'variable',
++        label: v.name,
++        detail: v.type ?? 'değişken',
++        insert: `{{${v.name}}}`,
++        caretOffsetFromEnd: 0,
++      }));
++    const fns: AutocompleteItem[] = this.fnService.filter(q).map((f: ExpressionFunctionInfo) => ({
++      kind: 'function',
++      label: f.name,
++      detail: `${f.category} · ${this.signature(f)}`,
++      insert: `${f.name}()`,
++      caretOffsetFromEnd: 1, // parantez içine konumlan
++    }));
++    this.suggestions = [...vars, ...fns];
++    this.activeIndex = 0;
++    this.suggestionsOpen = this.suggestions.length > 0 && q.length > 0;
++    this.cdr.markForCheck();
++  }
++
++  applySuggestion(item: AutocompleteItem): void {
++    // İmleç sonundaki kısmi kelimeyi (currentPartial) öneriyle değiştir; yoksa sona ekle.
++    const base =
++      this.currentPartial.length > 0 && this.value.endsWith(this.currentPartial)
++        ? this.value.slice(0, this.value.length - this.currentPartial.length)
++        : this.value;
++    this.applyValue(`${base}${item.insert}`);
++    this.suggestionsOpen = false;
++    this.cdr.markForCheck();
++  }
++
++  onKeydown(event: KeyboardEvent): void {
++    if (!this.suggestionsOpen) {
++      return;
++    }
++    switch (event.key) {
++      case 'ArrowDown':
++        event.preventDefault();
++        this.activeIndex = Math.min(this.activeIndex + 1, this.suggestions.length - 1);
++        break;
++      case 'ArrowUp':
++        event.preventDefault();
++        this.activeIndex = Math.max(this.activeIndex - 1, 0);
++        break;
++      case 'Enter':
++      case 'Tab':
++        if (this.suggestions[this.activeIndex]) {
++          event.preventDefault();
++          this.applySuggestion(this.suggestions[this.activeIndex]);
++        }
++        break;
++      case 'Escape':
++        this.suggestionsOpen = false;
++        break;
++    }
++    this.cdr.markForCheck();
++  }
++
++  private signature(f: ExpressionFunctionInfo): string {
++    const ps = f.parameters.map((p) => (p.optional ? `[${p.name}]` : p.name)).join(', ');
++    return `${f.name}(${ps})`;
++  }
++
++  /** İmleç sonundaki (son) kelime parçasını döndürür — basit v1: son harf öbeği. */
++  private currentPartialWord(value: string): string {
++    const m = /([A-Za-z_ğüşöçıİĞÜŞÖÇ][A-Za-z0-9_ğüşöçıİĞÜŞÖÇ]*)$/.exec(value ?? '');
++    return m ? m[1] : '';
+   }
+ 
+   handleBlur(): void {
+     this.onTouched();
+   }
+ 
+   insertVariableToken(): void {
+     if (this.disabled) {
+       return;
+     }
+diff --git a/src/RPA.WebAPI/Controllers/ExpressionController.cs b/src/RPA.WebAPI/Controllers/ExpressionController.cs
+new file mode 100644
+index 0000000..ea36884
+--- /dev/null
++++ b/src/RPA.WebAPI/Controllers/ExpressionController.cs
+@@ -0,0 +1,20 @@
++namespace RPA.WebAPI.Controllers;
++
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using RPA.Infrastructure.Workflow.Expressions;
++
++/// <summary>
++/// İfade fonksiyon kataloğu uç noktası — Studio autocomplete'in okuduğu tek referans.
++/// <see cref="FunctionRegistry.Catalog"/> metadata'sını sunar (frontend ExpressionFunctionService tüketir).
++/// </summary>
++[ApiController]
++[Route("api/expression")]
++[Authorize]
++public class ExpressionController : ControllerBase
++{
++    /// <summary>Tüm ifade fonksiyonlarını (ad, kategori, imza, açıklama, örnek) listeler.</summary>
++    [HttpGet("functions")]
++    [ProducesResponseType(StatusCodes.Status200OK)]
++    public ActionResult<IReadOnlyList<ExpressionFunctionInfo>> GetFunctions() => Ok(FunctionRegistry.Catalog);
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ConversionFunctionsTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ConversionFunctionsTests.cs
+new file mode 100644
+index 0000000..b3bfe48
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ConversionFunctionsTests.cs
+@@ -0,0 +1,28 @@
++namespace RPA.Infrastructure.Tests.Workflow.Expressions;
++
++using RPA.Domain.Exceptions;
++using RPA.Infrastructure.Workflow;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++public class ConversionFunctionsTests
++{
++    private static object? Eval(string expr, params (string, object?)[] vars)
++    {
++        var scope = new VariableScope();
++        foreach (var (k, v) in vars) { scope.SetGlobalVariable(k, v); }
++        return new ExpressionEngine(scope).Evaluate(expr);
++    }
++
++    [Fact] public void ToInt_FromString() => Assert.Equal(42L, Eval("ToInt(\"42\")"));
++    [Fact] public void ToInt_FromDouble() => Assert.Equal(3L, Eval("ToInt(3.9)"));
++    [Fact] public void ToInt_Invalid_Business() => Assert.Throws<BusinessException>(() => Eval("ToInt(\"abc\")"));
++    [Fact] public void ToDecimal_TrCulture() => Assert.Equal(3.5m, Eval("ToDecimal(\"3,5\")"));
++    [Fact] public void ToDecimal_ExplicitCulture() => Assert.Equal(3.5m, Eval("ToDecimal(\"3.5\", \"en-US\")"));
++    [Fact] public void ToDouble_TrCulture() => Assert.Equal(2.5d, Eval("ToDouble(\"2,5\")"));
++    [Fact] public void ToStr_Number() => Assert.Equal("42", Eval("ToStr(42)"));
++    [Fact] public void ToStr_WithFormatAndCulture() => Assert.Equal("3,50", Eval("ToStr(3.5, \"N2\", \"tr-TR\")"));
++    [Fact] public void ToBool_True() => Assert.Equal(true, Eval("ToBool(\"true\")"));
++    [Fact] public void Coalesce_FirstNull() => Assert.Equal("yedek", Eval("Coalesce(x, \"yedek\")", ("x", null)));
++    [Fact] public void Coalesce_FirstPresent() => Assert.Equal("var", Eval("Coalesce(x, \"yedek\")", ("x", "var")));
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/Expressions/DateFunctionsTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/DateFunctionsTests.cs
+new file mode 100644
+index 0000000..87ff42a
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/DateFunctionsTests.cs
+@@ -0,0 +1,49 @@
++namespace RPA.Infrastructure.Tests.Workflow.Expressions;
++
++using System;
++using RPA.Domain.Exceptions;
++using RPA.Infrastructure.Workflow;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++public class DateFunctionsTests
++{
++    private static object? Eval(string expr, params (string, object?)[] vars)
++    {
++        var scope = new VariableScope();
++        foreach (var (k, v) in vars) { scope.SetGlobalVariable(k, v); }
++        return new ExpressionEngine(scope).Evaluate(expr);
++    }
++
++    [Fact]
++    public void Format_TrCulture_Default()
++        => Assert.Equal("15.01.2026", Eval("Format(d, \"dd.MM.yyyy\")", ("d", new DateTime(2026, 1, 15))));
++
++    [Fact]
++    public void Format_ExplicitCulture()
++        => Assert.Equal("01/15/2026", Eval("Format(d, \"MM/dd/yyyy\", \"en-US\")", ("d", new DateTime(2026, 1, 15))));
++
++    [Fact]
++    public void AddDays_And_Format_Nested()
++        => Assert.Equal("22.01.2026", Eval("Format(AddDays(d, 7), \"dd.MM.yyyy\")", ("d", new DateTime(2026, 1, 15))));
++
++    [Fact]
++    public void ToDate_ParsesTrFormat()
++        => Assert.Equal(new DateTime(2026, 1, 15), Eval("ToDate(\"15.01.2026\", \"dd.MM.yyyy\")"));
++
++    [Fact]
++    public void Year_Month_Day()
++    {
++        Assert.Equal(2026L, Eval("Year(d)", ("d", new DateTime(2026, 1, 15))));
++        Assert.Equal(1L, Eval("Month(d)", ("d", new DateTime(2026, 1, 15))));
++        Assert.Equal(15L, Eval("Day(d)", ("d", new DateTime(2026, 1, 15))));
++    }
++
++    [Fact]
++    public void DateDiffDays()
++        => Assert.Equal(7L, Eval("DateDiffDays(a, b)", ("a", new DateTime(2026, 1, 22)), ("b", new DateTime(2026, 1, 15))));
++
++    [Fact]
++    public void ToDate_Invalid_ThrowsBusiness()
++        => Assert.Throws<BusinessException>(() => Eval("ToDate(\"xx\", \"dd.MM.yyyy\")"));
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionEngineTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionEngineTests.cs
+new file mode 100644
+index 0000000..1451208
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionEngineTests.cs
+@@ -0,0 +1,44 @@
++namespace RPA.Infrastructure.Tests.Workflow.Expressions;
++
++using RPA.Domain.Exceptions;
++using RPA.Infrastructure.Workflow;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++public class ExpressionEngineTests
++{
++    private static ExpressionEngine Engine(params (string, object?)[] vars)
++    {
++        var scope = new VariableScope();
++        foreach (var (k, v) in vars) { scope.SetGlobalVariable(k, v); }
++        return new ExpressionEngine(scope);
++    }
++
++    [Fact]
++    public void Variable_ResolvesFromScope()
++        => Assert.Equal("abc", Engine(("ad", "abc")).Evaluate("ad"));
++
++    [Fact]
++    public void Arithmetic_IntegerAddition_ReturnsLong()
++        => Assert.Equal(3L, Engine(("x", 2L)).Evaluate("x + 1"));
++
++    [Fact]
++    public void Arithmetic_Precedence()
++        => Assert.Equal(7L, Engine(("x", 3L)).Evaluate("x * 2 + 1"));
++
++    [Fact]
++    public void StringConcat_WithPlus()
++        => Assert.Equal("a-1", Engine(("s", "a")).Evaluate("s + \"-\" + 1"));
++
++    [Fact]
++    public void Comparison_ReturnsBool()
++        => Assert.Equal(true, Engine(("x", 5L)).Evaluate("x > 3"));
++
++    [Fact]
++    public void UnknownFunction_ThrowsBusiness()
++        => Assert.Throws<BusinessException>(() => Engine().Evaluate("Yok(1)"));
++
++    [Fact]
++    public void Arithmetic_Subtraction_LeftAssociative()
++        => Assert.Equal(5L, Engine().Evaluate("10 - 3 - 2"));
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionParserTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionParserTests.cs
+new file mode 100644
+index 0000000..12d0e86
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/ExpressionParserTests.cs
+@@ -0,0 +1,79 @@
++namespace RPA.Infrastructure.Tests.Workflow.Expressions;
++
++using RPA.Domain.Exceptions;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++public class ExpressionParserTests
++{
++    [Fact]
++    public void Parses_NestedFunctionCall()
++    {
++        var ast = ExpressionParser.Parse("Format(AddDays(Now(), 7), \"dd.MM.yyyy\")");
++        var outer = Assert.IsType<FunctionNode>(ast);
++        Assert.Equal("Format", outer.Name);
++        Assert.Equal(2, outer.Args.Count);
++        var inner = Assert.IsType<FunctionNode>(outer.Args[0]);
++        Assert.Equal("AddDays", inner.Name);
++        Assert.IsType<FunctionNode>(inner.Args[0]); // Now()
++        Assert.Equal(7L, Assert.IsType<LiteralNode>(inner.Args[1]).Value);
++        Assert.Equal("dd.MM.yyyy", Assert.IsType<LiteralNode>(outer.Args[1]).Value);
++    }
++
++    [Fact]
++    public void Parses_ArithmeticPrecedence()
++    {
++        // ToInt(x) * 2 + 1  →  (ToInt(x)*2) + 1
++        var ast = ExpressionParser.Parse("ToInt(x) * 2 + 1");
++        var add = Assert.IsType<BinaryNode>(ast);
++        Assert.Equal("+", add.Op);
++        Assert.Equal(1L, Assert.IsType<LiteralNode>(add.Right).Value);
++        var mul = Assert.IsType<BinaryNode>(add.Left);
++        Assert.Equal("*", mul.Op);
++    }
++
++    [Fact]
++    public void Parses_EqualityLowerThanRelational()
++    {
++        // a > 1 == true  →  (a > 1) == true
++        var ast = ExpressionParser.Parse("a > 1 == true");
++        var eq = Assert.IsType<BinaryNode>(ast);
++        Assert.Equal("==", eq.Op);
++        Assert.Equal(true, Assert.IsType<LiteralNode>(eq.Right).Value);
++        Assert.Equal(">", Assert.IsType<BinaryNode>(eq.Left).Op);
++    }
++
++    [Fact]
++    public void Parses_DottedVariablePath()
++    {
++        var ast = ExpressionParser.Parse("data.alan.ic");
++        Assert.Equal("data.alan.ic", Assert.IsType<VariableNode>(ast).Path);
++    }
++
++    [Fact]
++    public void Parses_StringAndNumberAndBoolLiterals()
++    {
++        Assert.Equal("x", Assert.IsType<LiteralNode>(ExpressionParser.Parse("\"x\"")).Value);
++        Assert.Equal(42L, Assert.IsType<LiteralNode>(ExpressionParser.Parse("42")).Value);
++        Assert.Equal(3.5d, Assert.IsType<LiteralNode>(ExpressionParser.Parse("3.5")).Value);
++        Assert.Equal(true, Assert.IsType<LiteralNode>(ExpressionParser.Parse("true")).Value);
++    }
++
++    [Fact]
++    public void Parses_UnaryMinus()
++    {
++        var ast = ExpressionParser.Parse("-5");
++        var u = Assert.IsType<UnaryNode>(ast);
++        Assert.Equal("-", u.Op);
++    }
++
++    [Theory]
++    [InlineData("Format(")]
++    [InlineData("1 +")]
++    [InlineData("(1 + 2")]
++    [InlineData("Upper(a,)")]
++    public void InvalidSyntax_ThrowsBusiness(string expr)
++    {
++        Assert.Throws<BusinessException>(() => ExpressionParser.Parse(expr));
++    }
++}
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/Expressions/StringFunctionsTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/StringFunctionsTests.cs
+new file mode 100644
+index 0000000..43414ca
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Workflow/Expressions/StringFunctionsTests.cs
+@@ -0,0 +1,36 @@
++namespace RPA.Infrastructure.Tests.Workflow.Expressions;
++
++using RPA.Infrastructure.Workflow;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++public class StringFunctionsTests
++{
++    private static object? Eval(string expr, params (string, object?)[] vars)
++    {
++        var scope = new VariableScope();
++        foreach (var (k, v) in vars) { scope.SetGlobalVariable(k, v); }
++        return new ExpressionEngine(scope).Evaluate(expr);
++    }
++
++    [Fact] public void Upper() => Assert.Equal("ABC", Eval("Upper(\"abc\")"));
++    [Fact] public void Lower() => Assert.Equal("abc", Eval("Lower(\"ABC\")"));
++    [Fact] public void Trim() => Assert.Equal("x", Eval("Trim(\"  x  \")"));
++    [Fact] public void Length() => Assert.Equal(3L, Eval("Length(\"abc\")"));
++    [Fact] public void Substring_StartLen() => Assert.Equal("bc", Eval("Substring(\"abcd\", 1, 2)"));
++    [Fact] public void Substring_StartOnly() => Assert.Equal("cd", Eval("Substring(\"abcd\", 2)"));
++    [Fact] public void Replace() => Assert.Equal("a-b", Eval("Replace(\"a_b\", \"_\", \"-\")"));
++    [Fact] public void Contains() => Assert.Equal(true, Eval("Contains(\"abc\", \"b\")"));
++    [Fact] public void StartsWith() => Assert.Equal(true, Eval("StartsWith(\"abc\", \"ab\")"));
++    [Fact] public void EndsWith() => Assert.Equal(true, Eval("EndsWith(\"abc\", \"bc\")"));
++    [Fact] public void IndexOf() => Assert.Equal(1L, Eval("IndexOf(\"abc\", \"b\")"));
++    [Fact] public void PadLeft() => Assert.Equal("007", Eval("PadLeft(\"7\", 3, \"0\")"));
++    [Fact] public void PadRight() => Assert.Equal("7..", Eval("PadRight(\"7\", 3, \".\")"));
++    [Fact] public void Concat_Variadic() => Assert.Equal("abc", Eval("Concat(\"a\", \"b\", \"c\")"));
++
++    [Fact] public void PadLeft_NegativeLength_ThrowsBusiness()
++        => Assert.Throws<RPA.Domain.Exceptions.BusinessException>(() => Eval("PadLeft(\"7\", -1, \"0\")"));
++
++    [Fact] public void PadRight_NegativeLength_ThrowsBusiness()
++        => Assert.Throws<RPA.Domain.Exceptions.BusinessException>(() => Eval("PadRight(\"7\", -1, \".\")"));
++}
+diff --git a/tests/RPA.WebAPI.Tests/ExpressionControllerTests.cs b/tests/RPA.WebAPI.Tests/ExpressionControllerTests.cs
+new file mode 100644
+index 0000000..648e7ed
+--- /dev/null
++++ b/tests/RPA.WebAPI.Tests/ExpressionControllerTests.cs
+@@ -0,0 +1,52 @@
++namespace RPA.WebAPI.Tests;
++
++using System.Linq;
++using System.Net.Http.Json;
++using System.Threading.Tasks;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Options;
++using RPA.Infrastructure.Authentication;
++using RPA.Infrastructure.Workflow.Expressions;
++using Xunit;
++
++/// <summary>
++/// Task 6 — GET /api/expression/functions (FunctionRegistry.Catalog) uç noktası testleri.
++/// </summary>
++public class ExpressionControllerTests : IClassFixture<WebApplicationFactory<Program>>
++{
++    private readonly WebApplicationFactory<Program> _factory;
++
++    public ExpressionControllerTests(WebApplicationFactory<Program> factory) => _factory = factory;
++
++    private string GenerateToken()
++    {
++        using var scope = _factory.Services.CreateScope();
++        var opts = scope.ServiceProvider.GetRequiredService<IOptions<AuthenticationOptions>>();
++        return new JwtTokenService(opts).GenerateToken("studio-user", new[] { "Designer" });
++    }
++
++    private HttpClient AuthedClient()
++    {
++        var client = _factory.CreateClient();
++        client.DefaultRequestHeaders.Authorization =
++            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", GenerateToken());
++        return client;
++    }
++
++    [Fact]
++    public async Task GetFunctions_ReturnsCatalog_WithCategoriesAndSignatures()
++    {
++        var client = AuthedClient();
++
++        var functions = await client.GetFromJsonAsync<List<ExpressionFunctionInfo>>("/api/expression/functions");
++
++        Assert.NotNull(functions);
++        Assert.Contains(functions!, f => f.Name == "Format" && f.Category == "Tarih");
++        Assert.Contains(functions!, f => f.Name == "Upper" && f.Category == "Metin");
++        Assert.Contains(functions!, f => f.Name == "ToInt" && f.Category == "Dönüşüm");
++        var format = functions!.First(f => f.Name == "Format");
++        Assert.Equal(3, format.Parameters.Count);
++        Assert.True(format.Parameters[2].Optional); // kültür opsiyonel
++    }
++}

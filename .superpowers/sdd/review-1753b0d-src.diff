@@ -1,0 +1,265 @@
+# Commit
+1753b0d feat(vision): Vision.ClickTextOffset aktivitesi + katalog/DI
+
+# Stat (bin/obj excluded)
+ .../Activities/Vision/VisionActivities.cs          | 82 ++++++++++++++++++++++
+ .../Workflow/ActivityRegistry.cs                   |  9 +++
+ .../WorkflowServiceCollectionExtensions.cs         |  1 +
+ .../Activities/VisionActivitiesTests.cs            | 38 ++++++++++
+ .../Workflow/VisionCatalogTests.cs                 |  3 +-
+ 5 files changed, 132 insertions(+), 1 deletion(-)
+
+# Diff (bin/obj excluded)
+diff --git a/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs b/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
+index bf163c8..f52ad27 100644
+--- a/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
++++ b/src/RPA.Infrastructure/Activities/Vision/VisionActivities.cs
+@@ -405,20 +405,102 @@ public sealed class VisionTextExistsActivity : IActivity
+         var text = VisionMeta.RequireText(context);
+         var language = VisionMeta.LanguageOrDefault(context);
+         var matchMode = VisionMeta.MatchModeOrDefault(context);
+         var timeoutMs = context.GetVariable<int>("timeoutMs");
+         var exists = await _channel.TextExistsAsync(text, language, matchMode, timeoutMs);
+         context.SetVariable("exists", exists);
+         return new() { ["exists"] = exists };
+     }
+ }
+ 
++/// <summary>Ekranda OCR metin çapasını bulur, kelime kutusunun merkezinden (dx,dy) ofsetle tıklar.</summary>
++public sealed class VisionClickTextOffsetActivity : IActivity
++{
++    private readonly IVisionAutomationChannel _channel;
++    public VisionClickTextOffsetActivity(IVisionAutomationChannel channel)
++        => _channel = channel ?? throw new ArgumentNullException(nameof(channel));
++
++    public ActivityMetadata GetMetadata() => new()
++    {
++        ActivityId = "Vision.ClickTextOffset",
++        DisplayName = "Çapaya Göre Tıkla (OCR)",
++        Category = VisionMeta.Category,
++        Description = "OCR ile bir metin çapasını bulur ve ondan piksel ofsetle tıklar " +
++                      "(etiketin yanındaki boş alan gibi hedefler). 🎯 ile çapa + hedef nokta seçin.",
++        Inputs = new()
++        {
++            new ActivityParameter
++            {
++                Name = "anchor", Type = "string", Required = true,
++                Description = "Çapa + ofset (JSON): {anchorText, dx, dy}. 🎯 ile oluşturun.",
++                PickerKind = "text-offset",
++            },
++            VisionMeta.Language(),
++            VisionMeta.MatchMode(),
++            VisionMeta.ClickType(),
++            new ActivityParameter { Name = "timeoutMs", Type = "int", Required = false, Description = "Zaman aşımı (ms).", DefaultValue = 5000 },
++        },
++        Outputs = new(),
++        RequiredCapabilities = new() { VisionMeta.Capability },
++        ExceptionClassification = new ExceptionClassificationRule { Condition = "Timeout", Classification = RPA.Domain.Enums.ExceptionType.System },
++    };
++
++    public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
++    {
++        var spec = TextOffsetSpec.Parse(context.GetVariable<string?>("anchor"));
++        var language = VisionMeta.LanguageOrDefault(context);
++        var matchMode = VisionMeta.MatchModeOrDefault(context);
++        var clickType = VisionMeta.ClickTypeOrNull(context);
++        var timeoutMs = context.GetVariable<int>("timeoutMs");
++        if (timeoutMs <= 0)
++        {
++            timeoutMs = 5000;
++        }
++        context.Log($"Çapaya göre tıklanıyor: '{spec.AnchorText}' ofset ({spec.Dx},{spec.Dy}).");
++        await _channel.ClickTextOffsetAsync(spec.AnchorText, spec.Dx, spec.Dy, language, matchMode, clickType, timeoutMs);
++        return new();
++    }
++}
++
++/// <summary>Çapa+ofset spesifikasyonu: OCR ile bulunacak metin ve kelime kutusu merkezinden ofset.</summary>
++internal readonly record struct TextOffsetSpec(string AnchorText, int Dx, int Dy)
++{
++    public static TextOffsetSpec Parse(string? json)
++    {
++        if (string.IsNullOrWhiteSpace(json))
++        {
++            throw new BusinessException("'anchor' parametresi boş olamaz.");
++        }
++        System.Text.Json.JsonDocument doc;
++        try
++        {
++            doc = System.Text.Json.JsonDocument.Parse(json);
++        }
++        catch (System.Text.Json.JsonException ex)
++        {
++            throw new BusinessException($"'anchor' geçerli bir JSON değil: {ex.Message}");
++        }
++        using (doc)
++        {
++            var root = doc.RootElement;
++            var text = root.TryGetProperty("anchorText", out var t) ? t.GetString() : null;
++            if (string.IsNullOrWhiteSpace(text))
++            {
++                throw new BusinessException("'anchorText' boş olamaz.");
++            }
++            var dx = root.TryGetProperty("dx", out var x) && x.TryGetInt32(out var xi) ? xi : 0;
++            var dy = root.TryGetProperty("dy", out var y) && y.TryGetInt32(out var yi) ? yi : 0;
++            return new TextOffsetSpec(text, dx, dy);
++        }
++    }
++}
++
+ /// <summary>region parametresini {x,y,width,height} JSON'undan çözer; boşsa null bileşenler (tam ekran).</summary>
+ internal readonly record struct VisionRegion(int? X, int? Y, int? Width, int? Height)
+ {
+     public static VisionRegion Parse(string? json)
+     {
+         if (string.IsNullOrWhiteSpace(json))
+         {
+             return new VisionRegion(null, null, null, null);
+         }
+         try
+diff --git a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+index aa98e42..32cee9a 100644
+--- a/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
++++ b/src/RPA.Infrastructure/Workflow/ActivityRegistry.cs
+@@ -462,19 +462,28 @@ public static class ActivityRegistry
+ 
+         b.Activity("Vision.ClickText").DisplayName("Metne Tıkla (OCR)").Category(CatVision).Capability(cap)
+             .Description("OCR ile bir metni bulur ve tıklar (timeout → System).")
+             .Input("text", "string")
+             .Input("language", "string", required: false, defaultValue: "tur+eng")
+             .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+             .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
+             .Input("timeoutMs", "int", required: false, defaultValue: 5000)
+             .ExceptionClassification("Timeout", ExceptionType.System);
+ 
++        b.Activity("Vision.ClickTextOffset").DisplayName("Çapaya Göre Tıkla (OCR)").Category(CatVision).Capability(cap)
++            .Description("OCR metin çapasından piksel ofsetle tıklar (etiket-yanı boş alanlar).")
++            .Input("anchor", "string", pickerKind: "text-offset", description: "Çapa + ofset (JSON): {anchorText, dx, dy}.")
++            .Input("language", "string", required: false, defaultValue: "tur+eng")
++            .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
++            .Input("clickType", "string", required: false, defaultValue: "left", options: new[] { "left", "right", "double" })
++            .Input("timeoutMs", "int", required: false, defaultValue: 5000)
++            .ExceptionClassification("Timeout", ExceptionType.System);
++
+         b.Activity("Vision.TextExists").DisplayName("Metin Var mı? (OCR)").Category(CatVision).Capability(cap)
+             .Description("Metin ekranda var mı; 'exists' (bool) döner, fırlatmaz.")
+             .Input("text", "string")
+             .Input("language", "string", required: false, defaultValue: "tur+eng")
+             .Input("matchMode", "string", required: false, defaultValue: "contains", options: new[] { "contains", "exact" })
+             .Input("timeoutMs", "int", required: false, defaultValue: 0)
+             .Output("exists", "bool");
+     }
+ }
+diff --git a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+index 968cd0a..227177a 100644
+--- a/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
++++ b/src/RPA.Infrastructure/Workflow/WorkflowServiceCollectionExtensions.cs
+@@ -63,20 +63,21 @@ public static class WorkflowServiceCollectionExtensions
+ 
+         // Paket F: Görüntü/OCR fallback aktiviteleri (Vision.*). IVisionAutomationChannel
+         // implementasyonu Agent sürecinde kayıtlıdır; aktiviteler yalnız arayüze bağlıdır.
+         services.TryAddSingleton<IVisionAutomationChannel, RPA.Infrastructure.Activities.Vision.UnavailableVisionAutomationChannel>();
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickActivity>("Vision.Click");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickSequenceActivity>("Vision.ClickSequence");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionWaitForActivity>("Vision.WaitFor");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionExistsActivity>("Vision.Exists");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionGetTextActivity>("Vision.GetText");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextActivity>("Vision.ClickText");
++        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionClickTextOffsetActivity>("Vision.ClickTextOffset");
+         services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.Vision.VisionTextExistsActivity>("Vision.TextExists");
+ 
+         services.AddSingleton<IActivityFactory>(sp =>
+             new DelegateActivityFactory(activityId => sp.GetKeyedService<IActivity>(activityId)));
+ 
+         services.AddTransient<IWorkflowRunner, BaseRunner>();
+ 
+         // Task 4.5: Component publish/approve governance (Spec Bölüm 9).
+         // Bellek-içi depo — DB persistansı ayrı bir görev kapsamındadır.
+         services.AddSingleton<InMemoryComponentPublishRepository>();
+diff --git a/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs b/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
+index 35dbeee..ee935ec 100644
+--- a/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
++++ b/tests/RPA.Infrastructure.Tests/Activities/VisionActivitiesTests.cs
+@@ -113,11 +113,49 @@ public class VisionActivitiesTests
+ 
+     [Fact]
+     public async Task ClickText_EmptyText_ThrowsBusiness()
+     {
+         var channel = new Mock<IVisionAutomationChannel>();
+         var activity = new VisionClickTextActivity(channel.Object);
+         var ctx = Ctx(new() { ["text"] = "  " });
+ 
+         await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
+     }
++
++    [Fact]
++    public async Task ClickTextOffset_EmptyAnchorText_ThrowsBusiness()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextOffsetActivity(channel.Object);
++        var ctx = Ctx(new() { ["anchor"] = "{\"anchorText\":\"\",\"dx\":10,\"dy\":0}" });
++
++        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
++    }
++
++    [Fact]
++    public async Task ClickTextOffset_InvalidJson_ThrowsBusiness()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextOffsetActivity(channel.Object);
++        var ctx = Ctx(new() { ["anchor"] = "not-json" });
++
++        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx.Object));
++    }
++
++    [Fact]
++    public async Task ClickTextOffset_Valid_CallsChannelWithParsedValuesAndDefaults()
++    {
++        var channel = new Mock<IVisionAutomationChannel>();
++        var activity = new VisionClickTextOffsetActivity(channel.Object);
++        var ctx = Ctx(new()
++        {
++            ["anchor"] = "{\"anchorText\":\"Malzeme No\",\"dx\":120,\"dy\":-4}",
++            ["timeoutMs"] = 0,
++        });
++
++        await activity.ExecuteAsync(ctx.Object);
++
++        // language boş → tur+eng; matchMode boş → contains; clickType null → left kanala bırakılır; timeoutMs 0 → 5000
++        channel.Verify(c => c.ClickTextOffsetAsync(
++            "Malzeme No", 120, -4, "tur+eng", "contains", null, 5000), Times.Once);
++    }
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+index 2dbf072..c2280e7 100644
+--- a/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
++++ b/tests/RPA.Infrastructure.Tests/Workflow/VisionCatalogTests.cs
+@@ -6,26 +6,27 @@ using Xunit;
+ 
+ public class VisionCatalogTests
+ {
+     [Theory]
+     [InlineData("Vision.Click")]
+     [InlineData("Vision.ClickSequence")]
+     [InlineData("Vision.WaitFor")]
+     [InlineData("Vision.Exists")]
+     [InlineData("Vision.GetText")]
+     [InlineData("Vision.ClickText")]
++    [InlineData("Vision.ClickTextOffset")]
+     [InlineData("Vision.TextExists")]
+     public void Catalog_ContainsVisionActivity(string activityId)
+     {
+         var catalog = ActivityRegistry.BuildCatalog();
+         Assert.Contains(catalog, a => a.Key == activityId);
+     }
+ 
+     [Fact]
+     public void VisionActivities_HaveVisionCapability()
+     {
+         var catalog = ActivityRegistry.BuildCatalog();
+         var vision = catalog.Where(a => a.Key.StartsWith("Vision.")).ToList();
+-        Assert.Equal(7, vision.Count);
++        Assert.Equal(8, vision.Count);
+         Assert.All(vision, a => Assert.Contains("vision", a.Value.RequiredCapabilities));
+     }
+ }

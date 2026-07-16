@@ -1,0 +1,647 @@
+# Review package: baed01f..HEAD
+
+## Commits
+4b23d71 fix(studio): bağlantı seçim durumu tutarlılığı + read-only guard
+30b6c76 feat(studio): mouse ile düğüm bağlama ve bağlantı seç/sil
+
+## Files changed
+ .../studio/designer/canvas/canvas.component.html   |   4 +-
+ .../studio/designer/canvas/canvas.component.scss   |  10 ++
+ .../designer/canvas/canvas.component.spec.ts       | 126 ++++++++++++++++++++
+ .../app/studio/designer/canvas/canvas.component.ts | 130 ++++++++++++++++++++-
+ .../app/studio/designer/canvas/node.component.html |  14 ++-
+ .../app/studio/designer/canvas/node.component.scss |   5 +
+ .../studio/designer/canvas/node.component.spec.ts  |  24 ++++
+ .../app/studio/designer/canvas/node.component.ts   |  13 +++
+ 8 files changed, 321 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html
+index a5e71fb..d08f5be 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.html
+@@ -52,14 +52,14 @@
+     </button>
+   </div>
+ 
+   <div
+     #reteContainer
+     class="rete-canvas"
+     data-testid="rete-canvas"
+     tabindex="0"
+     role="application"
+     [attr.aria-label]="'canvas.ariaLabel' | translate"
+-    (keydown.delete)="selected && deleteNode(selected)"
+-    (keydown.backspace)="selected && deleteNode(selected)"
++    (keydown.delete)="onDeleteKey()"
++    (keydown.backspace)="onDeleteKey()"
+   ></div>
+ </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss
+index 9dd19a6..941bcdb 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.scss
+@@ -71,10 +71,20 @@
+   overflow: visible;
+   pointer-events: none;
+   z-index: 1;
+ 
+   &__path {
+     stroke: #2563eb;
+     stroke-width: 2;
+     fill: none;
+   }
+ }
++
++.canvas-connections__path--pending {
++  stroke-dasharray: 6 4;
++  opacity: 0.6;
++}
++
++.canvas-connections__path--selected {
++  stroke: #2563eb;
++  stroke-width: 3;
++}
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
+index c722b4a..95844d3 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.spec.ts
+@@ -252,11 +252,137 @@ describe('CanvasComponent', () => {
+       const del: HTMLElement =
+         fixture.nativeElement.querySelector('[data-testid="canvas-node-delete"]');
+       del.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+       fixture.detectChanges();
+       await new Promise((r) => setTimeout(r, 0));
+ 
+       expect(component.editor.getNode(id)).toBeUndefined();
+       expect(component.editor.getNodes().length).toBe(0);
+     });
+   });
++
++  describe('interactive connection lifecycle', () => {
++    it('creates a connection via beginConnection → completeConnection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++
++      component.beginConnection(a);
++      const connId = await component.completeConnection(b);
++
++      expect(connId).toBeTruthy();
++      expect(component.editor.getConnections().length).toBe(1);
++      const conn = component.editor.getConnections()[0];
++      expect(conn.source).toBe(a);
++      expect(conn.target).toBe(b);
++    });
++
++    it('cancelConnection drops the pending connection without creating one', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++
++      component.beginConnection(a);
++      component.cancelConnection();
++      const connId = await component.completeConnection(b);
++
++      expect(connId).toBeNull(); // pending yoktu
++      expect(component.editor.getConnections().length).toBe(0);
++    });
++
++    it('refuses a duplicate connection between the same pair', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      await component.connectNodes(a, b);
++
++      const dup = await component.connectNodes(a, b);
++
++      expect(dup).toBeNull();
++      expect(component.editor.getConnections().length).toBe(1);
++    });
++
++    it('completeConnection on the source node itself refuses (self-connection)', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      component.beginConnection(a);
++      const connId = await component.completeConnection(a);
++      expect(connId).toBeNull();
++      expect(component.editor.getConnections().length).toBe(0);
++    });
++
++    it('selects a connection and deletes it via deleteSelectedConnection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const connId = await component.connectNodes(a, b);
++
++      component.selectConnection(connId!);
++      expect(component.selectedConnection).toBe(connId);
++
++      await component.deleteSelectedConnection();
++      expect(component.editor.getConnections().length).toBe(0);
++      expect(component.selectedConnection).toBeNull();
++    });
++
++    it('emits graphChanged when a connection is created interactively', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const events: unknown[] = [];
++      component.graphChanged.subscribe((g) => events.push(g));
++
++      component.beginConnection(a);
++      await component.completeConnection(b);
++
++      expect(events.length).toBeGreaterThan(0);
++    });
++
++    it('clears selectedConnection when the selected connection is removed via deleteConnection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const connId = await component.connectNodes(a, b);
++
++      component.selectConnection(connId!);
++      expect(component.selectedConnection).toBe(connId);
++
++      await component.deleteConnection(connId!);
++      expect(component.selectedConnection).toBeNull();
++    });
++
++    it('clears selectedConnection when deleteNode cascades removal of the selected connection', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      const connId = await component.connectNodes(a, b);
++
++      component.selectConnection(connId!);
++      expect(component.selectedConnection).toBe(connId);
++
++      await component.deleteNode(a);
++      expect(component.selectedConnection).toBeNull();
++    });
++  });
++
++  describe('read-only connection drag guard', () => {
++    it('beginConnection does not throw on a read-only canvas', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      component.readOnly = true;
++      expect(() => component.beginConnection(a)).not.toThrow();
++    });
++
++    it('completeConnection resolves to null on a read-only canvas and creates no connections', async () => {
++      await ready();
++      const a = await component.addNode('A');
++      const b = await component.addNode('B');
++      component.readOnly = true;
++
++      component.beginConnection(a);
++      const connId = await component.completeConnection(b);
++
++      expect(connId).toBeNull();
++      expect(component.editor.getConnections().length).toBe(0);
++    });
++  });
+ });
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
+index fd30e58..83c070c 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/canvas.component.ts
+@@ -117,20 +117,23 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+   @Output() readonly graphChanged = new EventEmitter<WorkflowVersion>();
+ 
+   editor!: NodeEditor<Schemes>;
+   area!: AreaPlugin<Schemes, AreaExtra>;
+   history!: HistoryPlugin<Schemes>;
+ 
+   private connectionPlugin!: ConnectionPlugin<Schemes, AreaExtra>;
+   private selectedNodeId: string | null = null;
+   private ready = false;
+   private suppressEvents = false;
++  private pendingConnectionFrom: string | null = null;
++  private pendingPath?: SVGPathElement;
++  private selectedConnectionId: string | null = null;
+ 
+   /** Resolves once the editor and plugins are wired up (awaited by tests). */
+   initialized: Promise<void> = Promise.resolve();
+ 
+   private readonly nodeRefs = new Map<string, ComponentRef<NodeComponent>>();
+   private connectionSvg?: SVGSVGElement;
+   private connectionGroup?: SVGGElement;
+ 
+   private readonly appRef = inject(ApplicationRef);
+   private readonly envInjector = inject(EnvironmentInjector);
+@@ -175,20 +178,36 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+ 
+     AreaExtensions.selectableNodes(this.area, AreaExtensions.selector(), {
+       accumulating: AreaExtensions.accumulateOnCtrl(),
+     });
+     AreaExtensions.simpleNodesOrder(this.area);
+ 
+     this.setupConnectionLayer(container);
+     this.registerRenderPipe();
+     this.registerChangePipes();
+ 
++    container.addEventListener('pointermove', (e: PointerEvent) =>
++      this.updatePendingPath(e.clientX, e.clientY),
++    );
++    container.addEventListener('pointerup', () => this.cancelConnection());
++    container.addEventListener('keydown', (e: KeyboardEvent) => {
++      if (e.key === 'Escape') {
++        this.cancelConnection();
++      }
++    });
++    // Bağlantı path'ine tıklayınca seç (event delegation — path'ler her çizimde yenilenir).
++    this.connectionSvg?.addEventListener('click', (e: MouseEvent) => {
++      const target = e.target as SVGElement;
++      const connId = target?.getAttribute?.('data-connection-id');
++      this.selectConnection(connId ?? null);
++    });
++
+     this.ready = true;
+   }
+ 
+   /** jsdom (unit tests) lacks ResizeObserver, which AreaPlugin subscribes to. */
+   private ensureResizeObserver(): void {
+     const g = globalThis as unknown as { ResizeObserver?: unknown };
+     if (typeof g.ResizeObserver === 'undefined') {
+       g.ResizeObserver = class {
+         observe(): void {}
+         unobserve(): void {}
+@@ -224,20 +243,26 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+           const id = (ctx.data as { id: string } | undefined)?.id ?? null;
+           this.setSelected(id);
+           break;
+         }
+       }
+       return context;
+     });
+ 
+     this.editor.addPipe((context) => {
+       const type = (context as { type?: string }).type;
++      if (type === 'connectionremoved') {
++        const removedId = (context as { data?: { id?: string } }).data?.id;
++        if (removedId && this.selectedConnectionId === removedId) {
++          this.selectedConnectionId = null;
++        }
++      }
+       if (
+         !this.suppressEvents &&
+         (type === 'nodecreated' ||
+           type === 'noderemoved' ||
+           type === 'connectioncreated' ||
+           type === 'connectionremoved')
+       ) {
+         this.redrawConnections();
+         this.emitChange();
+       }
+@@ -267,20 +292,22 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+         existing.destroy();
+         this.nodeRefs.delete(node.id);
+       }
+       const ref = createComponent(NodeComponent, {
+         environmentInjector: this.envInjector,
+         hostElement: data.element,
+       });
+       ref.setInput('node', this.toView(node));
+       ref.instance.nodeSelect.subscribe((id: string) => this.select(id));
+       ref.instance.nodeDelete.subscribe((id: string) => void this.deleteNode(id));
++      ref.instance.connectStart.subscribe((id: string) => this.beginConnection(id));
++      ref.instance.connectDrop.subscribe((id: string) => void this.completeConnection(id));
+       this.appRef.attachView(ref.hostView);
+       ref.changeDetectorRef.detectChanges();
+       this.nodeRefs.set(node.id, ref);
+     } catch {
+       // Headless/edge rendering failures must never corrupt the graph model.
+     }
+   }
+ 
+   private unmountNode(data: { element: HTMLElement }): void {
+     for (const [id, ref] of this.nodeRefs) {
+@@ -339,21 +366,27 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+     );
+     group.replaceChildren();
+     for (const conn of this.editor.getConnections()) {
+       const from = this.socketPosition(conn.source, 'out');
+       const to = this.socketPosition(conn.target, 'in');
+       if (!from || !to) {
+         continue;
+       }
+       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+       path.setAttribute('d', ConnectionComponent.buildPath(from, to));
+-      path.setAttribute('class', 'canvas-connections__path');
++      path.setAttribute(
++        'class',
++        conn.id === this.selectedConnectionId
++          ? 'canvas-connections__path canvas-connections__path--selected'
++          : 'canvas-connections__path',
++      );
++      path.setAttribute('pointer-events', 'stroke');
+       path.setAttribute('data-connection-id', conn.id);
+       path.setAttribute('data-testid', 'canvas-connection-path');
+       path.setAttribute('fill', 'none');
+       group.appendChild(path);
+     }
+   }
+ 
+   private socketPosition(nodeId: string, port: 'in' | 'out'): NodePosition | null {
+     const view = this.area.nodeViews.get(nodeId);
+     const node = this.editor.getNode(nodeId);
+@@ -397,28 +430,85 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+   }
+ 
+   /** Connects two nodes (source out → target in). Returns the connection id. */
+   async connectNodes(fromId: string, toId: string): Promise<string | null> {
+     this.assertWritable();
+     const source = this.editor.getNode(fromId);
+     const target = this.editor.getNode(toId);
+     if (!source || !target || fromId === toId) {
+       return null;
+     }
++    const duplicate = this.editor
++      .getConnections()
++      .some((c) => c.source === fromId && c.target === toId);
++    if (duplicate) {
++      return null;
++    }
+     const connection: FlowConnection = new ClassicPreset.Connection<
+       ClassicPreset.Node,
+       ClassicPreset.Node
+     >(source, 'out', target, 'in');
+     await this.editor.addConnection(connection);
+     return connection.id;
+   }
+ 
++  /** Out soketinden bağlantı sürüklemesi başlatır (geçici kesikli çizgi). */
++  beginConnection(nodeId: string): void {
++    if (this.readOnly) {
++      return;
++    }
++    if (!this.editor.getNode(nodeId)) {
++      return;
++    }
++    this.pendingConnectionFrom = nodeId;
++    this.ensurePendingPath();
++  }
++
++  /** Sürüklemeyi hedef node üzerinde tamamlar; kural ihlalinde null döner. */
++  async completeConnection(targetNodeId: string): Promise<string | null> {
++    if (this.readOnly) {
++      this.cancelConnection();
++      return null;
++    }
++    const from = this.pendingConnectionFrom;
++    this.cancelConnection();
++    if (!from) {
++      return null;
++    }
++    return this.connectNodes(from, targetNodeId);
++  }
++
++  /** Bekleyen bağlantı sürüklemesini iptal eder ve geçici çizgiyi kaldırır. */
++  cancelConnection(): void {
++    this.pendingConnectionFrom = null;
++    this.pendingPath?.remove();
++    this.pendingPath = undefined;
++  }
++
++  selectConnection(connectionId: string | null): void {
++    this.selectedConnectionId = connectionId;
++    this.redrawConnections();
++  }
++
++  get selectedConnection(): string | null {
++    return this.selectedConnectionId;
++  }
++
++  async deleteSelectedConnection(): Promise<boolean> {
++    if (!this.selectedConnectionId) {
++      return false;
++    }
++    const id = this.selectedConnectionId;
++    this.selectedConnectionId = null;
++    return this.deleteConnection(id);
++  }
++
+   async deleteNode(nodeId: string): Promise<boolean> {
+     this.assertWritable();
+     for (const conn of this.editor.getConnections()) {
+       if (conn.source === nodeId || conn.target === nodeId) {
+         await this.editor.removeConnection(conn.id);
+       }
+     }
+     const removed = await this.editor.removeNode(nodeId);
+     if (this.selectedNodeId === nodeId) {
+       this.setSelected(null);
+@@ -602,11 +692,49 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
+   private assertWritable(): void {
+     if (this.readOnly) {
+       throw new Error('Canvas is read-only');
+     }
+   }
+ 
+   private nextPosition(): NodePosition {
+     const count = this.editor.getNodes().length;
+     return { x: 80 + (count % 4) * 220, y: 80 + Math.floor(count / 4) * 140 };
+   }
++
++  private ensurePendingPath(): void {
++    if (!this.connectionGroup || this.pendingPath) {
++      return;
++    }
++    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
++    path.setAttribute('class', 'canvas-connections__path canvas-connections__path--pending');
++    path.setAttribute('data-testid', 'canvas-connection-pending');
++    path.setAttribute('fill', 'none');
++    this.connectionGroup.appendChild(path);
++    this.pendingPath = path;
++  }
++
++  /** Container koordinatındaki imleç konumuna göre geçici çizgiyi günceller. */
++  private updatePendingPath(clientX: number, clientY: number): void {
++    if (!this.pendingConnectionFrom || !this.pendingPath) {
++      return;
++    }
++    const from = this.socketPosition(this.pendingConnectionFrom, 'out');
++    if (!from) {
++      return;
++    }
++    const rect = this.reteContainer.nativeElement.getBoundingClientRect();
++    const t = this.area.area.transform;
++    const to: NodePosition = {
++      x: (clientX - rect.left - t.x) / t.k,
++      y: (clientY - rect.top - t.y) / t.k,
++    };
++    this.pendingPath.setAttribute('d', ConnectionComponent.buildPath(from, to));
++  }
++
++  onDeleteKey(): void {
++    if (this.selectedConnectionId) {
++      void this.deleteSelectedConnection();
++    } else if (this.selectedNodeId) {
++      void this.deleteNode(this.selectedNodeId);
++    }
++  }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html
+index 11bc29a..fbf8017 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.html
+@@ -8,36 +8,46 @@
+   [attr.aria-label]="('canvas.node.ariaLabel' | translate) + ': ' + node.label"
+   [attr.aria-selected]="!!node.selected"
+   [attr.data-node-id]="node.id"
+   [attr.data-node-type]="node.nodeType"
+   [attr.data-breakpoint]="!!node.breakpoint"
+   [attr.data-current]="!!node.current"
+   data-testid="canvas-node"
+   (click)="select()"
+   (keydown.enter)="select()"
+   (keydown.space)="select()"
++  (pointerup)="onPointerUp()"
+ >
+   @if (node.breakpoint) {
+     <span class="canvas-node__breakpoint" data-testid="canvas-node-breakpoint" aria-hidden="true"></span>
+   }
+-  <span class="canvas-node__socket canvas-node__socket--in" aria-hidden="true"></span>
++  <span
++    class="canvas-node__socket canvas-node__socket--in"
++    data-testid="canvas-node-socket-in"
++    aria-hidden="true"
++  ></span>
+ 
+   <header class="canvas-node__header">
+     <span class="canvas-node__icon" aria-hidden="true">{{ node.icon || '▸' }}</span>
+     <span class="canvas-node__title" data-testid="canvas-node-title">{{ node.label }}</span>
+     <button
+       type="button"
+       class="canvas-node__delete"
+       data-testid="canvas-node-delete"
+       [attr.aria-label]="'canvas.node.delete' | translate"
+       (click)="remove($event)"
+     >
+       ✕
+     </button>
+   </header>
+ 
+   @if (node.activityId) {
+     <p class="canvas-node__subtitle">{{ node.activityId }}</p>
+   }
+ 
+-  <span class="canvas-node__socket canvas-node__socket--out" aria-hidden="true"></span>
++  <span
++    class="canvas-node__socket canvas-node__socket--out"
++    data-testid="canvas-node-socket-out"
++    aria-hidden="true"
++    (pointerdown)="onOutSocketDown($event)"
++  ></span>
+ </div>
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss
+index cd40054..279e88d 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.scss
+@@ -95,20 +95,25 @@
+ 
+   &__socket {
+     position: absolute;
+     left: 50%;
+     transform: translateX(-50%);
+     width: 12px;
+     height: 12px;
+     border-radius: 9999px;
+     background: #2563eb;
+     border: 2px solid #ffffff;
++    cursor: crosshair;
++
++    &:hover {
++      transform: translateX(-50%) scale(1.4);
++    }
+ 
+     &--in {
+       top: -6px;
+     }
+ 
+     &--out {
+       bottom: -6px;
+     }
+   }
+ }
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts
+index b8faeb5..55918b3 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.spec.ts
+@@ -45,11 +45,35 @@ describe('NodeComponent', () => {
+     fixture.nativeElement.querySelector('[data-testid="canvas-node-delete"]').click();
+     expect(deleted).toBe('node-1');
+   });
+ 
+   it('reflects the selected state via aria-selected', () => {
+     fixture.componentRef.setInput('node', { ...view, selected: true });
+     fixture.detectChanges();
+     const el = fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
+     expect(el.getAttribute('aria-selected')).toBe('true');
+   });
++
++  it('emits connectStart on pointerdown at the out socket', () => {
++    const emitted: string[] = [];
++    component.connectStart.subscribe((id) => emitted.push(id));
++    fixture.detectChanges();
++
++    const outSocket: HTMLElement =
++      fixture.nativeElement.querySelector('[data-testid="canvas-node-socket-out"]');
++    outSocket.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
++
++    expect(emitted).toEqual([component.node.id]);
++  });
++
++  it('emits connectDrop on pointerup over the card', () => {
++    const emitted: string[] = [];
++    component.connectDrop.subscribe((id) => emitted.push(id));
++    fixture.detectChanges();
++
++    const card: HTMLElement =
++      fixture.nativeElement.querySelector('[data-testid="canvas-node"]');
++    card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
++
++    expect(emitted).toEqual([component.node.id]);
++  });
+ });
+diff --git a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts
+index c86c3ce..a32e60e 100644
+--- a/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts
++++ b/src/RPA.Studio/src/app/studio/designer/canvas/node.component.ts
+@@ -33,20 +33,33 @@ export interface CanvasNodeView {
+   imports: [CommonModule, TranslatePipe],
+   changeDetection: ChangeDetectionStrategy.OnPush,
+   templateUrl: './node.component.html',
+   styleUrls: ['./node.component.scss'],
+ })
+ export class NodeComponent {
+   @Input({ required: true }) node!: CanvasNodeView;
+ 
+   @Output() readonly nodeSelect = new EventEmitter<string>();
+   @Output() readonly nodeDelete = new EventEmitter<string>();
++  @Output() readonly connectStart = new EventEmitter<string>();
++  @Output() readonly connectDrop = new EventEmitter<string>();
+ 
+   select(): void {
+     this.nodeSelect.emit(this.node.id);
+   }
+ 
+   remove(event: Event): void {
+     event.stopPropagation();
+     this.nodeDelete.emit(this.node.id);
+   }
++
++  onOutSocketDown(event: Event): void {
++    // Rete'nin node-drag yakalamasını engelle; bağlantı sürüklemesi başlasın.
++    event.stopPropagation();
++    event.preventDefault();
++    this.connectStart.emit(this.node.id);
++  }
++
++  onPointerUp(): void {
++    this.connectDrop.emit(this.node.id);
++  }
+ }
