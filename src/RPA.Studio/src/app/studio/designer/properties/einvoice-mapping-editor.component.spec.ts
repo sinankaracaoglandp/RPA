@@ -49,7 +49,7 @@ describe('EInvoiceMappingEditorComponent', () => {
 
     fixture.componentInstance.setStep(2); fixture.detectChanges();
     expect(root.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="einvoice-rule-panel"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="einvoice-fields-panel"]')).toBeTruthy();
 
     fixture.componentInstance.setStep(3); fixture.detectChanges();
     expect(root.querySelector('[data-testid="einvoice-preview-panel"]')).toBeTruthy();
@@ -84,7 +84,9 @@ describe('EInvoiceMappingEditorComponent', () => {
 
   it('offers every rule field and editable kur and IBAN presets', () => {
     const root = fixture.nativeElement as HTMLElement;
-    fixture.componentInstance.setStep(2); fixture.detectChanges();
+    fixture.componentInstance.setStep(2);
+    fixture.componentInstance.openFieldDialog();
+    fixture.detectChanges();
     for (const id of ['source', 'scope', 'xpath', 'regex', 'group', 'type'])
       expect(root.querySelector(`#einvoice-rule-${id}`)).toBeTruthy();
     (root.querySelector('[data-testid="einvoice-preset-iban"]') as HTMLButtonElement).click();
@@ -108,7 +110,9 @@ describe('EInvoiceMappingEditorComponent', () => {
   });
 
   it('provides an editable common invoice-note starter preset', () => {
-    fixture.componentInstance.setStep(2); fixture.detectChanges();
+    fixture.componentInstance.setStep(2);
+    fixture.componentInstance.openFieldDialog();
+    fixture.detectChanges();
     const button = fixture.nativeElement.querySelector('[data-testid="einvoice-preset-note"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     expect(fixture.componentInstance.draft.source).toBe('InvoiceNotes');
@@ -322,6 +326,7 @@ describe('EInvoiceMappingEditorComponent', () => {
       multiple: false,
     };
     component.draftTarget = 'satirlar';
+    component.fieldDialogOpen = true;
     fixture.detectChanges();
     (fixture.nativeElement.querySelector('[data-testid="einvoice-add-rule"]') as HTMLButtonElement).click();
 
@@ -380,6 +385,56 @@ describe('EInvoiceMappingEditorComponent', () => {
     });
     expect(component.collections[0].fields[0].valueXPath)
       .toBe('./cac:Item/cbc:SellersItemIdentification/cbc:ID');
+  });
+
+  it('yaprak öğeye tıklayınca alan ekleme diyaloğu açılır ve yol dolar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    const node = component.findFirst('cbc:ID')!;
+
+    component.selectNode(node);
+
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.draft.valueXPath).toBe('/Invoice/cbc:ID');
+  });
+
+  it('tekrar eden öğeye tıklayınca diyalog açılmaz, scope dolar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    const line = component.findFirst('cac:InvoiceLine')!;
+
+    component.selectNode(line);
+
+    expect(component.fieldDialogOpen).toBe(false);
+    expect(component.collectionScopeXPath).toBe('/Invoice/cac:InvoiceLine');
+  });
+
+  it('saveField alanı ekler ve diyaloğu kapatır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openFieldDialog();
+    component.draft = { name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false };
+
+    component.saveField();
+
+    expect(component.rules[0].name).toBe('faturaNo');
+    expect(component.fieldDialogOpen).toBe(false);
+  });
+
+  it('satır alanı düzenlenip güncellenebilir ve silinebilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+
+    component.editCollectionField('satirlar', 'Miktar');
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.draftTarget).toBe('satirlar');
+    component.draft = { ...component.draft, type: 'decimal' };
+    component.saveField();
+    expect(component.collections[0].fields[0].type).toBe('decimal');
+    expect(component.collections[0].fields.length).toBe(1);
+
+    component.removeCollectionField('satirlar', 'Miktar');
+    expect(component.collections[0].fields.length).toBe(0);
   });
 
   it('örnek XML yüklenince otomatik 2. adıma geçer', () => {

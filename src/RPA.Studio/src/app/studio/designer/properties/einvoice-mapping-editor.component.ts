@@ -141,7 +141,17 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   selectNode(node: XmlTreeNode): void {
     this.draft = { ...this.draft, valueXPath: this.buildXPath(node) };
     if (node.children.length || this.repeatedCount(node) > 1) {
+      // Tekrar eden/dallı öğe → satır dizisi adayı; scope'u doldur, form açma.
       this.collectionScopeXPath = this.buildXPath(node);
+      return;
+    }
+    // Yaprak öğe → doğrudan alan ekleme formunu aç (tıkla-ekle akışı).
+    if (!this.fieldDialogOpen) {
+      this.editingIndex = null;
+      this.editingCollection = null;
+      this.editingFieldName = null;
+      this.draft = { ...this.draft, name: '', source: 'XPath', type: 'string', required: false, multiple: false };
+      this.fieldDialogOpen = true;
     }
   }
 
@@ -162,7 +172,14 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.draft = { ...this.draft, name: '' };
   }
 
-  editRule(index: number): void { this.editingIndex = index; this.draft = { ...this.rules[index] }; }
+  editRule(index: number): void {
+    this.editingIndex = index;
+    this.editingCollection = null;
+    this.editingFieldName = null;
+    this.draftTarget = 'root';
+    this.draft = { ...this.rules[index] };
+    this.fieldDialogOpen = true;
+  }
   saveDraftRule(): void {
     if (!this.isDraftValid()) return;
     if (this.editingIndex === null) { this.addDraftRule(); return; }
@@ -227,6 +244,74 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   activeStep: 1 | 2 | 3 = 1;
   draftTarget = 'root';
   newCollectionOpen = false;
+  fieldDialogOpen = false;
+  private editingCollection: string | null = null;
+  private editingFieldName: string | null = null;
+
+  /** Sağ paneldeki "+ Alan ekle": boş formla diyaloğu açar. */
+  openFieldDialog(): void {
+    this.editingIndex = null;
+    this.editingCollection = null;
+    this.editingFieldName = null;
+    this.draft = { name: '', source: 'XPath', valueXPath: this.draft.valueXPath ?? '', type: 'string', required: false, multiple: false };
+    this.fieldDialogOpen = true;
+    this.cdr?.markForCheck();
+  }
+
+  closeFieldDialog(): void {
+    this.fieldDialogOpen = false;
+    this.editingIndex = null;
+    this.editingCollection = null;
+    this.editingFieldName = null;
+    this.wizardTarget = null;
+    this.cdr?.markForCheck();
+  }
+
+  editCollectionField(collectionName: string, fieldName: string): void {
+    const field = this.collections.find(item => item.name === collectionName)?.fields.find(item => item.name === fieldName);
+    if (!field) return;
+    this.draft = { ...field };
+    this.editingCollection = collectionName;
+    this.editingFieldName = fieldName;
+    this.editingIndex = null;
+    this.draftTarget = collectionName;
+    this.fieldDialogOpen = true;
+    this.cdr?.markForCheck();
+  }
+
+  removeCollectionField(collectionName: string, fieldName: string): void {
+    this.collections = this.collections.map(collection => collection.name !== collectionName
+      ? collection
+      : { ...collection, fields: collection.fields.filter(field => field.name !== fieldName) });
+    this.emitProfileDefinition();
+  }
+
+  /** Diyalogdaki tek kaydet düğmesi: yeni alan / kök alan güncelleme / satır alanı güncelleme. */
+  saveField(): void {
+    if (!this.isDraftValid()) return;
+    if (this.editingCollection && this.editingFieldName) {
+      const target = this.editingCollection;
+      const original = this.editingFieldName;
+      this.collections = this.collections.map(collection => collection.name !== target ? collection : {
+        ...collection,
+        fields: collection.fields.map(field => field.name !== original ? field : {
+          ...this.draft,
+          valueXPath: this.draft.valueXPath ? relativizeXPath(this.draft.valueXPath, collection.scopeXPath) : this.draft.valueXPath,
+        }),
+      });
+      this.emitProfileDefinition();
+    } else if (this.editingIndex !== null) {
+      this.saveDraftRule();
+    } else {
+      this.addDraft();
+    }
+    this.closeFieldDialog();
+  }
+
+  /** Diyalog başlığı ve kaydet düğmesi metni için. */
+  get isEditingField(): boolean {
+    return this.editingIndex !== null || this.editingCollection !== null;
+  }
 
   setStep(step: 1 | 2 | 3): void {
     this.activeStep = step;

@@ -58,3 +58,54 @@
 .einvoice-mapping__hint { font-size: 0.8rem; opacity: 0.75; }
 .einvoice-mapping__collection-title { margin: 0.4rem 0 0.1rem; font-size: 0.85rem;
   span { opacity: 0.6; margin-left: 0.4rem; font-family: monospace; font-size: 0.75rem; } }
+
+/* --- Adım 2: solda ağaç, sağda eklenen alanlar --- */
+.einvoice-mapping__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.einvoice-mapping__group-title {
+  margin: 0.8rem 0 0.3rem; font-size: 0.85rem;
+  .einvoice-mapping__scope { opacity: 0.6; margin-left: 0.4rem; font-family: monospace; font-size: 0.72rem; font-weight: 400; }
+}
+.einvoice-mapping__field-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.einvoice-mapping__field-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.5rem; border: 1px solid #d7dee8; background: #fff;
+}
+.einvoice-mapping__field-main { flex: 1; min-width: 0; display: flex; flex-direction: column;
+  code { font-size: 0.72rem; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+.einvoice-mapping__field-type {
+  font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 0.5rem;
+  background: #eef3ff; color: #1f6feb;
+}
+
+/* --- Alan tanımı diyaloğu --- */
+.einvoice-mapping__overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: rgba(16, 24, 40, 0.45);
+}
+.einvoice-mapping__dialog {
+  display: flex; flex-direction: column;
+  width: min(38rem, 100%); max-height: 90vh;
+  border: 1px solid #c7d1df; border-radius: 0.4rem; background: #fff;
+}
+.einvoice-mapping__dialog-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.7rem 0.9rem; border-bottom: 1px solid #e1e7ef;
+  h4 { margin: 0; font-size: 0.95rem; }
+}
+.einvoice-mapping__dialog-body {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  padding: 0.9rem; overflow-y: auto;
+  label { font-size: 0.8rem; font-weight: 600; margin-top: 0.35rem; }
+}
+.einvoice-mapping__checks { display: flex; gap: 1rem; margin: 0.4rem 0;
+  label { display: flex; align-items: center; gap: 0.3rem; margin: 0; font-weight: 400; } }
+.einvoice-mapping__fallback {
+  margin: 0.7rem 0 0; padding: 0.6rem; border: 1px solid #f9a825; border-radius: 0.35rem; background: #fffdf5;
+  legend { padding: 0 0.35rem; font-size: 0.82rem; font-weight: 700; color: #8a6100; }
+}
+.einvoice-mapping__presets { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.3rem; }
+.einvoice-mapping__dialog-actions {
+  display: flex; justify-content: flex-end; gap: 0.5rem;
+  padding: 0.7rem 0.9rem; border-top: 1px solid #e1e7ef;
+}

@@ -66,11 +66,17 @@
               [class.einvoice-profiles__row--active]="selectedProfileId() === profile.id"
               data-testid="einvoice-profile-row"
             >
-              <div class="einvoice-profiles__row-main">
+              <button
+                type="button"
+                class="einvoice-profiles__row-main"
+                data-testid="select-profile"
+                [attr.aria-pressed]="selectedProfileId() === profile.id"
+                (click)="openDraft(profile.id)"
+              >
                 <h3>{{ profile.name }}</h3>
                 <p>{{ profile.description || 'Açıklama yok.' }}</p>
                 <div class="einvoice-profiles__schema-strip" aria-hidden="true"></div>
-              </div>
+              </button>
               <div class="einvoice-profiles__row-actions">
                 <span class="einvoice-profiles__version">
                   @if (latestVersion(profile.id)) {
