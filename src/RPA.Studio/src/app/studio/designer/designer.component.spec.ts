@@ -208,6 +208,36 @@ describe('draft persistence (Paket B)', () => {
     put.flush({ id: 'v1', workflowId: 'w1', version: '1.0.0', jsonDefinition: '{}' });
   });
 
+  it('registers pinned profile schema under the requested object root', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'E-Fatura', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+
+    component.onProfileActivityPropertiesChange('EInvoice.ReadProfile', {
+      profileId: 'profile-1',
+      profileVersion: 2,
+      outputVariable: 'fatura',
+      outputSchemaJson: JSON.stringify({
+        type: 'object',
+        properties: {
+          faturaNo: { type: 'string' },
+          satirlar: { type: 'array', items: { type: 'object', properties: { MalzemeKodu: { type: 'string' } } } },
+        },
+      }),
+    });
+
+    expect(component.variables()).toContainEqual(expect.objectContaining({
+      name: 'fatura',
+      type: 'object',
+      schema: expect.objectContaining({ properties: expect.any(Object) }),
+    }));
+  });
+
   it('sets saveState to error when the save fails', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({

@@ -44,6 +44,13 @@
           >
             Sil
           </button>
+          @if (variable.schema) {
+            <div class="variables-panel__paths" [attr.data-testid]="'variable-paths-' + $index">
+              @for (path of variablePathsFor(variable.name); track path) {
+                <code>{{ path }}</code>
+              }
+            </div>
+          }
         </div>
       }
     </div>

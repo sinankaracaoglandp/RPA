@@ -89,4 +89,34 @@ describe('VariablesPanelComponent', () => {
       { name: 'planlananTarih', type: 'DateTime', scope: 'global', default: '2026-07-10T14:45:00.000Z' },
     ]);
   });
+
+  it('offers collection item fields inside foreach from schema-aware variables', () => {
+    fixture.componentRef.setInput('variables', [
+      {
+        name: 'fatura',
+        type: 'object',
+        scope: 'global',
+        schema: {
+          type: 'object',
+          properties: {
+            faturaNo: { type: 'string' },
+            satirlar: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  MalzemeKodu: { type: 'string' },
+                  Aciklama: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(component.variablePathsFor('fatura.satirlar')).toContain('satir.MalzemeKodu');
+    expect(component.variablePathsFor('fatura')).toContain('fatura.faturaNo');
+    expect(component.variablePathsFor('fatura')).toContain('fatura.satirlar');
+  });
 });

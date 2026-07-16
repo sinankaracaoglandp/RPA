@@ -153,7 +153,36 @@ export class DesignerComponent implements OnDestroy {
     if (nodeId) {
       this.canvas()?.updateNodeProperties(nodeId, properties);
       this.selectedProperties.set(properties);
+      const activity = this.selectedActivityType();
+      if (activity === 'EInvoice.ReadProfile' || activity === 'EInvoice.ReadProfileBatch') {
+        this.onProfileActivityPropertiesChange(activity, properties);
+      }
     }
+  }
+
+  onProfileActivityPropertiesChange(activityType: string, properties: Record<string, unknown>): void {
+    const schema = this.readProfileSchema(properties['outputSchemaJson']);
+    if (!schema) {
+      return;
+    }
+    const fallback = activityType === 'EInvoice.ReadProfileBatch' ? 'faturalar' : 'fatura';
+    const outputVariable = String(properties['outputVariable'] || fallback).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable)) {
+      return;
+    }
+    const type = activityType === 'EInvoice.ReadProfileBatch' ? 'list<object>' : 'object';
+    const nextVariable: WorkflowVariable = {
+      name: outputVariable,
+      type,
+      scope: 'global',
+      schema,
+      description: `E-Fatura profil ${properties['profileId'] ?? ''} v${properties['profileVersion'] ?? ''}`.trim(),
+    };
+    const variables = this.variables();
+    const next = variables.some((variable) => variable.name === outputVariable)
+      ? variables.map((variable) => variable.name === outputVariable ? { ...variable, ...nextVariable } : variable)
+      : [...variables, nextVariable];
+    this.onVariablesChange(next);
   }
 
   onVariablesChange(variables: WorkflowVariable[]): void {
@@ -309,6 +338,23 @@ export class DesignerComponent implements OnDestroy {
     const withVariables = { ...workflow, variables: workflow.variables ?? [] };
     this.workflow.set(withVariables);
     this.variables.set(withVariables.variables ?? []);
+  }
+
+  private readProfileSchema(value: unknown): unknown | null {
+    if (!value) {
+      return null;
+    }
+    if (typeof value === 'object') {
+      return value;
+    }
+    if (typeof value !== 'string') {
+      return null;
+    }
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
   }
 
   onSaveShortcut(event: Event): void {

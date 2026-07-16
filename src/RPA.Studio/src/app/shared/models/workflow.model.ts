@@ -57,6 +57,7 @@ export interface WorkflowVariable {
   scope?: 'local' | 'component' | 'global';
   default?: unknown;
   description?: string;
+  schema?: unknown;
 }
 
 export interface WorkflowVersion {

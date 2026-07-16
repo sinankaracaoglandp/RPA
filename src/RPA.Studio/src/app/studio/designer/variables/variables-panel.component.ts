@@ -68,6 +68,22 @@ export class VariablesPanelComponent {
     return index;
   }
 
+  variablePathsFor(rootPath: string): string[] {
+    const [rootName, ...segments] = rootPath.split('.').filter(Boolean);
+    const variable = this.variables.find((item) => item.name === rootName);
+    if (!variable?.schema || typeof variable.schema !== 'object') {
+      return [];
+    }
+    const schema = this.schemaAt(variable.schema as JsonSchemaLike, segments);
+    if (!schema) {
+      return [];
+    }
+    if (schema.type === 'array' && schema.items) {
+      return this.propertyNames(schema.items).map((name) => `satir.${name}`);
+    }
+    return this.propertyNames(schema).map((name) => `${rootPath}.${name}`);
+  }
+
   private emit(next: WorkflowVariable[]): void {
     this.variables = next;
     this.variablesChange.emit(next);
@@ -144,4 +160,25 @@ export class VariablesPanelComponent {
       pad(parsed.getUTCDate()),
     ].join('-') + `T${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}`;
   }
+
+  private schemaAt(schema: JsonSchemaLike, segments: string[]): JsonSchemaLike | null {
+    let current: JsonSchemaLike | null = schema;
+    for (const segment of segments) {
+      if (!current) return null;
+      if (current.type === 'array') current = current.items ?? null;
+      current = current?.properties?.[segment] ?? null;
+    }
+    return current;
+  }
+
+  private propertyNames(schema: JsonSchemaLike): string[] {
+    const target = schema.type === 'array' ? schema.items : schema;
+    return Object.keys(target?.properties ?? {});
+  }
+}
+
+interface JsonSchemaLike {
+  type?: string;
+  properties?: Record<string, JsonSchemaLike>;
+  items?: JsonSchemaLike;
 }
