@@ -32,7 +32,9 @@
     "credentialsTitle": "Credentials",
     "credentialsDesc": "Vault keys and secret references",
     "licensingTitle": "Licensing",
-    "licensingDesc": "License status, installation request and import"
+    "licensingDesc": "License status, installation request and import",
+    "agentsTitle": "Agents",
+    "agentsDesc": "License seats and agent activation"
   },
   "designer": {
     "save": "Save",
@@ -342,5 +344,28 @@
     "expiresAt": "Expires",
     "seats": "Seats (used / max)",
     "features": "Features"
+  },
+  "agents": {
+    "title": "Orchestrator — Agents",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "seats": "Seats (used / max)",
+    "name": "Name",
+    "status": "Status",
+    "seat": "Seat",
+    "seatConsumed": "Consumes a seat",
+    "seatFree": "No seat",
+    "machine": "Machine",
+    "lastSeen": "Last seen",
+    "actions": "Actions",
+    "create": "Create agent",
+    "namePlaceholder": "New agent name",
+    "activationCode": "Activation code",
+    "activationCodeOnce": "This activation code is shown only once. Copy it now.",
+    "activationCodeExpires": "Expires at",
+    "close": "Close",
+    "disable": "Disable",
+    "deactivate": "Deactivate",
+    "empty": "No agents registered."
   }
 }

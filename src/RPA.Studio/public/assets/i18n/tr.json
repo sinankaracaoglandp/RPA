@@ -32,7 +32,9 @@
     "credentialsTitle": "Credentials",
     "credentialsDesc": "Vault key ve secret referanslari",
     "licensingTitle": "Lisans",
-    "licensingDesc": "Lisans durumu, kurulum talebi ve iceri alma"
+    "licensingDesc": "Lisans durumu, kurulum talebi ve iceri alma",
+    "agentsTitle": "Agentlar",
+    "agentsDesc": "Lisans koltuklari ve agent aktivasyonu"
   },
   "designer": {
     "save": "Kaydet",
@@ -342,5 +344,28 @@
     "expiresAt": "Bitiş",
     "seats": "Koltuk (etkin / azami)",
     "features": "Özellikler"
+  },
+  "agents": {
+    "title": "Orchestrator — Agentlar",
+    "refresh": "Yenile",
+    "loading": "Yükleniyor…",
+    "seats": "Koltuk (etkin / azami)",
+    "name": "Ad",
+    "status": "Durum",
+    "seat": "Koltuk",
+    "seatConsumed": "Koltuk kullanıyor",
+    "seatFree": "Koltuk kullanmıyor",
+    "machine": "Makine",
+    "lastSeen": "Son görülme",
+    "actions": "İşlemler",
+    "create": "Agent oluştur",
+    "namePlaceholder": "Yeni agent adı",
+    "activationCode": "Aktivasyon kodu",
+    "activationCodeOnce": "Bu aktivasyon kodu yalnızca bir kez gösterilir. Şimdi kopyalayın.",
+    "activationCodeExpires": "Son geçerlilik",
+    "close": "Kapat",
+    "disable": "Devre dışı bırak",
+    "deactivate": "Aktivasyonu geri al",
+    "empty": "Kayıtlı agent yok."
   }
 }
