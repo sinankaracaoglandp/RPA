@@ -559,6 +559,45 @@ Studio (`orchestrator/licensing`) ve **henüz yazılmamış `RPA.LicenseGenerato
 
 ---
 
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — agent credential rotasyonu)
+
+Tasarım spec'i (`docs/superpowers/specs/2026-07-16-offline-agent-licensing-design.md`) credential
+rotasyonunu şart koşuyordu ("agent credential storage and rotation";
+"`POST /api/agents/{id}/rotate-credential` authorizes a controlled credential replacement flow";
+"Credential rotation invalidates the previous credential immediately"), ancak Task 4 ucu hiç
+kurmamıştı: `IAgentIdentityRepository.RotateCredentialAsync` (Task 1) ve
+`EfAgentIdentityRepository.RotateCredentialAsync` (Task 3) **ölü koddu** (sıfır çağıran, test yok),
+Task 8 de var olmayan uca UI uydurmayı doğru şekilde reddetmişti. Bu kayıt boşluğu kapatır.
+
+- **Yeni uç:** `POST /api/agents/{id}/rotate-credential` (`AgentsController`) — diğer yönetim
+  uçlarıyla **aynı** `LicenseAdministrator` politikası. Yanıt: yeni `RotateCredentialResponse`
+  (`agentId`, `credential`). Plaintext **yalnızca bu yanıtta bir kez** döner; loglanmaz, düz
+  metin kalıcılaşmaz. Üretim/hash şeması aktivasyon akışıyla **aynıdır** (`SecretGenerator.CreateToken`
+  + `SecretHasher.Hash`; ikinci bir şema **icat edilmedi**); kalıcılaşan tek şey hash'tir
+  (mevcut `RotateCredentialAsync` üzerinden).
+- **Eski credential derhal geçersiz:** token değişimi (`AgentAuthController.Token`) yalnızca
+  `AgentIdentity.CredentialHash` karşılaştırması yapar → hash üzerine yazıldığı an eski değer
+  hiçbir yerde eşleşmez. Halihazırda verilmiş JWT'ler kendi 10 dk ömürleriyle dolar (`AgentTokenService`).
+- **Durum kuralı:** yalnızca `Activated` agent rotasyona uygundur; aksi hâlde `409 AGENT_NOT_ACTIVATED`
+  ve credential'a **dokunulmaz**. Gerekçe: `PendingActivation`'ın credential'ı yoktur,
+  `Deactivated`'ınki silinmiştir (ikisi de aktivasyon akışından credential alır), `Disabled` ise
+  zaten token alamaz — bu durumlarda rotasyon operatöre yanlış bir "yenilendi" izlenimi verirdi.
+- **Studio:** `orchestrator/agents` ekranına rotasyon eylemi (yalnız `Activated` satırlarda).
+  Task 8 desenleri birebir: eylem öncesi onay, yeni credential **bir kez** bellek-içi signal'den
+  gösterilir (kapat/`ngOnDestroy` temizler), local/sessionStorage'a **asla** yazılmaz (test edilir),
+  mutasyon sonrası yetkili yeniden okuma (`GET /api/agents` + `GET /api/license/status`).
+- **Test altyapısı:** `RPA.WebAPI` → `InternalsVisibleTo("RPA.WebAPI.Tests")` (testler hash şemasını
+  kopyalamak yerine üretim `SecretHasher`'ını çağırır); `RPA.WebAPI.Tests`'e
+  `Microsoft.EntityFrameworkCore.InMemory` eklendi — rotasyonun token yolunu gerçekten etkilediği
+  gerçek EF + gerçek `EfAgentIdentityRepository` ile uçtan uca kanıtlanır.
+
+Etkilenen paketler: WebAPI (`Licensing/AgentsController`), Studio (`orchestrator/agents`),
+WebAPI testleri. Domain/Infrastructure **imzaları değişmedi** (mevcut ölü metotlar artık çağrılıyor).
+Agent tarafı rotasyon sonrası yeniden yapılandırma akışı (ajanın yeni credential'ı alması) kapsam
+dışıdır — operatör credential'ı ajana elle taşır (aktivasyon kodu akışındaki gibi).
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Testler SecretHasher/SecretGenerator'i (internal) dogrudan kullanir: credential rotasyonu
+         testleri hash semasini kopyalamak yerine URETIM semasini cagirmalidir. -->
+    <InternalsVisibleTo Include="RPA.WebAPI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

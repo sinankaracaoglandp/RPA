@@ -178,6 +178,68 @@ describe('AgentLicensePageComponent', () => {
     httpMock.expectNone('/api/agents/a1/deactivate');
   });
 
+  it('asks for confirmation before rotating and shows the new credential exactly once', () => {
+    load();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    all('rotate-credential')[0].click();
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    const rotate = httpMock.expectOne('/api/agents/a1/rotate-credential');
+    expect(rotate.request.method).toBe('POST');
+    rotate.flush({ agentId: 'a1', credential: 'NEW-CREDENTIAL' });
+
+    // Mutasyon sonrasi yetkili yeniden okuma.
+    httpMock.expectOne('/api/agents').flush(agents);
+    httpMock.expectOne('/api/license/status').flush(seatStatus(2));
+    fixture.detectChanges();
+
+    expect(el('rotated-credential-value').textContent).toContain('NEW-CREDENTIAL');
+
+    el('rotated-credential-close').click();
+    fixture.detectChanges();
+
+    expect(el('rotated-credential-value')).toBeFalsy();
+    expect(fixture.nativeElement.textContent).not.toContain('NEW-CREDENTIAL');
+
+    fixture.componentInstance.ngOnDestroy();
+    expect(fixture.componentInstance.rotatedCredential()).toBeNull();
+  });
+
+  it('does not call the API when rotate confirmation is declined', () => {
+    load();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    all('rotate-credential')[0].click();
+
+    httpMock.expectNone('/api/agents/a1/rotate-credential');
+  });
+
+  it('only offers credential rotation for activated agents', () => {
+    load();
+
+    // agents[0] Activated; digerleri (Pending/Disabled/Deactivated) icin dugme render edilmez.
+    expect(all('rotate-credential').length).toBe(1);
+  });
+
+  it('never writes a rotated credential to local/session storage', () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    load();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    all('rotate-credential')[0].click();
+    httpMock.expectOne('/api/agents/a1/rotate-credential').flush({ agentId: 'a1', credential: 'NEW-CREDENTIAL' });
+    httpMock.expectOne('/api/agents').flush(agents);
+    httpMock.expectOne('/api/license/status').flush(seatStatus(2));
+    fixture.detectChanges();
+
+    for (const [key, value] of setItemSpy.mock.calls) {
+      expect(`${key} ${value}`).not.toContain('NEW-CREDENTIAL');
+    }
+    expect(JSON.stringify(localStorage)).not.toContain('NEW-CREDENTIAL');
+    expect(JSON.stringify(sessionStorage)).not.toContain('NEW-CREDENTIAL');
+  });
+
   it('renders a stable API error message when the agent list fails', () => {
     fixture.detectChanges();
     httpMock

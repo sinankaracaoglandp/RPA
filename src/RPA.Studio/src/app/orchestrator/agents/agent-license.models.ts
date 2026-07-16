@@ -25,6 +25,16 @@ export interface ActivationCodeResponse {
   expiresAt: string;
 }
 
+/**
+ * `POST /api/agents/{id}/rotate-credential` yaniti. `credential` plaintext'tir ve YALNIZCA bir kez
+ * gosterilir: bellekte tutulur, hicbir depolamaya yazilmaz. Rotasyon eski credential'i DERHAL
+ * gecersiz kilar (WebAPI yalnizca yeni hash'i saklar).
+ */
+export interface RotateCredentialResponse {
+  agentId: string;
+  credential: string;
+}
+
 /** Bir durumun lisans koltugu tuketip tuketmedigi (yalnizca gosterim etiketi). */
 export function consumesSeat(status: AgentIdentityStatus): boolean {
   return status === 'Activated' || status === 'Disabled';

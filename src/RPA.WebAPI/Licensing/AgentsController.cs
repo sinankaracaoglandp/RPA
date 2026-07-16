@@ -70,6 +70,37 @@ public sealed class AgentsController : ControllerBase
         return Ok(new ActivationCodeResponse(id, code, expiresAt));
     }
 
+    /// <summary>
+    /// Agent credential'ini degistirir (tasarim spec'i: "controlled credential replacement flow").
+    /// Yeni credential plaintext olarak YALNIZCA bu yanitta, bir kez doner; kalicilasan tek sey
+    /// hash'tir. Eski credential DERHAL gecersizlesir: token degisimi (AgentAuthController.Token)
+    /// yalnizca AgentIdentity.CredentialHash ile karsilastirma yapar, hash uzerine yazildigi an
+    /// eski deger hicbir yerde eslesmez. (Verilmis JWT'ler kendi 10 dk omurleriyle doler.)
+    ///
+    /// KURAL: yalnizca `Activated` agent'in credential'i degistirilebilir. Gerekce:
+    /// PendingActivation'in henuz credential'i yoktur, Deactivated'in credential'i silinmistir ve
+    /// her ikisi de aktivasyon akisindan credential alir; Disabled ise zaten token alamaz
+    /// (AgentTokenService AGENT_NOT_ACTIVE atar) — bu durumlarda rotasyon anlamsiz olup
+    /// operatore yanlis bir "credential yenilendi" izlenimi verirdi.
+    /// </summary>
+    [HttpPost("{id:guid}/rotate-credential")]
+    public async Task<IActionResult> RotateCredential(Guid id, CancellationToken cancellationToken)
+    {
+        var agent = await _agents.GetByIdAsync(id, cancellationToken);
+        if (agent is null) return NotFound();
+        if (agent.Status != AgentIdentityStatus.Activated)
+        {
+            return Conflict(new { error = "AGENT_NOT_ACTIVATED" });
+        }
+
+        // Aktivasyon akisiyla AYNI uretim/hash semasi (tek kaynak: SecretGenerator/SecretHasher).
+        var credential = SecretGenerator.CreateToken();
+        await _agents.RotateCredentialAsync(id, SecretHasher.Hash(credential), cancellationToken);
+
+        // Plaintext asla loglanmaz/kalicilastirilmaz — yalnizca bu yanit govdesinde doner.
+        return Ok(new RotateCredentialResponse(id, credential));
+    }
+
     [HttpPost("{id:guid}/disable")]
     public async Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken)
     {
@@ -87,6 +118,8 @@ public sealed class AgentsController : ControllerBase
 
 public sealed record CreateAgentRequest(string Name);
 public sealed record ActivationCodeResponse(Guid AgentId, string ActivationCode, DateTimeOffset ExpiresAt);
+/// <summary>Plaintext credential yalnizca bir kez doner; sunucu tarafinda hash disinda hicbir sey tutulmaz.</summary>
+public sealed record RotateCredentialResponse(Guid AgentId, string Credential);
 public sealed record AgentDto(Guid Id, string Name, AgentIdentityStatus Status, string? MachineFingerprint, DateTimeOffset? LastSeenAt)
 {
     public static AgentDto From(AgentIdentity agent) =>
