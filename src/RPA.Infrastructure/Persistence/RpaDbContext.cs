@@ -58,6 +58,10 @@ public class RpaDbContext : DbContext
     /// <summary>WP-6.4 — Workflow versiyonları (Draft → Test → Published yaşam döngüsü).</summary>
     public DbSet<WorkflowVersion> WorkflowVersions => Set<WorkflowVersion>();
 
+    public DbSet<LicenseInstallation> LicenseInstallations => Set<LicenseInstallation>();
+    public DbSet<AgentIdentity> AgentIdentities => Set<AgentIdentity>();
+    public DbSet<AgentActivation> AgentActivations => Set<AgentActivation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -210,6 +214,36 @@ public class RpaDbContext : DbContext
             entity.Ignore(w => w.Versions);
             entity.Ignore(w => w.ComponentUsages);
             entity.Ignore(w => w.JobRuns);
+        });
+
+
+        modelBuilder.Entity<LicenseInstallation>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.InstallationId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.PublicKey).IsRequired();
+            entity.Property(x => x.PublicKeyFingerprint).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.ProductId).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => x.InstallationId).IsUnique();
+        });
+
+        modelBuilder.Entity<AgentIdentity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.MachineFingerprint).HasMaxLength(256);
+            entity.Property(x => x.CredentialHash).HasMaxLength(1024);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+            entity.HasIndex(x => new { x.LicenseInstallationId, x.MachineFingerprint }).IsUnique();
+            entity.HasOne<LicenseInstallation>().WithMany().HasForeignKey(x => x.LicenseInstallationId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AgentActivation>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ActivationCodeHash).HasMaxLength(1024).IsRequired();
+            entity.HasIndex(x => x.ActivationCodeHash).IsUnique();
+            entity.HasOne<AgentIdentity>().WithMany().HasForeignKey(x => x.AgentIdentityId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
