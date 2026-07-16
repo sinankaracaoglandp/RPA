@@ -41,7 +41,6 @@ public sealed class AgentTokenService
                 new Claim("installation_id", agent.LicenseInstallationId.ToString()),
                 new Claim("client_type", "agent"),
                 new Claim("token_use", "access"),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             ],
             notBefore: now,
             expires: now.Add(AccessTokenLifetime),

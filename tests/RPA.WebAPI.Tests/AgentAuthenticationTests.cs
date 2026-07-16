@@ -39,6 +39,13 @@ public class AgentAuthenticationTests
         Assert.Equal(installationId.ToString(), jwt.Claims.Single(c => c.Type == "installation_id").Value);
         Assert.Equal("agent", jwt.Claims.Single(c => c.Type == "client_type").Value);
         Assert.Equal("access", jwt.Claims.Single(c => c.Type == "token_use").Value);
+        Assert.Equal(
+            ["agent_id", "client_type", "installation_id", "token_use"],
+            jwt.Claims
+                .Where(c => c.Type is not ("iss" or "aud" or "nbf" or "exp" or "iat"))
+                .Select(c => c.Type)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
         Assert.InRange(jwt.ValidTo - jwt.ValidFrom, TimeSpan.FromMinutes(9), TimeSpan.FromMinutes(10));
     }
 
