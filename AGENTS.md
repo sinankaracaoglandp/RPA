@@ -191,6 +191,33 @@ Studio workflow modeli/canvas/property paneli.
 Gerekçe: While, For ve ForEach döngülerini ortak designer bağlantı semantiğine taşırken
 sayaç tabanlı döngüyü ayrı bir `Logic.For` node'u olarak sunmak.
 
+## Kontrat Değişikliği — 2026-07-15 (E-Fatura Standart UBL Alanları ve Hassas Girdiler)
+
+E-fatura çalışma zamanı modelleri onaylı tasarımdaki standart UBL-TR kapsamına tamamlandı:
+`InvoiceData` düzenleme saati, vergi/tevkifat listeleri ve toplam iskonto alanlarını;
+`InvoicePartyData` adres/iletişim alanlarını; `InvoiceLineData` açıklama, iskonto ve vergi
+alanlarını taşır. `InvoiceParseOptions` yapılandırılabilir `MaxDepth` içerir. Mevcut alanlar
+ve constructor kullanımları geriye uyumludur. E-fatura kaynak girdileri aktivite metadata'sında
+`Sensitive` işaretlenir; genel observer maskeleme politikası `Credential` yanında bu tipi de maskeler.
+
+Etkilenen paketler: Infrastructure EInvoice parser/aktiviteleri, BaseRunner observer maskelemesi,
+Infrastructure testleri. Workflow JSON şeması ve Domain public arayüz imzaları değişmedi.
+Gerekçe: Onaylı e-fatura tasarımındaki standart alan, XML derinlik sınırı ve gerçek fatura
+verisinin log/observer olaylarına sızmaması kabul kriterlerini eksiksiz uygulamak.
+
+## Kontrat Değişikliği — 2026-07-15 (E-Invoice UBL Activities)
+
+Workflow aktivite kontratına `EInvoice.ReadUbl` ve `EInvoice.ReadUblBatch` kimlikleri eklenmiştir.
+`EInvoice.ReadUbl` girdileri `filePath`, `xmlContent`, `mappings`, `outputBindings`; çıktıları
+`invoice`, `lines`, `customFields` olarak tanımlanmıştır. `EInvoice.ReadUblBatch` girdileri
+`filePaths`, `xmlContents`, `errorMode`, `mappings`, `outputBindings`; çıktısı `results` olarak
+tanımlanmıştır. Tekli ve batch kaynak çiftleri karşılıklı dışlayıcıdır.
+
+Etkilenen paketler: Domain `WorkflowSchema.json`, Infrastructure UBL parser/aktiviteleri/katalog/DI,
+Studio aktivite modeli, mapping editörü ve property paneli.
+Gerekçe: UBL-TR e-faturalarının tekli veya batch olarak güvenli biçimde okunması, özel XPath/regex
+eşlemelerinin tasarlanması ve kararlı çıktıların workflow değişkenlerine bağlanması.
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

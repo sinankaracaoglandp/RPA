@@ -8,6 +8,7 @@ import { SpyElement } from '../../../shared/services/spy.service';
 import { SelectorPickerButtonComponent } from './selector-picker-button.component';
 import { VisionSequenceEditorComponent } from './vision-sequence-editor.component';
 import { TextOffsetEditorComponent } from './text-offset-editor.component';
+import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.component';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -26,7 +27,7 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 @Component({
   selector: 'app-generic-property',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent],
+  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, EInvoiceMappingEditorComponent],
   templateUrl: './generic-property.component.html',
   styleUrls: ['./generic-property.component.scss'],
 })
@@ -170,6 +171,10 @@ export class GenericPropertyComponent {
   /** Vision.ClickSequence gibi sıralı görüntü adımı editörü gerektiren alan mı? */
   isSequenceField(port: ActivityPort): boolean {
     return port.pickerKind === 'image-sequence';
+  }
+
+  isEInvoiceMapping(port: ActivityPort): boolean {
+    return port.pickerKind === 'einvoice-mapping';
   }
 
   /** Vision.ClickTextOffset gibi çapa+ofset editörü gerektiren alan mı? */

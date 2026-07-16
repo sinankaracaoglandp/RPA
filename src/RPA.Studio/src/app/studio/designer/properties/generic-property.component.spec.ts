@@ -167,6 +167,34 @@ describe('GenericPropertyComponent', () => {
     expect(emitted.at(-1)).toEqual({ browser: 'edge' });
   });
 
+  it('routes an einvoice mapping picker before generic property branches', () => {
+    component.activityType = 'EInvoice.ReadUbl';
+    component.properties = { mappings: '[]' };
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadUbl').flush({
+      activityId: 'EInvoice.ReadUbl',
+      displayName: 'E-Fatura UBL Oku',
+      inputs: [{ name: 'mappings', type: 'JSON', pickerKind: 'einvoice-mapping' }],
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-einvoice-mapping-editor')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="prop-mappings"]')).toBeFalsy();
+  });
+
+  it('emits mapping JSON through generic properties without sample XML', () => {
+    component.activityType = 'EInvoice.ReadUbl';
+    component.properties = { mappings: '[]' };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe(value => emitted.push(value));
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadUbl').flush({ activityId: 'EInvoice.ReadUbl', displayName: 'UBL', inputs: [{ name: 'mappings', type: 'JSON', pickerKind: 'einvoice-mapping' }] });
+    fixture.detectChanges();
+    component.onValueChange(component.inputs[0], JSON.stringify([{ name: 'id', source: 'XPath', valueXPath: '/Invoice/ID', type: 'string', required: false, multiple: false }]));
+    expect(emitted.at(-1)?.['mappings']).not.toContain('<Invoice');
+  });
+
   it('shows condition expression examples for Logic.If', () => {
     component.activityType = 'Logic.If';
     component.properties = {};

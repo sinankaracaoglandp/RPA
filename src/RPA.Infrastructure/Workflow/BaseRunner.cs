@@ -678,7 +678,8 @@ public sealed class BaseRunner : IWorkflowRunner
         {
             foreach (var p in metadata.Inputs.Concat(metadata.Outputs))
             {
-                if (string.Equals(p.Type, "Credential", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(p.Type, "Credential", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(p.Type, "Sensitive", StringComparison.OrdinalIgnoreCase))
                 {
                     credentialKeys.Add(p.Name);
                 }
@@ -871,7 +872,18 @@ public sealed class BaseRunner : IWorkflowRunner
             return Enumerable.Empty<object?>();
         }
 
-        if (!state.Scope.TryGetVariable(itemsVariable, out var value) || value is null)
+        object? value;
+        if (itemsVariable.Contains("{{", StringComparison.Ordinal) ||
+            itemsVariable.Contains("${", StringComparison.Ordinal))
+        {
+            value = state.Evaluator.EvaluateValue(itemsVariable);
+        }
+        else if (!state.Scope.TryGetVariable(itemsVariable, out value))
+        {
+            return Enumerable.Empty<object?>();
+        }
+
+        if (value is null)
         {
             return Enumerable.Empty<object?>();
         }

@@ -3,6 +3,7 @@ namespace RPA.Infrastructure.Tests.Workflow;
 using Microsoft.Extensions.DependencyInjection;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Workflow;
+using RPA.Infrastructure.Workflow.Activities.EInvoice;
 using Xunit;
 
 /// <summary>
@@ -12,11 +13,41 @@ using Xunit;
 /// </summary>
 public class ActivityRegistryCoverageTests
 {
+    [Fact]
+    public void Catalog_ContainsEInvoiceActivitiesWithMappingPickerAndDefaults()
+    {
+        var catalog = ActivityRegistry.BuildCatalog();
+
+        var single = catalog["EInvoice.ReadUbl"];
+        Assert.Equal("einvoice-mapping", single.Inputs.Single(x => x.Name == "mappings").PickerKind);
+        Assert.Contains(single.Outputs, x => x.Name == "invoice");
+        Assert.Contains(single.Outputs, x => x.Name == "lines");
+        Assert.Contains(single.Outputs, x => x.Name == "customFields");
+
+        var batch = catalog["EInvoice.ReadUblBatch"];
+        Assert.Equal("einvoice-mapping", batch.Inputs.Single(x => x.Name == "mappings").PickerKind);
+        Assert.Equal("Continue", batch.Inputs.Single(x => x.Name == "errorMode").DefaultValue);
+        Assert.Contains(batch.Outputs, x => x.Name == "results");
+    }
+
+    [Fact]
+    public void WorkflowServices_ResolveBothEInvoiceActivitiesAndSharedParser()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddWorkflowServices();
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Same(provider.GetRequiredService<UblInvoiceParser>(), provider.GetRequiredService<UblInvoiceParser>());
+        Assert.IsType<ReadUblActivity>(provider.GetRequiredKeyedService<IActivity>("EInvoice.ReadUbl"));
+        Assert.IsType<ReadUblBatchActivity>(provider.GetRequiredKeyedService<IActivity>("EInvoice.ReadUblBatch"));
+    }
+
     /// <summary>Studio generic editörünün form alanına eşleyebildiği tipler.</summary>
     private static readonly HashSet<string> SupportedInputTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "string", "int", "number", "decimal", "bool", "boolean",
-        "JSON", "DataTable", "Credential",
+        "JSON", "DataTable", "Credential", "Sensitive",
     };
 
     /// <summary>Bilinçli olarak input'suz aktiviteler (parametre gerektirmez).</summary>

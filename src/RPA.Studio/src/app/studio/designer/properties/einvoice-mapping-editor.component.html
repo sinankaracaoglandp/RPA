@@ -1,0 +1,54 @@
+<section class="einvoice-mapping" aria-label="E-fatura eşleme editörü">
+  <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
+    <h4>XML ağacı</h4>
+    <label for="einvoice-sample">Örnek XML seç</label>
+    <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml" (change)="onSampleFileSelected($event)" />
+    @if (sampleError) { <p role="alert">{{ sampleError }}</p> }
+    <ul class="einvoice-mapping__tree" aria-label="XML elemanları">
+      @for (item of flatTree(); track item.node.element) {
+        <li [style.padding-left.rem]="item.depth">
+          @if (item.node.children.length) {
+            <button type="button" [attr.data-toggle-name]="item.node.name" [attr.aria-expanded]="isExpanded(item.node)"
+              [attr.aria-label]="item.node.name + ' dalını aç veya kapat'" (click)="toggleNode(item.node)">▸</button>
+          }
+          <button type="button" data-testid="einvoice-tree-node" [attr.data-node-name]="item.node.name"
+            [attr.aria-expanded]="item.node.children.length ? isExpanded(item.node) : null"
+            (click)="selectNode(item.node)" (keydown)="onTreeKeydown($event, item.node)">
+            {{ item.node.name }} @if (nodeSample(item.node)) { <span>{{ nodeSample(item.node) }}</span> }
+            @if (repeatedCount(item.node) > 1) { <span>×{{ repeatedCount(item.node) }}</span> }
+          </button>
+        </li>
+      }
+    </ul>
+  </div>
+
+  <div class="einvoice-mapping__panel" data-testid="einvoice-rule-panel">
+    <h4>Eşleme kuralı</h4>
+    <div><button type="button" data-testid="einvoice-preset-kur" (click)="applyPreset('kur')">Kur preset</button>
+      <button type="button" data-testid="einvoice-preset-iban" (click)="applyPreset('iban')">IBAN preset</button>
+      <button type="button" data-testid="einvoice-preset-note" (click)="applyPreset('note')">Fatura notu</button></div>
+    <label for="einvoice-rule-name">Alan adı</label><input id="einvoice-rule-name" [value]="draft.name" (input)="updateDraft('name', $any($event.target).value)" />
+    <label for="einvoice-rule-source">Kaynak</label><select id="einvoice-rule-source" [value]="draft.source" (change)="updateDraft('source', $any($event.target).value)">
+      <option>Standard</option><option>XPath</option><option>InvoiceNotes</option><option>LineNotes</option></select>
+    <label for="einvoice-rule-scope">Scope XPath</label><input id="einvoice-rule-scope" [value]="draft.scopeXPath ?? ''" (input)="updateDraft('scopeXPath', $any($event.target).value)" />
+    <label for="einvoice-rule-xpath">Value XPath</label><input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''" (input)="updateDraft('valueXPath', $any($event.target).value)" />
+    <label for="einvoice-rule-regex">Regex</label><input id="einvoice-rule-regex" [value]="draft.regex ?? ''" (input)="updateDraft('regex', $any($event.target).value)" />
+    <label for="einvoice-rule-group">Group</label><input id="einvoice-rule-group" [value]="draft.group ?? ''" (input)="updateDraft('group', $any($event.target).value)" />
+    <label for="einvoice-rule-type">Veri tipi</label><select id="einvoice-rule-type" [value]="draft.type" (change)="updateDraft('type', $any($event.target).value)">
+      <option value="string">Metin</option><option value="integer">Tamsayı</option><option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option></select>
+    <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
+    <label><input type="checkbox" [checked]="draft.multiple" (change)="updateDraft('multiple', $any($event.target).checked)" /> Çoklu</label>
+    <button type="button" (click)="saveDraftRule()">{{ editingIndex === null ? 'Kural ekle' : 'Kuralı güncelle' }}</button>
+    <ul aria-label="Kaydedilmiş eşleme kuralları">
+      @for (rule of rules; track $index) {
+        <li><span>{{ rule.name }}</span>
+          <button type="button" (click)="editRule($index)">Düzenle</button>
+          <button type="button" (click)="removeRule($index)">Sil</button>
+        </li>
+      }
+    </ul>
+  </div>
+
+  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel"><h4>Önizleme</h4>
+    <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre></div>
+</section>

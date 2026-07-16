@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RPA.Domain.Entities;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Workflow;
+using RPA.Infrastructure.Workflow.Activities.EInvoice;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 using SystemException = RPA.Domain.Exceptions.SystemException;
 
@@ -13,12 +14,23 @@ using SystemException = RPA.Domain.Exceptions.SystemException;
 /// </summary>
 public class BaseRunnerTests
 {
+    private const string TwoLineUbl = """
+        <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                 xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                 xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+          <cbc:ID>FTR202600008</cbc:ID>
+          <cac:InvoiceLine><cbc:ID>1</cbc:ID><cac:Item><cac:SellersItemIdentification><cbc:ID>URUN-1</cbc:ID></cac:SellersItemIdentification><cbc:Name>Bir</cbc:Name></cac:Item></cac:InvoiceLine>
+          <cac:InvoiceLine><cbc:ID>2</cbc:ID><cac:Item><cac:SellersItemIdentification><cbc:ID>URUN-2</cbc:ID></cac:SellersItemIdentification><cbc:Name>Iki</cbc:Name></cac:Item></cac:InvoiceLine>
+        </Invoice>
+        """;
+
     // ---------------------------------------------------------------- altyapı
 
     private static BaseRunner CreateRunner(
         IReadOnlyDictionary<string, ActivityMetadata>? catalog = null,
         IActivityFactory? factory = null,
-        Func<string, string?, string?>? componentResolver = null)
+        Func<string, string?, string?>? componentResolver = null,
+        IWorkflowExecutionObserver? observer = null)
     {
         var cat = catalog is null ? new ActivityCatalog() : new ActivityCatalog(catalog);
         return new BaseRunner(
@@ -27,7 +39,8 @@ public class BaseRunnerTests
             factory ?? new EmptyActivityFactory(),
             NullLogger<BaseRunner>.Instance,
             vault: null,
-            componentResolver: componentResolver);
+            componentResolver: componentResolver,
+            observer: observer);
     }
 
     private static WorkflowVersion Version(string json) => new() { JsonDefinition = json };
@@ -165,6 +178,71 @@ public class BaseRunnerTests
         Assert.True(result.Success, result.Exception?.Message);
         Assert.Equal(3, seen.Count);
         Assert.Equal(new object?[] { 1L, 2L, 3L }, seen);
+    }
+
+    [Fact]
+    public async Task Runner_ReadUblOutputsFeedForEachAndDownstreamActivity()
+    {
+        var seen = new List<string?>();
+        var factory = new MapFactory()
+            .Add("EInvoice.ReadUbl", () => new ReadUblActivity(new UblInvoiceParser()))
+            .Add("Test.RecordProductCode", () => new FakeActivity("Test.RecordProductCode", context =>
+            {
+                seen.Add(context.GetVariable<string?>("productCode"));
+                return Task.FromResult(new Dictionary<string, object?>());
+            }));
+
+        var json = """
+        {
+          "schemaVersion":"1.0","id":"34343434-3434-3434-3434-343434343434",
+          "name":"UBL satirlarini isle","version":"1.0.0",
+          "nodes":[
+            {"id":"read","type":"activity","activity":"EInvoice.ReadUbl",
+             "properties":{"xmlContent":"__XML__","outputBindings":{"lines":"invoiceLines"}}},
+            {"id":"fe","type":"forEach","items":"{{invoiceLines}}","itemVariable":"line"},
+            {"id":"record","type":"activity","activity":"Test.RecordProductCode",
+             "properties":{"productCode":"{{line.itemCode}}"}}
+          ],
+          "connections":[
+            {"from":"read","to":"fe"},
+            {"from":"fe","fromPort":"body","to":"record"},
+            {"from":"record","to":"fe","toPort":"loop-back"}
+          ]
+        }
+        """.Replace("\"__XML__\"", System.Text.Json.JsonSerializer.Serialize(TwoLineUbl));
+
+        var catalog = new Dictionary<string, ActivityMetadata>
+        {
+            ["EInvoice.ReadUbl"] = new ReadUblActivity(new UblInvoiceParser()).GetMetadata(),
+            ["Test.RecordProductCode"] = Meta("Test.RecordProductCode"),
+        };
+        var result = await CreateRunner(catalog, factory)
+            .ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.True(result.Success, result.Exception?.Message);
+        Assert.Equal(new[] { "URUN-1", "URUN-2" }, seen);
+    }
+
+    [Theory]
+    [InlineData("<Invoice xmlns='urn:oasis:names:specification:ubl:schema:xsd:Invoice-2'><ID>SECRET-SUCCESS</ID></Invoice>")]
+    [InlineData("<broken>SECRET-ERROR")]
+    public async Task Runner_EInvoiceObserverNeverReceivesXmlContent(string xml)
+    {
+        var observer = new RecordingObserver();
+        var factory = new MapFactory().Add("EInvoice.ReadUbl", () => new ReadUblActivity(new UblInvoiceParser()));
+        var json = """
+        {"schemaVersion":"1.0","id":"35353535-3535-3535-3535-353535353535","name":"mask","version":"1.0.0",
+         "nodes":[{"id":"read","type":"activity","activity":"EInvoice.ReadUbl","properties":{"xmlContent":"__XML__"}}],"connections":[]}
+        """.Replace("\"__XML__\"", System.Text.Json.JsonSerializer.Serialize(xml));
+
+        await CreateRunner(
+            ActivityRegistry.BuildCatalog(),
+            factory,
+            observer: observer).ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        var completed = Assert.Single(observer.Completed);
+        Assert.Equal("[MASKED]", completed.Inputs!["xmlContent"]);
+        Assert.DoesNotContain("SECRET", string.Join("|", completed.Inputs.Values.Concat(completed.Outputs?.Values ?? []).Append(completed.Error)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -682,6 +760,43 @@ public class BaseRunnerTests
         Assert.Equal(10L, eval.EvaluateValue("{{a}}"));
     }
 
+    [Theory]
+    [InlineData("${items}")]
+    [InlineData("{{items}}")]
+    public void ExpressionEvaluator_SingleVariableSyntaxPreservesEnumerableType(string expression)
+    {
+        var items = new List<long> { 1, 2 };
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("items", items);
+
+        var result = new ExpressionEvaluator(scope).EvaluateValue(expression);
+
+        Assert.Same(items, result);
+    }
+
+    [Fact]
+    public void ExpressionEvaluator_TypedDtoPathIsCaseInsensitiveAndMissingPropertyReturnsNull()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("line", new InvoiceLineData { ItemCode = "URUN-1" });
+        var evaluator = new ExpressionEvaluator(scope);
+
+        Assert.Equal("URUN-1", evaluator.EvaluateValue("{{line.itemcode}}"));
+        Assert.Null(evaluator.EvaluateValue("{{line.missing}}"));
+    }
+
+    [Fact]
+    public void ExpressionEvaluator_DoesNotLeakRawReflectionErrorsForUnsafeProperties()
+    {
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("indexed", new IndexedValue());
+        scope.SetGlobalVariable("throwing", new ThrowingValue());
+        var evaluator = new ExpressionEvaluator(scope);
+
+        Assert.Null(evaluator.EvaluateValue("{{indexed.item}}"));
+        Assert.Throws<BusinessException>(() => evaluator.EvaluateValue("{{throwing.value}}"));
+    }
+
     [Fact]
     public void ExpressionEvaluator_MixedOperators_RespectsPrecedence()
     {
@@ -768,5 +883,22 @@ public class BaseRunnerTests
         Assert.True(result2.Success);
         // If checkpoint state was properly imported despite empty dict, counter should still be 5
         Assert.Equal(5L, Convert.ToInt64(result2.Outputs["next"]));
+    }
+
+    private sealed class IndexedValue
+    {
+        public string this[int index] => index.ToString();
+    }
+
+    private sealed class ThrowingValue
+    {
+        public string Value => throw new InvalidOperationException("sensitive getter detail");
+    }
+
+    private sealed class RecordingObserver : IWorkflowExecutionObserver
+    {
+        public List<NodeExecutionEvent> Completed { get; } = [];
+        public void OnNodeStarted(NodeExecutionEvent evt) { }
+        public void OnNodeCompleted(NodeExecutionEvent evt) => Completed.Add(evt);
     }
 }

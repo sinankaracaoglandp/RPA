@@ -4,6 +4,7 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using NJsonSchema;
 using NJsonSchema.Validation;
+using RPA.Infrastructure.Workflow.Activities.EInvoice;
 
 /// <summary>
 /// Workflow JSON'ları Kontrat Paketi'ndeki <c>WorkflowSchema.json</c>'a göre doğrular.
@@ -31,9 +32,11 @@ public sealed class WorkflowValidator
         }
 
         ICollection<ValidationError> errors;
+        JObject workflow;
         try
         {
-            errors = _schema.Value.Validate(workflowJson);
+            workflow = JObject.Parse(workflowJson);
+            errors = _schema.Value.Validate(workflow.ToString(Newtonsoft.Json.Formatting.None));
         }
         catch (Exception ex)
         {
@@ -42,15 +45,87 @@ public sealed class WorkflowValidator
                 new[] { $"JSON ayrıştırılamadı: {ex.Message}" });
         }
 
-        if (errors.Count == 0)
+        var messages = new List<string>();
+        Flatten(errors, messages);
+        ValidateEInvoiceSources(workflow, messages);
+        ValidateEInvoiceContracts(workflow, messages);
+
+        if (messages.Count == 0)
         {
             return WorkflowValidationResult.Success();
         }
 
-        var messages = new List<string>();
-        Flatten(errors, messages);
         return WorkflowValidationResult.Failure(messages);
     }
+
+    private static void ValidateEInvoiceContracts(JObject workflow, List<string> messages)
+    {
+        if (workflow["nodes"] is not JArray nodes) return;
+        var sources = new HashSet<string>(["Standard", "XPath", "InvoiceNotes", "LineNotes"]);
+        var types = new HashSet<string>(["string", "decimal", "integer", "date", "boolean"]);
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            if (nodes[index] is not JObject node || !((string?)node["activity"] ?? "").StartsWith("EInvoice.ReadUbl", StringComparison.Ordinal)) continue;
+            if (node["properties"] is not JObject properties) continue;
+            if (properties["outputBindings"] is { Type: not JTokenType.Object and not JTokenType.Null }) messages.Add($"nodes[{index}].properties.outputBindings must be an object.");
+            if ((string?)node["activity"] == "EInvoice.ReadUblBatch" && properties["errorMode"] is { Type: not JTokenType.Null } mode && (string?)mode is not ("Continue" or "Stop")) messages.Add($"nodes[{index}].properties.errorMode must be Continue or Stop.");
+            var mappingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (properties["mappings"] is not null && properties["mappings"] is not JArray)
+                messages.Add($"nodes[{index}].properties.mappings must be an array.");
+            foreach (var token in properties["mappings"] as JArray ?? [])
+            {
+                if (token is not JObject mapping) { messages.Add($"nodes[{index}].properties.mappings items must be objects."); continue; }
+                var source = (string?)mapping["source"];
+                if (!string.IsNullOrWhiteSpace((string?)mapping["name"])) mappingNames.Add((string)mapping["name"]!);
+                if (string.IsNullOrWhiteSpace((string?)mapping["name"]) || source is null || !sources.Contains(source)) messages.Add($"nodes[{index}].properties.mappings has invalid name/source.");
+                if (source == "XPath" && string.IsNullOrWhiteSpace((string?)mapping["valueXPath"])) messages.Add($"nodes[{index}].properties.mappings XPath requires valueXPath.");
+                if (mapping["type"] is { } type &&
+                    (type.Type != JTokenType.String || !types.Contains(type.Value<string>() ?? string.Empty)))
+                    messages.Add($"nodes[{index}].properties.mappings has invalid type.");
+                foreach (var flag in new[] { "required", "multiple" }) if (mapping[flag] is { Type: not JTokenType.Boolean and not JTokenType.Null }) messages.Add($"nodes[{index}].properties.mappings.{flag} must be boolean.");
+            }
+            if (properties["outputBindings"] is JObject bindings)
+            {
+                try { EInvoiceJson.ValidateOutputBindings(bindings, mappingNames); }
+                catch (InvoiceParseException exception) { messages.Add($"nodes[{index}].properties.outputBindings: {exception.Message}"); }
+            }
+        }
+    }
+    private static void ValidateEInvoiceSources(JObject workflow, List<string> messages)
+    {
+        if (workflow["nodes"] is not JArray nodes) return;
+
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            if (nodes[index] is not JObject node || (string?)node["type"] != "activity") continue;
+
+            var activity = (string?)node["activity"];
+            var sourceNames = activity switch
+            {
+                "EInvoice.ReadUbl" => ("filePath", "xmlContent"),
+                "EInvoice.ReadUblBatch" => ("filePaths", "xmlContents"),
+                _ => default
+            };
+            if (sourceNames == default) continue;
+
+            var properties = node["properties"] as JObject;
+            var sourceCount = (HasSource(properties?[sourceNames.Item1]) ? 1 : 0)
+                            + (HasSource(properties?[sourceNames.Item2]) ? 1 : 0);
+            if (sourceCount != 1)
+            {
+                messages.Add($"nodes[{index}].properties: exactly one source ({sourceNames.Item1} or {sourceNames.Item2}) is required.");
+            }
+        }
+    }
+
+    private static bool HasSource(JToken? value) => value switch
+    {
+        null => false,
+        { Type: JTokenType.Null or JTokenType.Undefined } => false,
+        JValue { Type: JTokenType.String } text => !string.IsNullOrWhiteSpace((string?)text),
+        JArray array => array.Any(HasSource),
+        _ => true
+    };
 
     /// <summary>
     /// NJsonSchema hata ağacını (child schema / item hataları dahil) düz listeye çevirir.

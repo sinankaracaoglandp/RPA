@@ -140,12 +140,13 @@ public class SapGuiChannelTests
     }
 
     [Fact]
-    public async Task Channel_DoubleConnect_ThrowsBusinessException()
+    public async Task Channel_DoubleConnect_ReconnectsAndRemainsHealthy()
     {
         var channel = await NewConnectedChannel();
 
-        await Assert.ThrowsAsync<BusinessException>(
-            () => channel.ConnectAsync("DEV", "100", "USER", "pw"));
+        await channel.ConnectAsync("DEV", "100", "USER", "pw");
+
+        Assert.True(await channel.IsHealthyAsync());
     }
 
     [Fact]
