@@ -116,6 +116,13 @@ export class DashboardComponent {
       accent: 'bg-lime-50 text-lime-700',
       icon: 'M15.75 5.25a3 3 0 1 1-4.243 4.243L6.75 14.25H4.5v2.25H2.25v2.25H0v2.25h3.75l9.507-9.507A3 3 0 0 1 15.75 5.25Z',
     },
+    {
+      route: '/orchestrator/licensing',
+      titleKey: 'dashboard.licensingTitle',
+      descKey: 'dashboard.licensingDesc',
+      accent: 'bg-slate-100 text-slate-700',
+      icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z',
+    },
   ];
 
   changeLanguage(lang: SupportedLang): void {

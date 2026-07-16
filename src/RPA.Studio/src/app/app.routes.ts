@@ -90,5 +90,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./orchestrator/credentials/credentials.component').then((m) => m.CredentialsComponent),
   },
+  {
+    path: 'orchestrator/licensing',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./orchestrator/licensing/license-page.component').then((m) => m.LicensePageComponent),
+  },
   { path: '**', redirectTo: '' },
 ];

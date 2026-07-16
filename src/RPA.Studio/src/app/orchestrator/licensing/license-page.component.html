@@ -1,0 +1,101 @@
+<section class="p-8">
+  <header class="mb-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <app-back-home />
+      <h1 class="text-xl font-semibold">{{ 'licensing.title' | translate }}</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        class="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+        data-testid="download-request"
+        [disabled]="busy()"
+        (click)="downloadInstallationRequest()"
+      >
+        {{ 'licensing.downloadRequest' | translate }}
+      </button>
+      <button
+        type="button"
+        class="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+        data-testid="import-button"
+        [disabled]="busy()"
+        (click)="fileInput.click()"
+      >
+        {{ 'licensing.import' | translate }}
+      </button>
+      <input
+        #fileInput
+        type="file"
+        hidden
+        class="hidden"
+        accept=".lic,application/json"
+        data-testid="license-file-input"
+        (change)="onFileSelected($event)"
+      />
+      <button type="button" class="rounded border px-3 py-1 text-sm hover:bg-gray-50" (click)="load()">
+        {{ 'licensing.refresh' | translate }}
+      </button>
+    </div>
+  </header>
+
+  @if (importError()) {
+    <p class="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+       role="alert" data-testid="import-error">{{ importError() }}</p>
+  }
+  @if (importSuccess()) {
+    <p class="mb-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
+       role="status" data-testid="import-success">{{ 'licensing.importSuccess' | translate }}</p>
+  }
+
+  @if (loading()) {
+    <p class="text-gray-500">{{ 'licensing.loading' | translate }}</p>
+  } @else if (error()) {
+    <p class="text-red-600" role="alert" data-testid="license-error">{{ error() }}</p>
+  } @else if (status(); as s) {
+    @if (!s.isInstalled) {
+      <p class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+         data-testid="license-missing">{{ 'licensing.notInstalled' | translate }}</p>
+    } @else {
+      <dl class="grid max-w-3xl grid-cols-2 gap-y-3 text-sm">
+        <dt class="text-gray-500">{{ 'licensing.customer' | translate }}</dt>
+        <dd data-testid="license-customer">{{ s.customerId ?? '—' }}</dd>
+
+        <dt class="text-gray-500">{{ 'licensing.edition' | translate }}</dt>
+        <dd data-testid="license-edition">{{ edition() ?? '—' }}</dd>
+
+        <dt class="text-gray-500">{{ 'licensing.licenseId' | translate }}</dt>
+        <dd data-testid="license-id">{{ s.licenseId ?? '—' }} (rev {{ s.revision ?? '—' }})</dd>
+
+        <dt class="text-gray-500">{{ 'licensing.validity' | translate }}</dt>
+        <dd data-testid="license-validity">
+          <span
+            class="inline-block rounded px-2 py-0.5 text-xs"
+            [class.bg-green-100]="s.isValid"
+            [class.text-green-700]="s.isValid"
+            [class.bg-red-100]="!s.isValid"
+            [class.text-red-700]="!s.isValid"
+          >{{ (s.isValid ? 'licensing.valid' : 'licensing.invalid') | translate }}</span>
+          @if (s.errorCode) {
+            <span class="ml-2 text-gray-500">{{ s.errorCode }}</span>
+          }
+        </dd>
+
+        <dt class="text-gray-500">{{ 'licensing.expiresAt' | translate }}</dt>
+        <dd data-testid="license-expires">{{ s.expiresAt ?? '—' }}</dd>
+
+        <dt class="text-gray-500">{{ 'licensing.seats' | translate }}</dt>
+        <dd data-testid="license-seats">{{ s.activatedAgents }} / {{ s.maxActivatedAgents }}</dd>
+
+        <dt class="text-gray-500">{{ 'licensing.features' | translate }}</dt>
+        <dd class="flex flex-wrap gap-1">
+          @for (feature of s.features; track feature) {
+            <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                  data-testid="license-feature">{{ feature }}</span>
+          } @empty {
+            <span class="text-gray-400">—</span>
+          }
+        </dd>
+      </dl>
+    }
+  }
+</section>

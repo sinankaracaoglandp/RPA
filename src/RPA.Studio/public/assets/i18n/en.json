@@ -30,7 +30,9 @@
     "environmentsTitle": "Environments",
     "environmentsDesc": "Environment and deployment configuration",
     "credentialsTitle": "Credentials",
-    "credentialsDesc": "Vault keys and secret references"
+    "credentialsDesc": "Vault keys and secret references",
+    "licensingTitle": "Licensing",
+    "licensingDesc": "License status, installation request and import"
   },
   "designer": {
     "save": "Save",
@@ -322,5 +324,23 @@
         "local": "Local"
       }
     }
+  },
+  "licensing": {
+    "title": "Orchestrator — Licensing",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "downloadRequest": "Download installation request",
+    "import": "Upload license (.lic)",
+    "importSuccess": "License imported successfully.",
+    "notInstalled": "No license installed. Download the installation request, send it to the vendor, then upload the returned .lic file.",
+    "customer": "Customer",
+    "edition": "Edition",
+    "licenseId": "License ID",
+    "validity": "Validity",
+    "valid": "Valid",
+    "invalid": "Invalid",
+    "expiresAt": "Expires",
+    "seats": "Seats (used / max)",
+    "features": "Features"
   }
 }
