@@ -5,6 +5,8 @@ export interface EInvoiceMappingRule {
   valueXPath?: string | null;
   regex?: string | null;
   group?: string | null;
+  fallbackRegex?: string | null;
+  fallbackGroup?: string | null;
   type: 'string' | 'decimal' | 'integer' | 'date' | 'boolean';
   required: boolean;
   multiple: boolean;
@@ -32,6 +34,7 @@ export interface XmlTreeNode {
 export interface RulePreview {
   raw: string | string[] | null;
   converted: unknown;
+  matchedBy?: 'xpath' | 'fallback';
   error?: string;
 }
 
@@ -117,12 +120,71 @@ function valuesFor(rule: EInvoiceMappingRule, document: XMLDocument): string[] {
   return scopes.flatMap(scope => evaluateNodes(xpath!, scope, document, namespaces)).map(node => node.textContent?.trim() ?? '');
 }
 
+function documentText(root: Node): string {
+  const parts: string[] = [];
+  const visit = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.trim();
+      if (text) parts.push(text);
+    }
+    node.childNodes.forEach(visit);
+  };
+  visit(root);
+  return parts.join('\n');
+}
+
+function fallbackValues(rule: EInvoiceMappingRule, text: string): string[] {
+  const expression = new RegExp(rule.fallbackRegex!, 'g');
+  const values: string[] = [];
+  for (const match of text.matchAll(expression)) {
+    const selected = !rule.fallbackGroup
+      ? match[0]
+      : /^\d+$/.test(rule.fallbackGroup) ? match[Number(rule.fallbackGroup)] : match.groups?.[rule.fallbackGroup];
+    if (selected === undefined) throw new Error(`Fallback regex group '${rule.fallbackGroup}' bulunamadı.`);
+    if (selected.trim()) values.push(selected.trim());
+    if (!rule.multiple && values.length) break;
+  }
+  return values;
+}
+
+export function relativizeXPath(valueXPath: string, scopeXPath: string): string {
+  const value = valueXPath.trim();
+  const scope = scopeXPath.trim();
+  if (!value || !scope || value.startsWith('.')) return value;
+  if (scope.startsWith('//')) {
+    const last = scope.split('/').filter(Boolean).pop();
+    if (!last) return value;
+    const marker = `/${last}/`;
+    const index = value.indexOf(marker);
+    return index >= 0 ? `./${value.slice(index + marker.length)}` : value;
+  }
+  return value.startsWith(`${scope}/`) ? `./${value.slice(scope.length + 1)}` : value;
+}
+
 function convert(value: string, type: EInvoiceMappingRule['type']): unknown {
   if (type === 'string') return value;
-  if (type === 'decimal') { const parsed = Number(value.replace(',', '.')); if (!Number.isFinite(parsed)) throw new Error('decimal dönüşümü başarısız.'); return parsed; }
+  if (type === 'decimal') {
+    let normalized = value.trim();
+    if (normalized.includes(',') && normalized.includes('.')) {
+      normalized = normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+        ? normalized.split('.').join('').replace(',', '.')
+        : normalized.split(',').join('');
+    } else {
+      normalized = normalized.replace(',', '.');
+    }
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) throw new Error('decimal dönüşümü başarısız.');
+    return parsed;
+  }
   if (type === 'integer') { if (!/^[+-]?\d+$/.test(value)) throw new Error('integer dönüşümü başarısız.'); return Number.parseInt(value, 10); }
   if (type === 'boolean') { if (/^(true|1)$/i.test(value)) return true; if (/^(false|0)$/i.test(value)) return false; throw new Error('boolean dönüşümü başarısız.'); }
-  const match = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/.exec(value);
+  return convertDate(value);
+}
+
+function convertDate(value: string): string {
+  const iso = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/.exec(value.trim());
+  const tr = /^(?<day>\d{2})[./](?<month>\d{2})[./](?<year>\d{4})$/.exec(value.trim());
+  const match = iso ?? tr;
   if (!match) throw new Error('date dönüşümü başarısız.');
   const year = Number(match.groups!['year']);
   const month = Number(match.groups!['month']);
@@ -130,7 +192,7 @@ function convert(value: string, type: EInvoiceMappingRule['type']): unknown {
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (year === 0 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) throw new Error('date dönüşümü başarısız.');
-  return value;
+  return `${match.groups!['year'].padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 export function previewRule(rule: EInvoiceMappingRule, document: XMLDocument): RulePreview {
@@ -147,9 +209,14 @@ export function previewRule(rule: EInvoiceMappingRule, document: XMLDocument): R
         return [selected];
       });
     }
+    let matchedBy: RulePreview['matchedBy'] = values.length ? 'xpath' : undefined;
+    if (!values.length && rule.fallbackRegex) {
+      values = fallbackValues(rule, documentText(document.documentElement));
+      if (values.length) matchedBy = 'fallback';
+    }
     if (!values.length) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu değer bulunamadı.' : undefined };
     const converted = values.map(value => convert(value, rule.type));
-    return { raw: rule.multiple ? values : values[0], converted: rule.multiple ? converted : converted[0] };
+    return { raw: rule.multiple ? values : values[0], converted: rule.multiple ? converted : converted[0], matchedBy };
   } catch (error) {
     return { raw: null, converted: null, error: error instanceof Error ? error.message : String(error) };
   }
@@ -186,9 +253,14 @@ function previewRuleInScope(rule: EInvoiceMappingRule, scope: Node, document: XM
         return [selected];
       });
     }
+    let matchedBy: RulePreview['matchedBy'] = values.length ? 'xpath' : undefined;
+    if (!values.length && rule.fallbackRegex) {
+      values = fallbackValues(rule, documentText(scope));
+      if (values.length) matchedBy = 'fallback';
+    }
     if (!values.length) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu deÄŸer bulunamadÄ±.' : undefined };
     const converted = values.map(value => convert(value, rule.type));
-    return { raw: rule.multiple ? values : values[0], converted: rule.multiple ? converted : converted[0] };
+    return { raw: rule.multiple ? values : values[0], converted: rule.multiple ? converted : converted[0], matchedBy };
   } catch (error) {
     return { raw: null, converted: null, error: error instanceof Error ? error.message : String(error) };
   }
