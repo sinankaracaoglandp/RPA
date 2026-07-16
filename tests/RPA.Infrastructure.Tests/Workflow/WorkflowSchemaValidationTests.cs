@@ -22,6 +22,45 @@ public class WorkflowSchemaValidationTests
     }
 
     [Theory]
+    [InlineData("EInvoice.ReadProfile", "XmlContent", "xmlContent", "<Invoice />")]
+    [InlineData("EInvoice.ReadProfileBatch", "Folder", "folderPath", "C:\\invoices")]
+    public void EInvoiceProfileActivity_WithSelectedSourceMode_IsValid(
+        string activity,
+        string sourceMode,
+        string sourceName,
+        object sourceValue)
+    {
+        var properties = new Dictionary<string, object?>
+        {
+            ["projectId"] = Guid.NewGuid(),
+            ["profileId"] = Guid.NewGuid(),
+            ["profileVersion"] = 1,
+            ["sourceMode"] = sourceMode,
+            [sourceName] = sourceValue
+        };
+
+        var result = new WorkflowValidator().ValidateWorkflowJson(Workflow(activity, properties));
+
+        Assert.True(result.IsValid, string.Join(Environment.NewLine, result.Errors));
+    }
+
+    [Fact]
+    public void EInvoiceProfileBatch_WithMultipleSourceCollections_IsInvalid()
+    {
+        var properties = new Dictionary<string, object?>
+        {
+            ["projectId"] = Guid.NewGuid(),
+            ["profileId"] = Guid.NewGuid(),
+            ["profileVersion"] = 1,
+            ["sourceMode"] = "XmlContents",
+            ["filePaths"] = new[] { "a.xml" },
+            ["xmlContents"] = new[] { "<Invoice />" }
+        };
+
+        Assert.False(new WorkflowValidator().ValidateWorkflowJson(Workflow("EInvoice.ReadProfileBatch", properties)).IsValid);
+    }
+
+    [Theory]
     [InlineData("EInvoice.ReadUbl", "filePath", "invoice.xml")]
     [InlineData("EInvoice.ReadUblBatch", "filePaths", "invoice.xml")]
     public void EInvoiceActivity_WithOneSource_IsValid(string activity, string sourceName, string sourceValue)

@@ -65,6 +65,37 @@
         { "required": ["filePaths"], "not": { "required": ["xmlContents"] } },
         { "required": ["xmlContents"], "not": { "required": ["filePaths"] } }
       ]
+    },
+    "eInvoiceReadProfileProperties": {
+      "description": "EInvoice.ReadProfile activity properties contract. Runtime sourceMode/source validation is performed by WorkflowValidator.",
+      "type": "object",
+      "required": ["projectId", "profileId", "profileVersion", "sourceMode"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "profileId": { "type": "string" },
+        "profileVersion": { "type": "integer", "minimum": 1 },
+        "sourceMode": { "type": "string", "enum": ["FilePath", "XmlContent"], "default": "XmlContent" },
+        "filePath": { "type": "string" },
+        "xmlContent": { "type": "string" },
+        "outputVariable": { "type": "string", "default": "fatura" }
+      }
+    },
+    "eInvoiceReadProfileBatchProperties": {
+      "description": "EInvoice.ReadProfileBatch activity properties contract. Runtime sourceMode/source validation is performed by WorkflowValidator.",
+      "type": "object",
+      "required": ["projectId", "profileId", "profileVersion", "sourceMode"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "profileId": { "type": "string" },
+        "profileVersion": { "type": "integer", "minimum": 1 },
+        "sourceMode": { "type": "string", "enum": ["Folder", "FilePaths", "XmlContents"], "default": "Folder" },
+        "folderPath": { "type": "string" },
+        "fileFilter": { "type": "string", "default": "*.xml" },
+        "includeSubfolders": { "type": "boolean", "default": false },
+        "filePaths": { "type": "array", "items": { "type": "string" } },
+        "xmlContents": { "type": "array", "items": { "type": "string" } },
+        "outputVariable": { "type": "string", "default": "faturalar" }
+      }
     }
   },
   "required": ["schemaVersion", "id", "name", "version", "nodes", "connections"],

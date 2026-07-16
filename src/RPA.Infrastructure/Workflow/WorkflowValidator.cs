@@ -49,6 +49,7 @@ public sealed class WorkflowValidator
         Flatten(errors, messages);
         ValidateEInvoiceSources(workflow, messages);
         ValidateEInvoiceContracts(workflow, messages);
+        ValidateEInvoiceProfileContracts(workflow, messages);
 
         if (messages.Count == 0)
         {
@@ -91,6 +92,64 @@ public sealed class WorkflowValidator
             }
         }
     }
+
+    private static void ValidateEInvoiceProfileContracts(JObject workflow, List<string> messages)
+    {
+        if (workflow["nodes"] is not JArray nodes) return;
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            if (nodes[index] is not JObject node) continue;
+            var activity = (string?)node["activity"];
+            if (activity is not ("EInvoice.ReadProfile" or "EInvoice.ReadProfileBatch")) continue;
+            if (node["properties"] is not JObject properties)
+            {
+                messages.Add($"nodes[{index}].properties is required.");
+                continue;
+            }
+
+            foreach (var required in new[] { "projectId", "profileId", "profileVersion", "sourceMode" })
+                if (!HasSource(properties[required])) messages.Add($"nodes[{index}].properties.{required} is required.");
+            if (properties["profileVersion"] is { } version && !IsPositiveInteger(version))
+                messages.Add($"nodes[{index}].properties.profileVersion must be a positive integer.");
+            if (properties["outputVariable"] is { Type: not JTokenType.Null } output && !IsIdentifier((string?)output))
+                messages.Add($"nodes[{index}].properties.outputVariable must be a simple identifier.");
+
+            var mode = (string?)properties["sourceMode"];
+            if (activity == "EInvoice.ReadProfile")
+            {
+                if (mode is not ("FilePath" or "XmlContent"))
+                    messages.Add($"nodes[{index}].properties.sourceMode must be FilePath or XmlContent.");
+                ValidateSelectedSource(index, properties, mode, ["FilePath", "XmlContent"], ["filePath", "xmlContent"], messages);
+            }
+            else
+            {
+                if (mode is not ("Folder" or "FilePaths" or "XmlContents"))
+                    messages.Add($"nodes[{index}].properties.sourceMode must be Folder, FilePaths or XmlContents.");
+                ValidateSelectedSource(index, properties, mode, ["Folder", "FilePaths", "XmlContents"], ["folderPath", "filePaths", "xmlContents"], messages);
+            }
+        }
+    }
+
+    private static void ValidateSelectedSource(
+        int nodeIndex,
+        JObject properties,
+        string? mode,
+        string[] modes,
+        string[] sourceNames,
+        List<string> messages)
+    {
+        var sourceCount = sourceNames.Count(name => HasSource(properties[name]));
+        if (sourceCount != 1)
+        {
+            messages.Add($"nodes[{nodeIndex}].properties: exactly one source ({string.Join(" or ", sourceNames)}) is required.");
+            return;
+        }
+
+        var modeIndex = Array.IndexOf(modes, mode);
+        if (modeIndex >= 0 && !HasSource(properties[sourceNames[modeIndex]]))
+            messages.Add($"nodes[{nodeIndex}].properties.sourceMode must match the provided source.");
+    }
+
     private static void ValidateEInvoiceSources(JObject workflow, List<string> messages)
     {
         if (workflow["nodes"] is not JArray nodes) return;
@@ -126,6 +185,22 @@ public sealed class WorkflowValidator
         JArray array => array.Any(HasSource),
         _ => true
     };
+
+    private static bool IsPositiveInteger(JToken value) => value switch
+    {
+        JValue { Type: JTokenType.Integer } integer => integer.Value<long>() > 0,
+        JValue { Type: JTokenType.String } text => int.TryParse((string?)text, out var number) && number > 0,
+        _ => false
+    };
+
+    private static bool IsIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (!(value[0] == '_' || char.IsLetter(value[0]))) return false;
+        for (var index = 1; index < value.Length; index++)
+            if (value[index] != '_' && !char.IsLetterOrDigit(value[index])) return false;
+        return true;
+    }
 
     /// <summary>
     /// NJsonSchema hata ağacını (child schema / item hataları dahil) düz listeye çevirir.

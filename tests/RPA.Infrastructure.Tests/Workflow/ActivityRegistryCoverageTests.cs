@@ -1,7 +1,9 @@
 namespace RPA.Infrastructure.Tests.Workflow;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Workflow;
 using RPA.Infrastructure.Workflow.Activities.EInvoice;
 using Xunit;
@@ -28,6 +30,14 @@ public class ActivityRegistryCoverageTests
         Assert.Equal("einvoice-mapping", batch.Inputs.Single(x => x.Name == "mappings").PickerKind);
         Assert.Equal("Continue", batch.Inputs.Single(x => x.Name == "errorMode").DefaultValue);
         Assert.Contains(batch.Outputs, x => x.Name == "results");
+
+        var profile = catalog["EInvoice.ReadProfile"];
+        Assert.Equal("einvoice-profile", profile.Inputs.Single(x => x.Name == "profileId").PickerKind);
+        Assert.Contains(profile.Outputs, x => x.Name == "fatura");
+
+        var profileBatch = catalog["EInvoice.ReadProfileBatch"];
+        Assert.Equal("*.xml", profileBatch.Inputs.Single(x => x.Name == "fileFilter").DefaultValue);
+        Assert.Contains(profileBatch.Outputs, x => x.Name == "faturalar");
     }
 
     [Fact]
@@ -35,12 +45,15 @@ public class ActivityRegistryCoverageTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddDbContext<RpaDbContext>(options => options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
         services.AddWorkflowServices();
 
         using var provider = services.BuildServiceProvider();
         Assert.Same(provider.GetRequiredService<UblInvoiceParser>(), provider.GetRequiredService<UblInvoiceParser>());
         Assert.IsType<ReadUblActivity>(provider.GetRequiredKeyedService<IActivity>("EInvoice.ReadUbl"));
         Assert.IsType<ReadUblBatchActivity>(provider.GetRequiredKeyedService<IActivity>("EInvoice.ReadUblBatch"));
+        Assert.IsType<ReadProfileActivity>(provider.GetRequiredKeyedService<IActivity>("EInvoice.ReadProfile"));
+        Assert.IsType<ReadProfileBatchActivity>(provider.GetRequiredKeyedService<IActivity>("EInvoice.ReadProfileBatch"));
     }
 
     /// <summary>Studio generic editörünün form alanına eşleyebildiği tipler.</summary>

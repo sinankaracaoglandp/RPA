@@ -2,10 +2,12 @@ namespace RPA.Infrastructure.Workflow;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RPA.Application.EInvoiceProfiles;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Activities.Desktop;
 using RPA.Infrastructure.Idempotency;
 using RPA.Infrastructure.Persistence;
+using RPA.Infrastructure.Services;
 using RPA.Infrastructure.Workflow.Activities.Api;
 using RPA.Infrastructure.Workflow.Activities.Email;
 using RPA.Infrastructure.Workflow.Activities.EInvoice;
@@ -30,8 +32,13 @@ public static class WorkflowServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, EmailReadInboxActivity>("Email.ReadInbox");
         services.AddKeyedTransient<IActivity, AttachmentDownloadActivity>("Email.DownloadAttachment");
         services.AddSingleton<UblInvoiceParser>();
+        services.AddScoped<EInvoiceProfileDefinitionValidator>();
+        services.AddScoped<EInvoiceProfileService>();
+        services.AddSingleton<EInvoiceProfileExtractor>();
         services.AddKeyedTransient<IActivity, ReadUblActivity>("EInvoice.ReadUbl");
         services.AddKeyedTransient<IActivity, ReadUblBatchActivity>("EInvoice.ReadUblBatch");
+        services.AddKeyedTransient<IActivity, ReadProfileActivity>("EInvoice.ReadProfile");
+        services.AddKeyedTransient<IActivity, ReadProfileBatchActivity>("EInvoice.ReadProfileBatch");
 
         // WP-5.6 Web aktiviteleri: Studio katalogundan calistirilan Web.* node'lari.
         services.AddSingleton<IWebAutomationSessionManager, PlaywrightWebAutomationSessionManager>();

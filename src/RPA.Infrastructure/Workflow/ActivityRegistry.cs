@@ -62,6 +62,25 @@ public static class ActivityRegistry
             .Input("errorMode", "string", required: false, defaultValue: "Continue", options: new[] { "Continue", "Stop" })
             .Input("mappings", "JSON", required: false, pickerKind: "einvoice-mapping")
             .Input("outputBindings", "JSON", required: false).Output("results", "JSON");
+
+        b.Activity("EInvoice.ReadProfile").DisplayName("E-Fatura Profili Oku").Category(CatEInvoice)
+            .Input("projectId", "string").Input("profileId", "string", pickerKind: "einvoice-profile")
+            .Input("profileVersion", "int")
+            .Input("sourceMode", "string", defaultValue: "XmlContent", options: new[] { "FilePath", "XmlContent" })
+            .Input("filePath", "Sensitive", required: false).Input("xmlContent", "Sensitive", required: false)
+            .Input("outputVariable", "string", required: false, defaultValue: "fatura")
+            .Output("fatura", "JSON");
+
+        b.Activity("EInvoice.ReadProfileBatch").DisplayName("E-Fatura Profili Toplu Oku").Category(CatEInvoice)
+            .Input("projectId", "string").Input("profileId", "string", pickerKind: "einvoice-profile")
+            .Input("profileVersion", "int")
+            .Input("sourceMode", "string", defaultValue: "Folder", options: new[] { "Folder", "FilePaths", "XmlContents" })
+            .Input("folderPath", "Sensitive", required: false)
+            .Input("fileFilter", "string", required: false, defaultValue: "*.xml")
+            .Input("includeSubfolders", "bool", required: false, defaultValue: false)
+            .Input("filePaths", "Sensitive", required: false).Input("xmlContents", "Sensitive", required: false)
+            .Input("outputVariable", "string", required: false, defaultValue: "faturalar")
+            .Output("faturalar", "JSON");
     }
 
     // ---- Mantık ----
