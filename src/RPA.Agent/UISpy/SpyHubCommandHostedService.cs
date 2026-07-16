@@ -18,11 +18,16 @@ public sealed class SignalRSpyCommandConnection : ISpyCommandConnection
 {
     private readonly HubConnection _connection;
 
-    public SignalRSpyCommandConnection(IOptions<AgentOptions> options)
+    public SignalRSpyCommandConnection(
+        IOptions<AgentOptions> options,
+        RPA.Agent.Authentication.IAgentAccessTokenProvider tokenProvider)
     {
         var url = options?.Value?.OrchestratorUrl ?? throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(tokenProvider);
         _connection = new HubConnectionBuilder()
-            .WithUrl($"{url.TrimEnd('/')}/hubs/studio")
+            .WithUrl(
+                $"{url.TrimEnd('/')}/hubs/studio",
+                o => o.AccessTokenProvider = async () => await tokenProvider.GetTokenAsync(CancellationToken.None))
             .WithAutomaticReconnect()
             .Build();
     }

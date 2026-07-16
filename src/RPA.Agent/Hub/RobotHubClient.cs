@@ -25,16 +25,22 @@ public sealed class RobotHubClient : IJobHubClient
         HubConnectionStatusCoordinator statusCoordinator,
         JobEventRouter jobEventRouter,
         UserPromptService userPromptService,
+        RPA.Agent.Authentication.IAgentAccessTokenProvider tokenProvider,
         ILogger<RobotHubClient> logger)
     {
         var optionsValue = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(tokenProvider);
         _statusCoordinator = statusCoordinator ?? throw new ArgumentNullException(nameof(statusCoordinator));
         _jobEventRouter = jobEventRouter ?? throw new ArgumentNullException(nameof(jobEventRouter));
         _userPromptService = userPromptService ?? throw new ArgumentNullException(nameof(userPromptService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         _connection = new HubConnectionBuilder()
-            .WithUrl($"{optionsValue.OrchestratorUrl.TrimEnd('/')}/hubs/robot")
+            // Ajan JWT'si paylasilan saglayicidan gelir; SignalR her (yeniden) baglantida cagirir,
+            // boylece kisa omurlu token seffaf sekilde yenilenir.
+            .WithUrl(
+                $"{optionsValue.OrchestratorUrl.TrimEnd('/')}/hubs/robot",
+                o => o.AccessTokenProvider = async () => await tokenProvider.GetTokenAsync(CancellationToken.None))
             .WithAutomaticReconnect()
             .Build();
 
