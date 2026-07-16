@@ -206,4 +206,49 @@ public sealed class EInvoiceProfileExtractorTests
         var exception = Assert.Throws<InvoiceParseException>(() => new EInvoiceProfileExtractor().Extract(xml, definition));
         Assert.Contains("iban", exception.Message);
     }
+
+    [Theory]
+    [InlineData("1.234,56", "1234.56")]
+    [InlineData("1,234.56", "1234.56")]
+    [InlineData("32,45", "32.45")]
+    [InlineData("32.45", "32.45")]
+    public void Extract_DecimalField_AcceptsTurkishAndEnglishFormats(string rawValue, string expected)
+    {
+        var xml = $"""
+            <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                     xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+              <cbc:Note>{rawValue}</cbc:Note>
+            </Invoice>
+            """;
+        var definition = new EInvoiceProfileDefinition
+        {
+            Fields = [new EInvoiceFieldDefinition { Name = "tutar", Source = "XPath", ValueXPath = "//cbc:Note", Type = "decimal" }],
+        };
+
+        var result = new EInvoiceProfileExtractor().Extract(xml, definition);
+
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), result["tutar"]);
+    }
+
+    [Theory]
+    [InlineData("2026-07-16")]
+    [InlineData("16.07.2026")]
+    [InlineData("16/07/2026")]
+    public void Extract_DateField_AcceptsTurkishFormats(string rawValue)
+    {
+        var xml = $"""
+            <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                     xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+              <cbc:Note>{rawValue}</cbc:Note>
+            </Invoice>
+            """;
+        var definition = new EInvoiceProfileDefinition
+        {
+            Fields = [new EInvoiceFieldDefinition { Name = "tarih", Source = "XPath", ValueXPath = "//cbc:Note", Type = "date" }],
+        };
+
+        var result = new EInvoiceProfileExtractor().Extract(xml, definition);
+
+        Assert.Equal(new DateOnly(2026, 7, 16), result["tarih"]);
+    }
 }

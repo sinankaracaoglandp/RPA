@@ -110,8 +110,8 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
     {
         "string" => value,
         "integer" => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer) ? integer : throw Conversion(field.Name),
-        "decimal" => decimal.TryParse(value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : throw Conversion(field.Name),
-        "date" => DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : throw Conversion(field.Name),
+        "decimal" => ParseDecimal(value, field.Name),
+        "date" => ParseDate(value, field.Name),
         "boolean" => bool.TryParse(value, out var boolean) ? boolean : value switch { "1" => true, "0" => false, _ => throw Conversion(field.Name) },
         _ => throw Conversion(field.Name)
     };
@@ -150,6 +150,30 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
         "unitprice" or "line.unitprice" => "cac:Price/cbc:PriceAmount",
         _ => field
     };
+
+    private static decimal ParseDecimal(string value, string name)
+    {
+        var normalized = value.Trim();
+        if (normalized.Contains(',') && normalized.Contains('.'))
+        {
+            // Son gelen ayraç ondalık ayracıdır: "1.234,56" → TR, "1,234.56" → EN.
+            normalized = normalized.LastIndexOf(',') > normalized.LastIndexOf('.')
+                ? normalized.Replace(".", string.Empty).Replace(',', '.')
+                : normalized.Replace(",", string.Empty);
+        }
+        else
+        {
+            normalized = normalized.Replace(',', '.');
+        }
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
+            ? number : throw Conversion(name);
+    }
+
+    private static readonly string[] DateFormats = ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy"];
+
+    private static DateOnly ParseDate(string value, string name) =>
+        DateOnly.TryParseExact(value.Trim(), DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? date : throw Conversion(name);
 
     private static InvoiceParseException Conversion(string name) => new($"Profil alan tür dönüşümü başarısız: {name}");
 }
