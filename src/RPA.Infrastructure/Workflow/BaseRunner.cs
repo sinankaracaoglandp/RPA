@@ -28,6 +28,12 @@ public sealed class BaseRunner : IWorkflowRunner
     private readonly ICheckpointManager _checkpointManager;
     private readonly IWorkflowExecutionObserver? _observer;
 
+    /// <summary>
+    /// Süreklilik kapısı (Task 6). Null ise sınır uygulanmaz (Studio/test çalıştırmaları).
+    /// Ajan sürecinde bağlantı kirasına bağlanır.
+    /// </summary>
+    private readonly IExecutionContinuationGate? _continuationGate;
+
     /// <summary>componentCall node'ları için: (componentId, version) → component JSON çözümleyici.</summary>
     private readonly Func<string, string?, string?>? _componentResolver;
 
@@ -39,7 +45,8 @@ public sealed class BaseRunner : IWorkflowRunner
         ICredentialVault? vault = null,
         Func<string, string?, string?>? componentResolver = null,
         ICheckpointManager? checkpointManager = null,
-        IWorkflowExecutionObserver? observer = null)
+        IWorkflowExecutionObserver? observer = null,
+        IExecutionContinuationGate? continuationGate = null)
     {
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -49,6 +56,7 @@ public sealed class BaseRunner : IWorkflowRunner
         _componentResolver = componentResolver;
         _checkpointManager = checkpointManager ?? new CheckpointManager();
         _observer = observer;
+        _continuationGate = continuationGate;
     }
 
     /// <inheritdoc />
@@ -234,6 +242,15 @@ public sealed class BaseRunner : IWorkflowRunner
             _logger.LogWarning(bex, "JobRun {JobRunId} — İş kuralı istisnası: {Message}", jobRunId, bex.Message);
             return Fail(bex, stopwatch, BuildCheckpointData(state));
         }
+        catch (RPA.Domain.Exceptions.ExecutionSuspendedException suspended)
+        {
+            // Kira dolması bir hata değil, kontrollü kesinti: iş + sonraki node kimliği korunur,
+            // checkpoint verisi devam ettirmeye izin verir.
+            _logger.LogWarning(
+                "JobRun {JobRunId} — yürütme '{NextNodeId}' öncesinde askıya alındı: {Message}",
+                jobRunId, suspended.NextNodeId, suspended.Message);
+            return Fail(suspended, stopwatch, BuildCheckpointData(state));
+        }
         catch (SystemException sex)
         {
             _logger.LogError(sex, "JobRun {JobRunId} — Sistem istisnası: {Message}", jobRunId, sex.Message);
@@ -285,6 +302,14 @@ public sealed class BaseRunner : IWorkflowRunner
             if (!state.Definition.NodesById.TryGetValue(current, out var node))
             {
                 throw new SystemException($"Bağlantı hedefi node bulunamadı: '{current}'.");
+            }
+
+            // Güvenli sınır (Task 6): node BAŞLAMADAN önce danışılır. Kapı yalnız burada
+            // uygulanır — hâlihazırda çalışan bir node asla yarıda kesilmez.
+            if (_continuationGate is not null)
+            {
+                await _continuationGate.EnsureMayStartNodeAsync(
+                    state.Context.JobRunId, node.Id, state.CancellationToken);
             }
 
             var next = await ExecuteNodeAsync(node, state);

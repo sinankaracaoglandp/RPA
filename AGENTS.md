@@ -232,6 +232,29 @@ LicenseGenerator.
 Gerekçe: İnternet erişimi olmayan Orchestrator kurulumlarında kurulum-bağlı, vendor-imzalı lisans
 doğrulaması ve aktive agent sayısının güvenli biçimde sınırlandırılması.
 
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — Task 6: süreklilik kapısı)
+
+**Yeni arayüz:** `src/RPA.Domain/Interfaces/IExecutionContinuationGate.cs` —
+`EnsureMayStartNodeAsync(Guid jobRunId, string nodeId, CancellationToken)`. Runner SIRADAKİ node'u
+başlatmadan önce danışır; izin yoksa **`RPA.Domain.Exceptions.ExecutionSuspendedException`**
+(yeni, `SystemException` türevi; `JobRunId` + `NextNodeId` korunur) fırlatılır.
+
+- **`BaseRunner`** ctor'a opsiyonel `IExecutionContinuationGate? continuationGate` parametresi aldı
+  (son parametre, varsayılan `null` → mevcut çağıranlar etkilenmez; kapı yoksa sınır uygulanmaz).
+  Kapı yalnız `RunSequenceAsync` içinde, node başlamadan ÖNCE çağrılır — çalışan node hiçbir
+  koşulda yarıda kesilmez. Askıya alma `Fail(...)` + checkpoint verisiyle döner.
+- **Agent:** `RPA.Agent.Connectivity.ConnectivityLease` (15 dk, `TimeProvider` ile sürülür; 14:59
+  geçerli / 15:00 geçersiz), `ConnectivityLeaseContinuationGate` (kapının kira tabanlı
+  implementasyonu), `AgentOutbox` + `AgentOutboxOverflowException` (anahtar tabanlı idempotent,
+  atomik kalıcı, kapasite taşması AÇIK hata — sessiz kayıt düşürme yok).
+- **`JobExecutionOutcome.IsSuspended`** eklendi (türetilmiş özellik; mevcut alanlar değişmedi).
+- **Aktivite public imzaları DEĞİŞMEDİ.**
+
+Etkilenen paketler: Domain (yeni arayüz + istisna), Infrastructure (BaseRunner), Agent
+(Connectivity + Jobs). Studio/WebAPI/LicenseGenerator etkilenmez.
+Gerekçe: Bağlantı koptuğunda çalışan node normal tamamlanma sınırına ulaşmalı, ancak 15 dakikalık
+offline kira dolduktan sonra hiçbir yeni node başlamamalıdır (Spec — "Connectivity and Offline Lease").
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

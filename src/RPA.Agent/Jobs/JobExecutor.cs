@@ -85,7 +85,14 @@ public sealed class JobExecutor
     {
         var type = _classifier.Classify(ex);
         _state.RecordJobFailed();
-        if (type == ExceptionType.Business)
+        if (ex is RPA.Domain.Exceptions.ExecutionSuspendedException suspended)
+        {
+            // Kontrollü kesinti (Task 6) — hata gürültüsü üretmez; devam noktası korunur.
+            _logger.LogWarning(
+                "İş {ItemId} bağlantı kirası dolduğu için '{NextNodeId}' öncesinde askıya alındı.",
+                job.ItemId, suspended.NextNodeId);
+        }
+        else if (type == ExceptionType.Business)
         {
             _logger.LogWarning(ex, "İş {ItemId} iş kuralı istisnasıyla başarısız (retry yok).", job.ItemId);
         }

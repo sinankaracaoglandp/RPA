@@ -226,3 +226,20 @@ Paket F: ✅ TÜM TASKLAR TAMAM (7 task, commits 9ac4466..0eb06c2). Final whole-
 - Testler: Expressions 55/55, BaseRunner 29/29, Studio 264/264, build OK. Backend 4 fail = bilinen önceden-var set (SAP GUI double-connect, Agent QueuePolling DI, RobotHub/UiSpy WithoutToken auth) — regresyon DEĞİL, feature yollarına dokunmuyor.
 - Deferred Minors (post-merge / kullanıcı testi sonrası): M2 EvalUnary -3.0→long; M3 ToInt returnType "int"/long + (long)/(int) taşma sarması; M4 PadChar çok-karakter sessiz truncate; M5 Compare/TryToDouble Evaluator+Engine ikili kaynak; M6 caretOffsetFromEnd kullanılmıyor (imleç-parantez-içi UX); M7 string negatif-yol test boşluğu; parser true/false OrdinalIgnoreCase.
 - Bekleyen: kullanıcı gerçek Studio/çalıştırma testi (${Format(AddDays(Now(),7),"dd.MM.yyyy")} + autocomplete). Sonrasında fonksiyon seti/UX değişikliği gelebilir.
+
+## Offline Agent Licensing
+
+**Plan:** docs/superpowers/plans/2026-07-16-offline-agent-licensing.md
+**Spec:** docs/superpowers/specs/2026-07-16-offline-agent-licensing-design.md
+**Branch:** feature/offline-agent-licensing
+
+- Task 1: complete (commits 79ed66f..9b5810b, review clean, Domain 14/14)
+- Task 2: complete (commits 9b5810b..101c45e, review approved, Infrastructure 668/668)
+  - Deferred minors: TrySaveAsync exception path candidate buffer clearing; verifier null payload/signature robustness.
+- Task 3: complete (commits 101c45e..b331120, review approved, Infrastructure 674/674)
+  - Deferred minors: plaintext-boundary test hardening in WebAPI/service layer; live PostgreSQL concurrency integration test; non-Npgsql static lock pruning if non-PostgreSQL runtime support is ever added.
+- Task 4: complete (commits b331120..8c3759d, review approved, WebAPI 105/105)
+  - Deferred minors: malformed license JSON should return clean 400; harden AgentClient policy if externally-issued agent tokens are introduced.
+- Task 6: complete (Agent 138/138, Infrastructure 678/678, no new failures)
+  - IExecutionContinuationGate + ExecutionSuspendedException (Domain), ConnectivityLease/gate + bounded idempotent AgentOutbox (Agent), BaseRunner node-boundary gate (optional ctor param), JobExecutionOutcome.IsSuspended. Contract entry in AGENTS.md.
+  - Deferred minors: lease/gate/outbox not yet wired into AddAgentCore or fed by hub connect/disconnect + refresh-lease; no AgentOptions outbox path; resume-after-reconnect from NextNodeId not implemented.

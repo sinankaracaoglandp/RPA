@@ -16,6 +16,12 @@ public sealed class JobExecutionOutcome
     /// <summary>İş kuralı istisnası mı? (true → kuyruk retry etmez.)</summary>
     public bool IsBusinessException => ExceptionType == RPA.Domain.Enums.ExceptionType.Business;
 
+    /// <summary>
+    /// Bağlantı kirası dolduğu için kontrollü askıya alma mı? (Task 6.) Sistem seviyesi bir
+    /// kesintidir: iş başarısız olmadı, güvenli node sınırında durduruldu.
+    /// </summary>
+    public bool IsSuspended => Exception is RPA.Domain.Exceptions.ExecutionSuspendedException;
+
     public static JobExecutionOutcome Succeeded(Dictionary<string, object?> outputs, long durationMs)
         => new() { Success = true, Outputs = outputs ?? new(), DurationMs = durationMs };
 
