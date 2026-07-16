@@ -36,6 +36,10 @@ public class RpaDbContext : DbContext
 
     public DbSet<RPA.Domain.Entities.Workflow> Workflows => Set<RPA.Domain.Entities.Workflow>();
 
+    public DbSet<EInvoiceProfile> EInvoiceProfiles => Set<EInvoiceProfile>();
+
+    public DbSet<EInvoiceProfileVersion> EInvoiceProfileVersions => Set<EInvoiceProfileVersion>();
+
     /// <summary>Task 3.1 — Robot kayıt + heartbeat + offline tespiti (Spec Bölüm 5.6, 9).</summary>
     public DbSet<Robot> Robots => Set<Robot>();
 
@@ -210,6 +214,28 @@ public class RpaDbContext : DbContext
             entity.Ignore(w => w.Versions);
             entity.Ignore(w => w.ComponentUsages);
             entity.Ignore(w => w.JobRuns);
+        });
+
+        modelBuilder.Entity<EInvoiceProfile>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Name).HasMaxLength(256).IsRequired();
+            entity.Property(p => p.Description).HasMaxLength(1024);
+            entity.Property(p => p.DraftDefinitionJson).IsRequired();
+            entity.HasIndex(p => new { p.ProjectId, p.Name }).IsUnique();
+            entity.HasQueryFilter(p => !p.IsDeleted);
+            entity.HasOne(p => p.Project).WithMany(p => p.EInvoiceProfiles)
+                .HasForeignKey(p => p.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EInvoiceProfileVersion>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.Property(v => v.DefinitionJson).IsRequired();
+            entity.Property(v => v.OutputSchemaJson).IsRequired();
+            entity.HasIndex(v => new { v.ProfileId, v.Version }).IsUnique();
+            entity.HasOne(v => v.Profile).WithMany(p => p.Versions)
+                .HasForeignKey(v => v.ProfileId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
