@@ -11,6 +11,8 @@
     "sectionOrchestratorDesc": "Manage robots, jobs and queues",
     "designerTitle": "Designer",
     "designerDesc": "Build workflows with drag & drop",
+    "einvoiceAddressingTitle": "E-Invoice Addressing",
+    "einvoiceAddressingDesc": "Map XML fields into reusable profile variables",
     "componentLibraryTitle": "Component Library",
     "componentLibraryDesc": "Publish and approve reusable components",
     "templatesTitle": "Template Gallery",
