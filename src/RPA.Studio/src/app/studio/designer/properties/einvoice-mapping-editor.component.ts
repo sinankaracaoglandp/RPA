@@ -1,5 +1,17 @@
 import { ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, Output } from '@angular/core';
-import { EInvoiceMappingRule, RulePreview, XmlTreeNode, buildXPath, ibanPreset, kurPreset, parseSampleXml, previewRule } from './einvoice-mapping.model';
+import {
+  EInvoiceCollectionDefinition,
+  EInvoiceMappingRule,
+  EInvoiceProfileDefinition,
+  RulePreview,
+  XmlTreeNode,
+  buildXPath,
+  ibanPreset,
+  kurPreset,
+  parseSampleXml,
+  previewProfileDefinition,
+  previewRule,
+} from './einvoice-mapping.model';
 
 @Component({
   selector: 'app-einvoice-mapping-editor',
@@ -13,6 +25,10 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   private sampleDocument?: XMLDocument;
   tree: XmlTreeNode[] = [];
   rules: EInvoiceMappingRule[] = [];
+  collections: EInvoiceCollectionDefinition[] = [];
+  collectionName = '';
+  collectionScopeXPath = '';
+  selectedCollectionName = '';
   sampleError = '';
   private readonly expanded = new Set<XmlTreeNode>();
   editingIndex: number | null = null;
@@ -30,6 +46,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     else this.rules = (typeof value === 'string' ? JSON.parse(value) : value).map((rule: EInvoiceMappingRule) => ({ ...rule }));
   }
   @Output() readonly valueChange = new EventEmitter<string>();
+  @Output() readonly profileDefinitionChange = new EventEmitter<string>();
 
   loadSampleXml(xml: string): void {
     this.sampleDocument = undefined;
@@ -142,6 +159,53 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     return JSON.stringify({ mapping: { ...this.draft }, groups: this.regexGroups(), preview: this.preview(this.draft), rules: this.rules.map(mapping => ({ mapping })) }, null, 2);
   }
 
+  addCollection(name: string, scopeXPath: string): void {
+    const normalized = name.trim();
+    const scope = scopeXPath.trim();
+    if (!this.isIdentifier(normalized) || !scope || this.collections.some(item => item.name.toLowerCase() === normalized.toLowerCase())) return;
+    this.collections = [...this.collections, { name: normalized, scopeXPath: scope, fields: [] }];
+    this.selectedCollectionName = normalized;
+  }
+
+  addCollectionFromDraft(): void {
+    this.addCollection(this.collectionName, this.collectionScopeXPath);
+    this.collectionName = '';
+    this.collectionScopeXPath = '';
+  }
+
+  addCollectionField(collectionName: string, field: EInvoiceMappingRule): void {
+    this.collections = this.collections.map(collection => {
+      if (collection.name !== collectionName || !this.isIdentifier(field.name)) return collection;
+      if (collection.fields.some(item => item.name.toLowerCase() === field.name.toLowerCase())) return collection;
+      return { ...collection, fields: [...collection.fields, { ...field }] };
+    });
+  }
+
+  addDraftAsCollectionField(): void {
+    if (!this.selectedCollectionName || !this.isDraftValid()) return;
+    this.addCollectionField(this.selectedCollectionName, this.draft);
+  }
+
+  profileDefinition(): EInvoiceProfileDefinition {
+    return {
+      fields: this.serializedValue(),
+      collections: this.collections.map(collection => ({
+        name: collection.name,
+        scopeXPath: collection.scopeXPath,
+        fields: collection.fields.map(field => ({ ...field })),
+      })),
+    };
+  }
+
+  previewDefinition(): Record<string, any> {
+    if (!this.sampleDocument) return {};
+    return previewProfileDefinition(this.profileDefinition(), this.sampleDocument);
+  }
+
+  emitProfileDefinition(): void {
+    this.profileDefinitionChange.emit(JSON.stringify(this.profileDefinition()));
+  }
+
   findFirst(name: string): XmlTreeNode | undefined {
     const visit = (nodes: XmlTreeNode[]): XmlTreeNode | undefined => {
       for (const node of nodes) { if (node.name === name) return node; const found = visit(node.children); if (found) return found; }
@@ -182,4 +246,5 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   addRule(rule: EInvoiceMappingRule): void { this.rules = [...this.rules, { ...rule }]; this.emit(); }
   serializedValue(): EInvoiceMappingRule[] { return this.rules.map(rule => ({ ...rule })); }
   private emit(): void { this.valueChange.emit(JSON.stringify(this.serializedValue())); }
+  private isIdentifier(value: string): boolean { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value); }
 }

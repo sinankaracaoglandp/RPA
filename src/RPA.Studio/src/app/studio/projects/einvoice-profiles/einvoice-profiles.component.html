@@ -82,6 +82,9 @@
       </div>
 
       @if (selectedProfileId()) {
+        <app-einvoice-mapping-editor
+          (profileDefinitionChange)="draftJson.set($event)"
+        />
         <textarea
           class="einvoice-profiles__draft"
           data-testid="profile-draft"

@@ -7,11 +7,12 @@ import {
   EInvoiceProfileVersion,
 } from '../../../shared/models/einvoice-profile.model';
 import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
+import { EInvoiceMappingEditorComponent } from '../../designer/properties/einvoice-mapping-editor.component';
 
 @Component({
   selector: 'app-einvoice-profiles',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, EInvoiceMappingEditorComponent],
   templateUrl: './einvoice-profiles.component.html',
   styleUrls: ['./einvoice-profiles.component.scss'],
 })

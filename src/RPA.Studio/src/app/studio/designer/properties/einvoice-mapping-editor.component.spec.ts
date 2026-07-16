@@ -5,6 +5,7 @@ import { ibanPreset, kurPreset, previewRule } from './einvoice-mapping.model';
 const SAMPLE_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:ID>FTR2026</cbc:ID><cbc:PayableAmount>1234.50</cbc:PayableAmount><cbc:Note>IBAN: TR330006100519786457841326</cbc:Note></Invoice>`;
 const MAPPING = { name: 'invoiceId', source: 'XPath' as const, valueXPath: '/Invoice/cbc:ID', type: 'string' as const, required: true, multiple: false };
 const SCOPED_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:Note>first</cbc:Note></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:Note>second</cbc:Note></cac:InvoiceLine></Invoice>`;
+const UBL_WITH_TWO_LINES = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cac:Item><cbc:ID>M-1</cbc:ID><cbc:Name>Kalem 1</cbc:Name></cac:Item></cac:InvoiceLine><cac:InvoiceLine><cac:Item><cbc:ID>M-2</cbc:ID><cbc:Name>Kalem 2</cbc:Name></cac:Item></cac:InvoiceLine></Invoice>`;
 const DEEP_UBL = `<Invoice><Lines><Line><Details><Code>ABC</Code></Details></Line><Line><Details><Code>DEF</Code></Details></Line></Lines></Invoice>`;
 let workerHangs = false;
 const workers: FakeWorker[] = [];
@@ -241,6 +242,38 @@ describe('EInvoiceMappingEditorComponent', () => {
     const preview = previewRule({ ...MAPPING, scopeXPath: '/Invoice/cac:InvoiceLine', valueXPath: './/cbc:Note', multiple: true }, doc);
     expect(preview.error).toBeUndefined();
     expect(preview.converted).toEqual(['first', 'second']);
+  });
+
+  it('creates a collection from a repeated XML scope and relative child mappings', () => {
+    const component = fixture.componentInstance;
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.addCollection('satirlar', '/Invoice/cac:InvoiceLine');
+    component.addCollectionField('satirlar', {
+      name: 'MalzemeKodu',
+      source: 'XPath',
+      valueXPath: './cac:Item/cbc:ID',
+      type: 'string',
+      required: true,
+      multiple: false,
+    });
+
+    expect(component.previewDefinition()['satirlar']).toHaveLength(2);
+    expect(component.previewDefinition()['satirlar'][0].MalzemeKodu).toBe('M-1');
+    expect(component.profileDefinition().collections[0].fields[0].name).toBe('MalzemeKodu');
+  });
+
+  it('never emits sample XML while saving a profile draft definition', () => {
+    const component = fixture.componentInstance;
+    const emitted: string[] = [];
+    component.profileDefinitionChange.subscribe(value => emitted.push(value));
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.addCollection('satirlar', '/Invoice/cac:InvoiceLine');
+    component.addCollectionField('satirlar', { ...MAPPING, name: 'MalzemeKodu', valueXPath: './cac:Item/cbc:ID' });
+    component.emitProfileDefinition();
+
+    expect(emitted.length).toBe(1);
+    expect(JSON.stringify(emitted)).not.toContain('<Invoice');
+    expect(JSON.parse(emitted[0]).collections[0].name).toBe('satirlar');
   });
 
   it.each(['missing', '9'])('reports missing regex group %s instead of converting an empty value', group => {

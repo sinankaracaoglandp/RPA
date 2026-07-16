@@ -10,6 +10,17 @@ export interface EInvoiceMappingRule {
   multiple: boolean;
 }
 
+export interface EInvoiceCollectionDefinition {
+  name: string;
+  scopeXPath: string;
+  fields: EInvoiceMappingRule[];
+}
+
+export interface EInvoiceProfileDefinition {
+  fields: EInvoiceMappingRule[];
+  collections: EInvoiceCollectionDefinition[];
+}
+
 export interface XmlTreeNode {
   name: string;
   namespaceUri: string | null;
@@ -137,6 +148,45 @@ export function previewRule(rule: EInvoiceMappingRule, document: XMLDocument): R
       });
     }
     if (!values.length) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu değer bulunamadı.' : undefined };
+    const converted = values.map(value => convert(value, rule.type));
+    return { raw: rule.multiple ? values : values[0], converted: rule.multiple ? converted : converted[0] };
+  } catch (error) {
+    return { raw: null, converted: null, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function previewProfileDefinition(definition: EInvoiceProfileDefinition, document: XMLDocument): Record<string, any> {
+  const namespaces = namespaceMap(document);
+  const result: Record<string, any> = {};
+  for (const field of definition.fields) result[field.name] = previewRule(field, document).converted;
+  for (const collection of definition.collections) {
+    result[collection.name] = evaluateNodes(collection.scopeXPath, document, document, namespaces)
+      .map(scope => {
+        const row: Record<string, unknown> = {};
+        for (const field of collection.fields) row[field.name] = previewRuleInScope(field, scope, document, namespaces).converted;
+        return row;
+      });
+  }
+  return result;
+}
+
+function previewRuleInScope(rule: EInvoiceMappingRule, scope: Node, document: XMLDocument, namespaces: Map<string, string>): RulePreview {
+  try {
+    const xpath = rule.valueXPath || (rule.source === 'LineNotes' ? './*[local-name()="Note"]' : '');
+    if (!xpath) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu deÄŸer bulunamadÄ±.' : undefined };
+    let values = evaluateNodes(xpath, scope, document, namespaces).map(node => node.textContent?.trim() ?? '').filter(Boolean);
+    if (rule.regex) {
+      const expression = new RegExp(rule.regex);
+      values = values.flatMap(value => {
+        const match = expression.exec(value);
+        if (!match) return [];
+        if (!rule.group) return [match[0] ?? ''];
+        const selected = /^\d+$/.test(rule.group) ? match[Number(rule.group)] : match.groups?.[rule.group];
+        if (selected === undefined) throw new Error(`Regex group '${rule.group}' bulunamadÄ±.`);
+        return [selected];
+      });
+    }
+    if (!values.length) return { raw: null, converted: rule.multiple ? [] : null, error: rule.required ? 'Zorunlu deÄŸer bulunamadÄ±.' : undefined };
     const converted = values.map(value => convert(value, rule.type));
     return { raw: rule.multiple ? values : values[0], converted: rule.multiple ? converted : converted[0] };
   } catch (error) {
