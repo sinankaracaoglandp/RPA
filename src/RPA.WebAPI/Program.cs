@@ -5,8 +5,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using RPA.Infrastructure.Alerting;
 using RPA.Infrastructure.Authentication;
+using RPA.Infrastructure.Licensing;
 using RPA.Infrastructure.Logging;
 using RPA.Infrastructure.Persistence;
+using RPA.Infrastructure.Persistence.Repositories;
 using RPA.Infrastructure.Queues;
 using RPA.Infrastructure.Robots;
 using RPA.Infrastructure.Scheduling;
@@ -14,8 +16,16 @@ using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
 using RPA.WebAPI.Robots;
 using RPA.WebAPI.Hubs;
+using RPA.WebAPI.Licensing;
 using RPA.WebAPI.Middleware;
 using Serilog;
+
+const string TestOnlyVendorPublicKeyPem = """
+-----BEGIN PUBLIC KEY-----
+MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBALSW4+Y8me2h28IWgq0lHGgcrp8+F7WZ
+MDPr0V9YK+1gksJjXssHBXOjU6yNXF6oJmqzYcsg2v3hslwYkV2xshMCAwEAAQ==
+-----END PUBLIC KEY-----
+""";
 
 // PostgreSQL (Npgsql): DateTime alanlarını 'timestamp without time zone' olarak yaz —
 // Kind=Unspecified/Local değerlerde timestamptz kısıtlaması hata vermesin (Spec: UTC saklama).
@@ -96,6 +106,28 @@ builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowRepository,
 builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDesignService>();
 builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowRunService>();
 
+// Offline license + agent identity WebAPI (license enforcement authority).
+builder.Services.AddScoped<RPA.Domain.Interfaces.ILicenseService>(sp =>
+    new LicenseService(
+        sp.GetRequiredService<RpaDbContext>(),
+        sp.GetRequiredService<IInstallationIdentityService>(),
+        sp.GetRequiredService<IVendorLicenseVerifier>(),
+        builder.Configuration["Licensing:ProductId"] ?? "RPA.Platform",
+        builder.Configuration["Licensing:CustomerReference"]));
+builder.Services.AddScoped<IInstallationIdentityService>(sp =>
+    new InstallationIdentityService(
+        sp.GetRequiredService<IInstallationKeyStore>(),
+        builder.Configuration["Licensing:ProductId"] ?? "RPA.Platform"));
+builder.Services.AddScoped<IInstallationKeyStore>(_ =>
+    new DpapiInstallationKeyStore(
+        builder.Configuration["Licensing:KeyDirectory"]
+        ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Licensing")));
+builder.Services.AddScoped<IVendorLicenseVerifier>(_ =>
+    new VendorLicenseVerifier(builder.Configuration["Licensing:VendorPublicKeyPem"] ?? TestOnlyVendorPublicKeyPem));
+builder.Services.AddScoped<RPA.Domain.Interfaces.IAgentIdentityRepository, EfAgentIdentityRepository>();
+builder.Services.AddScoped<EfAgentIdentityRepository>();
+builder.Services.AddScoped<IAgentActivationCodeStore, EfAgentActivationCodeStore>();
+
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
 
@@ -157,7 +189,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("LicenseAdministrator", policy => policy.RequireRole("Administrator"));
+    options.AddPolicy("StudioSpyUser", policy => policy.RequireRole("Designer", "Administrator"));
+    options.AddPolicy("AgentClient", policy => policy.RequireClaim("client_type", "agent"));
+});
 
 // CORS: SPA (Angular) kaynağına izin ver.
 const string CorsPolicy = "RpaCors";

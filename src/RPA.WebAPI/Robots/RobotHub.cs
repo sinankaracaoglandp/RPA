@@ -38,6 +38,7 @@ public class RobotHub : Hub
     }
 
     /// <summary>Robot ajanı kaydını hub üzerinden yapar; grup üyeliği robot Id'sidir.</summary>
+    [Authorize(Policy = "AgentClient")]
     public async Task Register(RegisterRobotRequest request)
     {
         var mode = Enum.TryParse<Domain.Enums.RobotMode>(request.Mode, ignoreCase: true, out var m)
@@ -56,6 +57,7 @@ public class RobotHub : Hub
     }
 
     /// <summary>Robot ajanı heartbeat sinyali gönderir.</summary>
+    [Authorize(Policy = "AgentClient")]
     public async Task Heartbeat(Guid robotId)
     {
         var robot = await _robotService.RecordHeartbeatAsync(robotId);
@@ -72,6 +74,7 @@ public class RobotHub : Hub
     /// Ajanın yürütme sırasında gönderdiği node yaşam döngüsü olayını Studio canlı konsoluna
     /// (StudioHub → "NodeLog") yayınlar. Studio, olayı kendi çalıştırdığı jobRunId'ye göre süzer.
     /// </summary>
+    [Authorize(Policy = "AgentClient")]
     public async Task ReportNodeLog(NodeExecutionEvent evt)
     {
         if (evt is null)

@@ -41,6 +41,7 @@ public class StudioHub : Hub
     /// <summary>
     /// Ajandan tespit edilen elementi alır ve tüm Studio istemcilerine yayınlar.
     /// </summary>
+    [Authorize(Policy = "AgentClient")]
     public async Task ReceiveDetectedElement(SpyElementMessage element)
     {
         if (element is null)
@@ -70,6 +71,7 @@ public class StudioHub : Hub
     /// Ajan, tek-seçim iptal edildiğinde (Esc) veya seçim yapılmadan bittiğinde çağırır;
     /// oturumu başlatan Studio bağlantısına <c>SpyCancelled</c> yayınlanır ki 60 sn beklemesin.
     /// </summary>
+    [Authorize(Policy = "AgentClient")]
     public async Task NotifySpyCancelled(Guid sessionId)
     {
         if (sessionId == Guid.Empty)
@@ -83,6 +85,7 @@ public class StudioHub : Hub
         }
     }
 
+    [Authorize(Policy = "StudioSpyUser")]
     public async Task StartSpy(Guid sessionId, string kind, string? optionsJson = null)
     {
         if (sessionId == Guid.Empty)
@@ -104,6 +107,7 @@ public class StudioHub : Hub
         await Clients.Others.SendAsync(StartSpyCommand, sessionId, kind, optionsJson);
     }
 
+    [Authorize(Policy = "StudioSpyUser")]
     public async Task StopSpy(Guid sessionId)
     {
         if (sessionId == Guid.Empty)
