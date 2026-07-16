@@ -12,6 +12,8 @@ using RPA.Infrastructure.Robots;
 using RPA.Infrastructure.Scheduling;
 using RPA.Infrastructure.Vault;
 using RPA.Infrastructure.Workflow;
+using RPA.Application.EInvoiceProfiles;
+using RPA.Infrastructure.Services;
 using RPA.WebAPI.Robots;
 using RPA.WebAPI.Hubs;
 using RPA.WebAPI.Middleware;
@@ -95,6 +97,8 @@ builder.Services.AddScoped<RPA.Domain.Interfaces.IWorkflowRepository,
     RPA.Infrastructure.Persistence.EfWorkflowRepository>();
 builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowDesignService>();
 builder.Services.AddScoped<RPA.Infrastructure.Services.WorkflowRunService>();
+builder.Services.AddScoped<EInvoiceProfileDefinitionValidator>();
+builder.Services.AddScoped<EInvoiceProfileService>();
 
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).
 builder.Services.AddSignalR();
