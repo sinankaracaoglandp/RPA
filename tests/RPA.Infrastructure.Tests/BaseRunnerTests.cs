@@ -1,8 +1,12 @@
 namespace RPA.Infrastructure.Tests;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.EntityFrameworkCore;
+using RPA.Application.EInvoiceProfiles;
 using RPA.Domain.Entities;
 using RPA.Domain.Interfaces;
+using RPA.Infrastructure.Persistence;
+using RPA.Infrastructure.Services;
 using RPA.Infrastructure.Workflow;
 using RPA.Infrastructure.Workflow.Activities.EInvoice;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
@@ -47,6 +51,51 @@ public class BaseRunnerTests
 
     private static ActivityMetadata Meta(string id) =>
         new() { ActivityId = id, DisplayName = id };
+
+    private static RpaDbContext CreateEInvoiceProfileDatabase()
+    {
+        var options = new DbContextOptionsBuilder<RpaDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        return new RpaDbContext(options);
+    }
+
+    private static async Task<(Guid ProjectId, Guid ProfileId)> SeedPublishedEInvoiceProfileAsync(
+        RpaDbContext db,
+        string definitionJson)
+    {
+        var project = new Project { Name = "E-Fatura Test Projesi" };
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+
+        var service = new EInvoiceProfileService(db, new EInvoiceProfileDefinitionValidator());
+        var profile = await service.CreateAsync(project.Id, "Satis", null, default);
+        await service.SaveDraftAsync(project.Id, profile.Id, definitionJson, default);
+        await service.PublishAsync(project.Id, profile.Id, null, default);
+        return (project.Id, profile.Id);
+    }
+
+    private static string DynamicLineProfileDefinition() =>
+        """
+        {
+          "fields":[
+            {"name":"faturaNo","source":"XPath","valueXPath":"/inv:Invoice/cbc:ID","type":"string"}
+          ],
+          "collections":[
+            {
+              "name":"satirlar",
+              "scopeXPath":"//cac:InvoiceLine",
+              "fields":[
+                {"name":"MalzemeKodu","source":"XPath","valueXPath":"cac:Item/cac:SellersItemIdentification/cbc:ID","type":"string"},
+                {"name":"Aciklama","source":"XPath","valueXPath":"cac:Item/cbc:Name","type":"string"}
+              ]
+            }
+          ]
+        }
+        """;
+
+    private static string EscapeJsonStringContent(string value) =>
+        System.Text.Json.JsonSerializer.Serialize(value)[1..^1];
 
     /// <summary>Yapılandırılabilir sahte aktivite.</summary>
     private sealed class FakeActivity : IActivity
@@ -243,6 +292,116 @@ public class BaseRunnerTests
         var completed = Assert.Single(observer.Completed);
         Assert.Equal("[MASKED]", completed.Inputs!["xmlContent"]);
         Assert.DoesNotContain("SECRET", string.Join("|", completed.Inputs.Values.Concat(completed.Outputs?.Values ?? []).Append(completed.Error)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PublishedProfile_XmlList_ForEach_ExposesDynamicLineFields()
+    {
+        await using var db = CreateEInvoiceProfileDatabase();
+        var (projectId, profileId) = await SeedPublishedEInvoiceProfileAsync(db, DynamicLineProfileDefinition());
+        var profileService = new EInvoiceProfileService(db, new EInvoiceProfileDefinitionValidator());
+        var seen = new List<string?>();
+        var factory = new MapFactory()
+            .Add("EInvoice.ReadProfileBatch", () => new ReadProfileBatchActivity(profileService, new EInvoiceProfileExtractor()))
+            .Add("Test.RecordProductCode", () => new FakeActivity("Test.RecordProductCode", context =>
+            {
+                seen.Add(context.GetVariable<string?>("productCode"));
+                return Task.FromResult(new Dictionary<string, object?>());
+            }));
+
+        var json = """
+        {
+          "schemaVersion":"1.0","id":"36363636-3636-3636-3636-363636363636",
+          "name":"Profil satirlarini isle","version":"1.0.0",
+          "nodes":[
+            {"id":"read","type":"activity","activity":"EInvoice.ReadProfileBatch",
+             "properties":{
+               "projectId":"__PROJECT_ID__",
+               "profileId":"__PROFILE_ID__",
+               "profileVersion":1,
+               "sourceMode":"XmlContents",
+               "xmlContents":["__XML__"],
+               "outputVariable":"faturalar"
+             }},
+            {"id":"eachInvoice","type":"forEach","items":"{{faturalar}}","itemVariable":"fatura"},
+            {"id":"eachLine","type":"forEach","items":"{{fatura.satirlar}}","itemVariable":"satir"},
+            {"id":"record","type":"activity","activity":"Test.RecordProductCode",
+             "properties":{"productCode":"{{satir.MalzemeKodu}}"}}
+          ],
+          "connections":[
+            {"from":"read","to":"eachInvoice"},
+            {"from":"eachInvoice","fromPort":"body","to":"eachLine"},
+            {"from":"eachLine","fromPort":"body","to":"record"},
+            {"from":"record","to":"eachLine","toPort":"loop-back"},
+            {"from":"eachLine","to":"eachInvoice","toPort":"loop-back"}
+          ]
+        }
+        """
+        .Replace("__PROJECT_ID__", projectId.ToString())
+        .Replace("__PROFILE_ID__", profileId.ToString())
+        .Replace("__XML__", EscapeJsonStringContent(TwoLineUbl));
+
+        var catalog = new Dictionary<string, ActivityMetadata>
+        {
+            ["EInvoice.ReadProfileBatch"] = new ReadProfileBatchActivity(profileService, new EInvoiceProfileExtractor()).GetMetadata(),
+            ["Test.RecordProductCode"] = Meta("Test.RecordProductCode"),
+        };
+
+        var result = await CreateRunner(catalog, factory)
+            .ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.True(result.Success, result.Exception?.Message);
+        Assert.Equal(new[] { "URUN-1", "URUN-2" }, seen);
+    }
+
+    [Fact]
+    public async Task ProfileNodes_NeverExposeXmlToObserverOrLogs()
+    {
+        await using var db = CreateEInvoiceProfileDatabase();
+        var (projectId, profileId) = await SeedPublishedEInvoiceProfileAsync(db, DynamicLineProfileDefinition());
+        var profileService = new EInvoiceProfileService(db, new EInvoiceProfileDefinitionValidator());
+        var observer = new RecordingObserver();
+        var xml = """
+        <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                 xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                 xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+          <cbc:ID>FTR-SECRET-SAFE</cbc:ID>
+          <cbc:Note>SECRET-XML-SHOULD-NOT-LEAK</cbc:Note>
+        </Invoice>
+        """;
+        var factory = new MapFactory()
+            .Add("EInvoice.ReadProfile", () => new ReadProfileActivity(profileService, new EInvoiceProfileExtractor()));
+        var json = """
+        {
+          "schemaVersion":"1.0","id":"37373737-3737-3737-3737-373737373737",
+          "name":"Profil kaynak maskeleme","version":"1.0.0",
+          "nodes":[
+            {"id":"read","type":"activity","activity":"EInvoice.ReadProfile",
+             "properties":{
+               "projectId":"__PROJECT_ID__",
+               "profileId":"__PROFILE_ID__",
+               "profileVersion":1,
+               "sourceMode":"XmlContent",
+               "xmlContent":"__XML__",
+               "outputVariable":"fatura"
+             }}
+          ],
+          "connections":[]
+        }
+        """
+        .Replace("__PROJECT_ID__", projectId.ToString())
+        .Replace("__PROFILE_ID__", profileId.ToString())
+        .Replace("__XML__", EscapeJsonStringContent(xml));
+
+        await CreateRunner(
+            ActivityRegistry.BuildCatalog(),
+            factory,
+            observer: observer).ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        var completed = Assert.Single(observer.Completed);
+        Assert.Equal("[MASKED]", completed.Inputs!["xmlContent"]);
+        var observed = string.Join("|", completed.Inputs.Values.Concat(completed.Outputs?.Values ?? []).Append(completed.Error));
+        Assert.DoesNotContain("SECRET-XML-SHOULD-NOT-LEAK", observed, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -104,6 +104,8 @@ internal static class EInvoiceJson
         string json when string.IsNullOrWhiteSpace(json) => [],
         string json => DeserializeStrings(json),
         JsonElement element => DeserializeStrings(element.GetRawText()),
+        Newtonsoft.Json.Linq.JArray array => DeserializeStrings(
+            array.ToString(Newtonsoft.Json.Formatting.None)),
         IEnumerable<string> values => values.Where(item => !string.IsNullOrWhiteSpace(item)).ToList(),
         _ => throw new InvoiceParseException("Batch kaynağı bir string koleksiyonu olmalıdır.")
     };
