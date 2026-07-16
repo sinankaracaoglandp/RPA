@@ -64,6 +64,21 @@ public class LicenseCryptographyTests
     }
 
     [Fact]
+    public async Task InstallationIdentity_ConcurrentFirstStartupReturnsPersistedWinner()
+    {
+        var shared = new ConcurrentInstallationKeyState();
+        var firstService = new InstallationIdentityService(new ConcurrentInstallationKeyStore(shared), "RPA.Platform");
+        var secondService = new InstallationIdentityService(new ConcurrentInstallationKeyStore(shared), "RPA.Platform");
+
+        var identities = await Task.WhenAll(firstService.GetOrCreateAsync(), secondService.GetOrCreateAsync());
+        var restarted = await new InstallationIdentityService(
+            new ConcurrentInstallationKeyStore(shared), "RPA.Platform").GetOrCreateAsync();
+
+        Assert.Equal(identities[0], identities[1]);
+        Assert.Equal(identities[0], restarted);
+    }
+
+    [Fact]
     public async Task DpapiStore_UsesProtectionSeamAndAtomicFileReplacement()
     {
         var files = new MemoryInstallationFileSystem();
@@ -71,13 +86,14 @@ public class LicenseCryptographyTests
         var store = new DpapiInstallationKeyStore("C:\\app-data", files, protection);
         byte[] key = [1, 2, 3, 4];
 
-        await store.SaveAsync(key);
+        Assert.True(await store.TrySaveAsync(key));
         var loaded = await store.LoadAsync();
 
         Assert.Equal(key, loaded);
         Assert.Equal(key, protection.ProtectedInput);
         Assert.Equal("C:\\app-data\\installation-key.pk8.protected", files.FinalPath);
-        Assert.Equal("C:\\app-data\\installation-key.pk8.protected.tmp", files.TempPath);
+        Assert.StartsWith("C:\\app-data\\installation-key.pk8.protected.", files.TempPath);
+        Assert.EndsWith(".tmp", files.TempPath);
     }
 
     private static OfflineLicensePayload Payload(IEnumerable<string>? features = null) =>
@@ -89,10 +105,43 @@ public class LicenseCryptographyTests
     {
         public byte[]? SavedKey { get; private set; }
         public Task<byte[]?> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(SavedKey?.ToArray());
-        public Task SaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
+        public Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
         {
+            if (SavedKey is not null)
+                return Task.FromResult(false);
             SavedKey = privateKey.ToArray();
-            return Task.CompletedTask;
+            return Task.FromResult(true);
+        }
+    }
+
+    private sealed class ConcurrentInstallationKeyState
+    {
+        public byte[]? SavedKey;
+        public int InitialLoadCount;
+        public readonly TaskCompletionSource InitialLoads = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class ConcurrentInstallationKeyStore(ConcurrentInstallationKeyState state) : IInstallationKeyStore
+    {
+        private bool _initialLoad = true;
+
+        public async Task<byte[]?> LoadAsync(CancellationToken cancellationToken = default)
+        {
+            if (_initialLoad)
+            {
+                _initialLoad = false;
+                if (Interlocked.Increment(ref state.InitialLoadCount) == 2)
+                    state.InitialLoads.TrySetResult();
+                await state.InitialLoads.Task.WaitAsync(cancellationToken);
+            }
+
+            return Volatile.Read(ref state.SavedKey)?.ToArray();
+        }
+
+        public Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
+        {
+            var candidate = privateKey.ToArray();
+            return Task.FromResult(Interlocked.CompareExchange(ref state.SavedKey, candidate, null) is null);
         }
     }
 
@@ -121,10 +170,14 @@ public class LicenseCryptographyTests
             return Task.CompletedTask;
         }
         public void CreateDirectory(string path) { }
-        public void MoveAtomically(string temporaryPath, string destinationPath)
+        public bool TryMoveAtomically(string temporaryPath, string destinationPath)
         {
             TempPath = temporaryPath;
+            if (FinalPath is not null)
+                return false;
             FinalPath = destinationPath;
+            return true;
         }
+        public void Delete(string path) { }
     }
 }

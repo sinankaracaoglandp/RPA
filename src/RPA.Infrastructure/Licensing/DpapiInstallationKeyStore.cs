@@ -14,7 +14,8 @@ public interface IInstallationFileSystem
     Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken);
     Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken cancellationToken);
     void CreateDirectory(string path);
-    void MoveAtomically(string temporaryPath, string destinationPath);
+    bool TryMoveAtomically(string temporaryPath, string destinationPath);
+    void Delete(string path);
 }
 
 public sealed class DpapiInstallationKeyStore : IInstallationKeyStore
@@ -46,17 +47,32 @@ public sealed class DpapiInstallationKeyStore : IInstallationKeyStore
             return null;
 
         var protectedKey = await _files.ReadAllBytesAsync(_path, cancellationToken).ConfigureAwait(false);
-        return _protection.Unprotect(protectedKey);
+        try
+        {
+            return _protection.Unprotect(protectedKey);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(protectedKey);
+        }
     }
 
-    public async Task SaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
+    public async Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(privateKey);
         _files.CreateDirectory(_directory);
-        var temporaryPath = _path + ".tmp";
+        var temporaryPath = $"{_path}.{Guid.NewGuid():N}.tmp";
         var protectedKey = _protection.Protect(privateKey);
-        await _files.WriteAllBytesAsync(temporaryPath, protectedKey, cancellationToken).ConfigureAwait(false);
-        _files.MoveAtomically(temporaryPath, _path);
+        try
+        {
+            await _files.WriteAllBytesAsync(temporaryPath, protectedKey, cancellationToken).ConfigureAwait(false);
+            return _files.TryMoveAtomically(temporaryPath, _path);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(protectedKey);
+            _files.Delete(temporaryPath);
+        }
     }
 }
 
@@ -77,6 +93,18 @@ internal sealed class PhysicalInstallationFileSystem : IInstallationFileSystem
     public Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken cancellationToken) =>
         File.WriteAllBytesAsync(path, contents, cancellationToken);
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
-    public void MoveAtomically(string temporaryPath, string destinationPath) =>
-        File.Move(temporaryPath, destinationPath, overwrite: true);
+    public bool TryMoveAtomically(string temporaryPath, string destinationPath)
+    {
+        try
+        {
+            File.Move(temporaryPath, destinationPath, overwrite: false);
+            return true;
+        }
+        catch (IOException) when (File.Exists(destinationPath))
+        {
+            return false;
+        }
+    }
+
+    public void Delete(string path) => File.Delete(path);
 }

@@ -29,22 +29,36 @@ public sealed class InstallationIdentityService : IInstallationIdentityService
         try
         {
             var privateKey = await _keyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-            using var rsa = RSA.Create(3072);
             if (privateKey is null)
             {
-                privateKey = rsa.ExportPkcs8PrivateKey();
-                await _keyStore.SaveAsync(privateKey, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                rsa.ImportPkcs8PrivateKey(privateKey, out _);
+                using var generated = RSA.Create(3072);
+                var candidate = generated.ExportPkcs8PrivateKey();
+                if (await _keyStore.TrySaveAsync(candidate, cancellationToken).ConfigureAwait(false))
+                {
+                    privateKey = candidate;
+                }
+                else
+                {
+                    CryptographicOperations.ZeroMemory(candidate);
+                    privateKey = await _keyStore.LoadAsync(cancellationToken).ConfigureAwait(false)
+                        ?? throw new IOException("Installation key creation race completed without a persisted winner.");
+                }
             }
 
-            var publicKey = rsa.ExportSubjectPublicKeyInfo();
-            var fingerprint = Convert.ToHexString(SHA256.HashData(publicKey));
-            var installationId = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(_productId + ":" + fingerprint)));
-            return new InstallationIdentity(installationId, Convert.ToBase64String(publicKey), fingerprint);
+            try
+            {
+                using var rsa = RSA.Create();
+                rsa.ImportPkcs8PrivateKey(privateKey, out _);
+                var publicKey = rsa.ExportSubjectPublicKeyInfo();
+                var fingerprint = Convert.ToHexString(SHA256.HashData(publicKey));
+                var installationId = Convert.ToHexString(
+                    SHA256.HashData(Encoding.UTF8.GetBytes(_productId + ":" + fingerprint)));
+                return new InstallationIdentity(installationId, Convert.ToBase64String(publicKey), fingerprint);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(privateKey);
+            }
         }
         finally
         {
