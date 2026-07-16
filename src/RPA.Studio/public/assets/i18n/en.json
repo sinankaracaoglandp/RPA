@@ -366,6 +366,9 @@
     "close": "Close",
     "disable": "Disable",
     "deactivate": "Deactivate",
+    "rotateCredential": "Rotate credential",
+    "credentialOnce": "This credential is shown only once. Copy it now.",
+    "credentialRotatedHint": "The agent's previous credential is invalid immediately. You must carry the new credential to the agent's configuration yourself, otherwise the agent cannot connect.",
     "empty": "No agents registered."
   }
 }

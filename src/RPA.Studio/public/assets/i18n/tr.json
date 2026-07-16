@@ -366,6 +366,9 @@
     "close": "Kapat",
     "disable": "Devre dışı bırak",
     "deactivate": "Aktivasyonu geri al",
+    "rotateCredential": "Credential yenile",
+    "credentialOnce": "Bu credential yalnızca bir kez gösterilir. Şimdi kopyalayın.",
+    "credentialRotatedHint": "Agent'ın eski credential'ı anında geçersiz oldu. Yeni credential'ı agent yapılandırmasına siz taşımalısınız; aksi halde agent bağlanamaz.",
     "empty": "Kayıtlı agent yok."
   }
 }
