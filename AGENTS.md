@@ -218,6 +218,20 @@ Studio aktivite modeli, mapping editörü ve property paneli.
 Gerekçe: UBL-TR e-faturalarının tekli veya batch olarak güvenli biçimde okunması, özel XPath/regex
 eşlemelerinin tasarlanması ve kararlı çıktıların workflow değişkenlerine bağlanması.
 
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing)
+
+Offline lisans belgesi, kurulum kimliği ve agent kimliği için Domain kontratları eklendi.
+Agent durumları `PendingActivation`, `Activated`, `Disabled` ve `Deactivated` olarak tanımlandı;
+yalnızca `Activated` ve `Disabled` durumları lisans koltuğu tüketir. Taşıma belgeleri immutable
+record, kalıcı lisans/agent modelleri `BaseEntity` türevi olarak tanımlandı. Agent aktivasyon kodları
+ve credential değerleri yalnızca hash olarak saklanır ve WebAPI DTO'larında açığa çıkarılmaz.
+
+Etkilenen paketler: Domain, Infrastructure persistence/authentication, WebAPI, Agent, Studio ve
+LicenseGenerator.
+
+Gerekçe: İnternet erişimi olmayan Orchestrator kurulumlarında kurulum-bağlı, vendor-imzalı lisans
+doğrulaması ve aktive agent sayısının güvenli biçimde sınırlandırılması.
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:
