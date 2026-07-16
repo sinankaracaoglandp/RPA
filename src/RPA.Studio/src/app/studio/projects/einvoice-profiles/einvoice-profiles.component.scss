@@ -64,6 +64,44 @@
   font-weight: 750;
 }
 
+.einvoice-profiles__project-picker {
+  display: grid;
+  grid-template-columns: auto minmax(14rem, 22rem) minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #c7d1df;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.einvoice-profiles__project-picker label {
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.einvoice-profiles__project-picker p {
+  margin: 0;
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.einvoice-profiles select {
+  min-width: 0;
+  min-height: 2.35rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #aebbc9;
+  background: #ffffff;
+  color: #162033;
+  font: inherit;
+}
+
+.einvoice-profiles select:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+  outline: none;
+}
+
 .einvoice-profiles__layout {
   display: grid;
   grid-template-columns: minmax(24rem, 0.95fr) minmax(0, 1.05fr);
@@ -219,7 +257,8 @@
 
 @media (max-width: 1080px) {
   .einvoice-profiles__layout,
-  .einvoice-profiles__create {
+  .einvoice-profiles__create,
+  .einvoice-profiles__project-picker {
     grid-template-columns: 1fr;
   }
 }

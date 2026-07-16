@@ -12,6 +12,24 @@
     <p class="einvoice-profiles__error" data-testid="einvoice-profile-error">{{ error() }}</p>
   }
 
+  @if (projects().length > 0) {
+    <section class="einvoice-profiles__project-picker">
+      <label for="addressing-project-select">Adresleme yapılacak projeyi seç</label>
+      <select
+        id="addressing-project-select"
+        data-testid="addressing-project-select"
+        [ngModel]="projectId()"
+        (ngModelChange)="selectProject($event)"
+      >
+        <option value="">Proje seç</option>
+        @for (project of projects(); track project.id) {
+          <option [value]="project.id">{{ project.name }}</option>
+        }
+      </select>
+      <p>Profil bu proje altında saklanır; Designer’da aynı projede otomatik seçilebilir.</p>
+    </section>
+  }
+
   <div class="einvoice-profiles__layout">
     <section class="einvoice-profiles__panel">
       <div class="einvoice-profiles__panel-title">
