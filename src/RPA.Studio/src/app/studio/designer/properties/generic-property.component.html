@@ -29,6 +29,37 @@
                 (valueChange)="onValueChange(port, $event)"
               ></app-einvoice-mapping-editor>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            } @else if (isEInvoiceProfile(port)) {
+              <label class="generic-property__label" [attr.for]="'prop-' + port.name">
+                {{ port.description || 'E-Fatura profili' }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <div class="generic-property__input-row">
+                <select
+                  [id]="'prop-' + port.name"
+                  class="generic-property__input"
+                  [attr.data-testid]="'prop-' + port.name"
+                  [value]="value(port)"
+                  (change)="selectEInvoiceProfile($any($event.target).value)"
+                >
+                  <option value="">Profil seÃ§</option>
+                  @for (profile of einvoiceProfileOptions; track profile.id) {
+                    <option [value]="profile.id">{{ profile.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  class="generic-property__editor-button"
+                  data-testid="load-einvoice-profiles"
+                  (click)="loadEInvoiceProfiles()"
+                >
+                  Profilleri getir
+                </button>
+              </div>
+              @if (einvoiceProfileError) {
+                <p class="generic-property__error" role="alert">{{ einvoiceProfileError }}</p>
+              }
+              <span class="generic-property__hint">{{ port.name }} · seçilen profil schema olarak değişkenlere eklenir</span>
             } @else if (inputType(port) === 'checkbox') {
               <div class="generic-property__boolean-row">
                 <span class="generic-property__label">

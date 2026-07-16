@@ -195,6 +195,58 @@ describe('GenericPropertyComponent', () => {
     expect(emitted.at(-1)?.['mappings']).not.toContain('<Invoice');
   });
 
+  it('selects a published e-invoice profile and emits schema properties for designer variables', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { projectId: 'project-1', outputVariable: 'fatura' };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe(value => emitted.push(value));
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'projectId', type: 'string', required: true },
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+        { name: 'profileVersion', type: 'int', required: true },
+        { name: 'outputSchemaJson', type: 'JSON', required: false },
+        { name: 'outputVariable', type: 'string', required: false },
+      ],
+    });
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('[data-testid="load-einvoice-profiles"]') as HTMLButtonElement).click();
+    http.expectOne('/api/projects/project-1/einvoice-profiles').flush([
+      {
+        id: 'profile-1',
+        projectId: 'project-1',
+        name: 'Micro Alis',
+        draftDefinitionJson: '{"fields":[],"collections":[]}',
+        createdAt: '2026-07-16T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="prop-profileId"]') as HTMLSelectElement).value = 'profile-1';
+    (fixture.nativeElement.querySelector('[data-testid="prop-profileId"]') as HTMLSelectElement)
+      .dispatchEvent(new Event('change'));
+    http.expectOne('/api/projects/project-1/einvoice-profiles/profile-1/versions').flush([
+      {
+        id: 'v2',
+        profileId: 'profile-1',
+        version: 2,
+        definitionJson: '{}',
+        outputSchemaJson: '{"fields":{"faturaNo":{"type":"string"}},"collections":{"satirlar":{"fields":{"MalzemeKodu":{"type":"string"}}}}}',
+        publishedAt: '2026-07-16T00:00:00Z',
+      },
+    ]);
+
+    expect(emitted.at(-1)).toMatchObject({
+      projectId: 'project-1',
+      profileId: 'profile-1',
+      profileVersion: 2,
+      outputSchemaJson: '{"fields":{"faturaNo":{"type":"string"}},"collections":{"satirlar":{"fields":{"MalzemeKodu":{"type":"string"}}}}}',
+    });
+  });
+
   it('shows condition expression examples for Logic.If', () => {
     component.activityType = 'Logic.If';
     component.properties = {};
