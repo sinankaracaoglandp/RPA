@@ -1,15 +1,5 @@
 # RPA Platform v3 — Proje Kuralları
 
-## Kontrat Degisikligi - 2026-07-11 (Credential Vault Management)
-
-`ICredentialVault` sozlesmesine plaintext icermeyen guvenli listeleme eklendi:
-- **Yeni:** `ListSecretsAsync(string? tag = null) -> IEnumerable<VaultSecretReference>`
-- **Yeni DTO:** `VaultSecretReference { Key, Metadata }`
-
-Mevcut `GetSecretAsync`, `StoreSecretAsync`, `DeleteSecretAsync`, `ExistsAsync`, `ListSecretsByTagAsync` imzalari degismedi.
-Etkilenen paketler: WebAPI Credentials endpoint, DPAPI Vault, HashiCorp Vault, Studio Orchestrator Credentials ekrani.
-Gerekce: Kullanicinin credential degerini UI uzerinden Vault'a yazabilmesi ve listede yalnizca key/metadata gorebilmesi icin secret degerini dondurmeyen listeleme sozlesmesi gerekliydi.
-
 **Spec:** `docs/specs/2026-07-04-rpa-platform-v3-design.md`
 **Plan:** `docs/plans/2026-07-04-implementation.md`
 **Kontrat Paketi:** Aşağıda belirtilen arayüzler ve şemalar — **değişmez referans.**
@@ -182,6 +172,252 @@ tabanlı sıralı fallback sözleşmede explicit hale getirildi.
 
 ---
 
+## Kontrat Degisikligi - 2026-07-07 (Paket C SAP Hedef Goster)
+
+UI Spy tek-secim oturumu ve Studio picker metadata'si icin kontrat genisletildi.
+
+- `SpyElementMessage`: `SessionId` (Guid), `Kind` (`sap|web|desktop`) eklendi. Paket D/E icin web/desktop'a ozgu nullable alanlar simdiden eklendi.
+- `ActivityParameter`: opsiyonel `PickerKind` eklendi. `null`/empty picker yok, `sap` SAP GUI picker demektir.
+- `StudioHub`: `StartSpy(sessionId, kind)` ve `StopSpy(sessionId)` metotlari eklenecek; `ReceiveDetectedElement` sessionId ile caller-only yayina gececek.
+
+Etkilenen paketler: Paket C (SAP picker), Paket D (Web picker), Paket E (Desktop picker), Studio activity metadata tuketicileri, Agent UI Spy transport.
+Gerekce: Studio'da selector/element alanlarinin hedef goster dugmesiyle tek seferlik ve kullaniciya ozel secim yapabilmesi icin mevcut surekli `Clients.All` yayin kontrati yeterli degildir.
+
+---
+
+## Kontrat Değişikliği — 2026-07-10 (Paket E — Windows Masaüstü Otomasyonu, runtime motoru)
+
+**Yeni arayüz:** `src/RPA.Domain/Interfaces/IDesktopAutomationChannel.cs` — herhangi bir Windows
+masaüstü uygulamasında UIA tabanlı otomasyon kanalı (tıklama, metin yazma, öğe seçme, tuş gönderme,
+bekleme, ekran görüntüsü). SAP (`ISapGuiChannel`) ve Web (Playwright) kanallarından bağımsızdır.
+Metotlar: `AttachAsync`, `LaunchAsync`, `ClickAsync`, `SetTextAsync`, `GetTextAsync`,
+`SelectItemAsync`, `SendKeysAsync`, `WaitForAsync`, `ScreenshotAsync`.
+
+**Selector formatı:** UIA yolu — `/` ile ayrılmış segmentler, her segment `ControlType` adı +
+`[Key='Value']` (tam) / `[Key~'regex']` (regex) koşulları (AutomationId/Name/Title/ClassName).
+`WorkflowSchema.json`'a dokunulmadı (selector düz string).
+
+**Yeni aktivite ailesi:** `Desktop.*` (kategori "Masaüstü", capability `desktop`) —
+`Desktop.Attach/Launch/Click/SetText/GetText/SelectItem/SendKeys/WaitFor/Screenshot`.
+Katalog `ActivityRegistry.RegisterDesktop`; keyed DI kaydı `WorkflowServiceCollectionExtensions`.
+Selector/element alanları `PickerKind="desktop"` (mevcut 🎯 picker altyapısını kullanır).
+
+**Implementasyon konumu:** `IDesktopAutomationChannel`'in FlaUI (UIA3) implementasyonu
+`RPA.Agent/Desktop/FlaUiDesktopAutomationChannel.cs` — FlaUI.UIA3 NuGet Windows-only olduğundan
+Agent (net10.0-windows) sürecinde yaşar ve `AddAgentCore` içinde Windows koşuluyla kaydedilir.
+Aktiviteler platform-nötrdür (yalnız arayüze bağlı) → Infrastructure.Tests'te mock'lanabilir.
+
+**Exception sınıflandırması:** element bulunamadı/timeout → `SystemException`; Business reddi yok.
+
+Etkilenen paketler yok (yeni arayüzün tüketicisi yalnız yeni `Desktop.*` aktiviteleridir; ilk
+masaüstü paketidir). **Kalan iş:** DesktopSpy (Agent) — 🎯 ile `kind:"desktop"` element seçimi,
+`SpySessionCoordinator`'a takılacak (henüz yapılmadı).
+
+---
+
+## Kontrat Değişikliği — 2026-07-10 (DesktopSpy iptal bildirimi + tek-ekran UX)
+
+**`StudioHub`**: yeni `NotifySpyCancelled(Guid sessionId)` metodu + `SpyCancelled` event'i.
+Ajan tek-seçim iptal/boş bittiğinde (Esc veya seçim yapmadan) çağırır; hub oturum sahibi Studio
+bağlantısına `SpyCancelled` yayınlar. Studio picker'ı 60 sn timeout beklemeden hemen kapatır
+ve `pending` temizlenir (tekrar 🎯'e basınca "already active" hatası olmaz).
+
+**`ISpyElementTransport`** (RPA.Infrastructure.UISpy): yeni `NotifyCancelledAsync(sessionId, ct)`.
+Implementasyon `SignalRSpyElementTransport` → `NotifySpyCancelled` hub metodunu çağırır.
+Tüketici: `SpySessionCoordinator` (iptal/boş/timeout durumunda çağırır).
+
+**Studio `SpyService`** (`spy.service.ts`): `SpyCancelled` handler'ı eklendi.
+
+**Tek-ekran UX:** `FlaUiDesktopSinglePicker` seçim süresince öndeki pencereyi (tasarımcı
+tarayıcısı) küçültür, seçim/iptal bitince geri getirir (`ShowWindow` P/Invoke) — hedef uygulama
+görünür olsun diye.
+
+Etkilenen paketler: Paket C (SAP picker aynı iptal yolunu kullanır), Paket E (Desktop picker).
+Gerekçe: iptal sinyali Agent→Studio iletilmiyordu; Esc sonrası Studio 60 sn askıda kalıp sonraki
+denemede "already active" veriyordu.
+
+---
+
+## Kontrat Degisikligi - 2026-07-11 (Credential Vault Management)
+
+`ICredentialVault` sozlesmesine plaintext icermeyen guvenli listeleme eklendi:
+- **Yeni:** `ListSecretsAsync(string? tag = null) -> IEnumerable<VaultSecretReference>`
+- **Yeni DTO:** `VaultSecretReference { Key, Metadata }`
+
+Mevcut `GetSecretAsync`, `StoreSecretAsync`, `DeleteSecretAsync`, `ExistsAsync`, `ListSecretsByTagAsync` imzalari degismedi.
+Etkilenen paketler: WebAPI Credentials endpoint, DPAPI Vault, HashiCorp Vault, Studio Orchestrator Credentials ekrani.
+Gerekce: Kullanicinin credential degerini UI uzerinden Vault'a yazabilmesi ve listede yalnizca key/metadata gorebilmesi icin secret degerini dondurmeyen listeleme sozlesmesi gerekliydi.
+
+---
+
+## Kontrat Değişikliği — 2026-07-11 (Paket D — Web picker "hedef göster")
+
+WebSpy tek-seçim picker'ı eklendi (UI Spy `kind:"web"`), böylece Web.* aktivitelerinin
+selector alanlarında 🎯 düğmesi çalışır.
+
+- **Yeni arayüz:** `IWebSinglePicker` (`RPA.Agent/UISpy/SpySessionCoordinator.cs`) — SAP/Desktop
+  picker deseniyle aynı. `SpySessionCoordinator` opsiyonel `IWebSinglePicker? webPicker` parametresi
+  aldı ve `kind:"web"` dalını işliyor.
+- **Implementasyon:** `PlaywrightWebSinglePicker` (`RPA.Agent/UISpy/`) — başlıklı Chromium açar,
+  sayfaya enjekte script ile hover-vurgu + `CTRL+Tık` seçim + `Esc` iptal; kararlı CSS selector
+  üretir (id → data-testid → nth-of-type yolu). `AddAgentCore` içinde kayıtlı.
+- **Yeni value object:** `RPA.Domain/ValueObjects/WebUiElement.cs` (Selector, TagName,
+  InnerTextPreview, PageUrl). `SpyElementMessage.FromWeb(element, sessionId)` eklendi (`Kind="web"`).
+- **Katalog:** `ActivityRegistry` içindeki Web.* selector girişlerine `pickerKind:"web"` eklendi
+  (Web.Click/Fill/GetText/WaitFor/Download/Upload/Screenshot).
+
+Etkilenen paketler: Paket D (bu paket). Studio tarafı değişmedi — `SpyKind` zaten `web` içeriyordu;
+`selector-picker-button` metadata `PickerKind`'i `spy.pick(kind)`'e geçiriyor.
+Gerekçe: Web selector alanları için "hedef göster" tek-seçim akışı eksikti (yalnız SAP/Desktop vardı).
+
+---
+
+## Kontrat Değişikliği — 2026-07-11 (Paket C — SAP GUI gerçek sürüş)
+
+SAP GUI Scripting artık gerçek COM ile sürülüyor (önceden yalnız `StubSapGuiSession` vardı ve
+kanal/aktiviteler hiçbir yerde DI'a bağlı değildi).
+
+- **Yeni soyutlama:** `ISapGuiSessionFactory` (`RPA.Infrastructure/SAP/`) — oturum üreticisi.
+  - `ComSapGuiSessionFactory`: çalışan SAP Logon'a (ProgID "SAPGUI", ROT üzerinden `GetActiveObject`)
+    bağlanır, `OpenConnection(systemId)` + giriş ekranı doldurup `sendVKey(0)` ile logon yapar.
+  - `StubSapGuiSessionFactory`: SAP olmayan ortam / birim testleri (deterministik).
+- **`ComSapGuiSession`**: `GuiSession` COM'unu sarar; tüm işlemler `findById` ile bir **STA thread**'de
+  (`SapStaThread`) marshallanır (SAP scripting STA gerektirir). Element bulunamama/COM hatası →
+  `SystemException`. ReadGrid = GuiGridView `RowCount/ColumnOrder/GetCellValue`; Screenshot = `HardCopy`.
+- **`SapGuiSessionManager`**: opsiyonel `ISapGuiSessionFactory` ctor parametresi (null → stub;
+  mevcut birim testleri değişmeden geçer). Gerçek modda fabrikayı kullanır.
+- **Wiring (yeni):** `AddSapGuiChannel` artık `ISapGuiSessionFactory`'yi (Windows → COM) ve
+  `Sap.Gui.*` aktivitelerini **keyed `IActivity`** olarak kaydeder; Agent `Program.cs` bunu çağırır
+  (önceden hiç çağrılmıyordu → SAP GUI aktiviteleri çalıştırılamıyordu).
+
+**Ön koşul (gerçek sürüş):** SAP GUI kurulu + SAP Logon açık + GUI Scripting etkin
+(SAP Logon > Options > Accessibility & Scripting > Scripting) ve `systemId` SAP Logon'da tanımlı.
+Aksi halde açık `SystemException` mesajları döner. **Kalan:** SAP UI Spy element çözücüsü hâlâ
+`NullSapGuiElementResolver` (SAP "hedef göster" gerçek COM çözücüsü ayrı iş).
+
+Etkilenen paketler: Paket C (SAP GUI). Birim testleri etkilenmez (stub varsayılanı).
+
+---
+
+## Kontrat Değişikliği — 2026-07-11 (Kod & Veri — DataTable + C# kod aktivitesi)
+
+Yeni aktivite ailesi **"Kod & Veri"** (`CatCode`) — kategori "Kod & Veri", capability `code`.
+
+- **`Data.ToDataTable`** / **`Data.FromDataTable`** — platformun satır-listesi gösterimi
+  (`List<Dictionary<string,object?>>` — SAP GridRead/ReadTable/BAPI, Excel) ile gerçek
+  `System.Data.DataTable` arasında dönüşüm. Dönüştürücü: `Activities/Code/DataTableConverter`.
+- **`System.InvokeCode`** — Roslyn (`Microsoft.CodeAnalysis.CSharp.Scripting`) ile C# kodu çalıştırır.
+  Script global API'si `CodeGlobals`: `Get("ad")` / `Set("ad", deger)` (workflow değişkenleri),
+  `ToDataTable(rows)` / `ToRows(dt)`, `Log(...)`. Çıktılar `Outputs` sözlüğünden döner (node-local
+  scope kaybı olmaz). Import: System, Linq, Collections.Generic, Data, Text, Globalization.
+  - Derleme hatası → `BusinessException`; çalışma-anı hatası → System (runner sınıflandırır).
+  - **GÜVENLİK:** kod robot süreci yetkileriyle **sandbox'sız** çalışır — yalnız güvenilir
+    tasarımcılara açılmalı (yetki/rol kontrolü çağıran katmanda düşünülmeli).
+- **Kayıt:** `WorkflowServiceCollectionExtensions` keyed `IActivity` (System.InvokeCode,
+  Data.ToDataTable, Data.FromDataTable); katalog `ActivityRegistry.RegisterCode`.
+- **Paket:** Infrastructure'a `Microsoft.CodeAnalysis.CSharp.Scripting` 4.14.0 eklendi.
+
+Etkilenen paket yok (yeni aile). Not: SAP/Excel satır çıktıları artık DataTable olarak da işlenebilir.
+
+---
+
+## Kontrat Değişikliği — 2026-07-12 (Paket F — Görüntü/OCR Fallback Otomasyonu)
+
+Erişilebilirlik ağacı olmayan uygulamalar için piksel + metin tabanlı otomasyon kanalı.
+
+- **Yeni arayüz:** `IVisionAutomationChannel` (`src/RPA.Domain/Interfaces/`) — template matching +
+  OCR. `IDesktopAutomationChannel` kardeşi. Metotlar: ClickImageAsync, WaitForImageAsync,
+  ImageExistsAsync, GetTextAsync, ClickTextAsync, TextExistsAsync. Yeni value object `VisionMatch`.
+- **Yeni aktivite ailesi:** `Vision.*` (kategori "Görüntü", capability `vision`) —
+  Click/WaitFor/Exists/GetText/ClickText/TextExists. Katalog `ActivityRegistry.RegisterVision`;
+  keyed DI `WorkflowServiceCollectionExtensions`. OCR çok dilli (`tur+eng+deu`).
+- **İmplementasyon:** `TesseractOpenCvVisionChannel` (`RPA.Agent/Vision/`) — OpenCvSharp4 (template)
+  + Tesseract (OCR) + GDI ekran yakalama + gerçek fare. Windows-only, `AddAgentCore`'da kayıtlı.
+  Non-agent süreçlerde `UnavailableVisionAutomationChannel` (TryAddSingleton).
+- **🎯 image picker:** `SpyElementMessage`'a `Kind="image"`, `ImageBase64`, `Region` + `FromImage`.
+  `ActivityParameter.PickerKind` yeni değer `"image"`. `StudioHub.StartSpy` `kind:"image"` kabul eder.
+  Yeni arayüz `IImageRegionPicker` / `GdiImageRegionPicker` (bölge seç → base64 PNG göm).
+  `SpySessionCoordinator` opsiyonel `IImageRegionPicker? imagePicker` parametresi aldı.
+- **Anchor Faz 2'ye ertelendi:** `TemplateMatcher.FindAll` çok-eşleşme döndürecek şekilde hazır.
+
+Etkilenen paketler: Studio picker metadata tüketicileri (yeni `image` kind), Agent UI Spy transport.
+SAP/Web/Desktop picker'lar etkilenmez (additive).
+Gerekçe: UIA/DOM sunmayan uygulamalar için (eski Win32, custom-render) otomasyon boşluğu.
+
+### Ek — 2026-07-13 (Paket F izleme düzeltmeleri)
+
+- **StudioHub whitelist:** `StudioHub.SupportedKinds`'e `"image"` eklendi (eksikti; picker
+  "Desteklenmeyen spy tipi: image" alıyordu).
+- **Çoklu monitör:** `ScreenCapture` tam-ekran yakalama `SystemInformation.VirtualScreen` (tüm
+  monitörler) + `VirtualScreenOrigin`; `TesseractOpenCvVisionChannel.DoClick` tıklamayı sanal-ekran
+  orijiniyle kaydırır; `GdiImageRegionPicker` overlay tüm monitörleri kaplar.
+- **Freeze/dondurma (geçici menü/pencere yakalama) — kontrat genişledi:**
+  - `IImageRegionPicker.DetectOnceAsync(ImagePickerOptions options, CancellationToken)` — yeni
+    `ImagePickerOptions(CaptureMode "f2"|"timer", DelaySeconds)` (JSON parse; varsayılan F2).
+  - `ISpySessionCoordinator.StartAsync(sessionId, kind, string? optionsJson, ct)` — image için
+    picker seçeneklerini taşır; image timeout ≥300 sn (manuel UI hazırlığı).
+  - `ISpyCommandConnection.OnStartSpy(Func<Guid,string,string?,Task>)` + `StudioHub.StartSpy(sessionId,
+    kind, string? optionsJson)` — **SignalR istemcileri artık StartSpy'ı 3 argümanla çağırmalı**
+    (non-image için `null`).
+  - `GdiImageRegionPicker`: iki aşamalı — arm (yapılandırılabilir global hotkey / geri sayım) →
+    ekranı **dondur** (snapshot) → donmuş görüntü üzerinde seçim; kırpma canlı ekrandan değil
+    snapshot'tan yapılır.
+  - **Dondurma kısayolu yapılandırılabilir:** `ImagePickerOptions` `HotKey` (F1–F12) + `Ctrl/Shift/Alt`
+    alanları; `VirtualKey`/`Modifiers`/`DisplayCombo`. Manuel modda `RegisterHotKey` bu kombinasyonu
+    kullanır (hedef uygulamada boş bir tuş seçilebilsin diye). Varsayılan F2.
+  - Studio: `SpyService.pick(kind, options?)` + picker düğmesinde mod/saniye + tuş/Ctrl/Shift/Alt
+    kontrolleri (yalnız `image`), i18n `picker.captureMode/modeF2/modeTimer/delaySeconds/seconds/
+    freezeKey/ctrl/shift/alt`.
+  Etkilenen: Studio spy tüketicileri, Agent UI Spy transport, WebAPI StudioHub. Gerekçe: OCR/görüntü
+  ile açılan geçici SAP menüsü/pencere, picker overlay hemen açılınca yakalanamıyordu.
+
+---
+
+## Kontrat Değişikliği — 2026-07-13 (Menü gezinme: sıralı vision + SAP menü)
+
+Açılır menülerin node'lar arası odak kaybında kapanması sorununa iki çözüm eklendi.
+
+**1) `Vision.ClickSequence` (yeni aktivite, arayüz değişmedi):** Tek node içinde sırayla N
+görüntüye tıklar (iç içe menüler). Her adım `{image, clickType, waitMs}`; adımlar aynı node'da
+art arda çalıştığından node'lar arası odak kaybı olmaz → açılır menü zincir boyunca açık kalır.
+Ortak `confidence`/`timeoutMs`. `IVisionAutomationChannel` **değişmedi** (mevcut `ClickImageAsync`
++ `Task.Delay` ile). Katalog + keyed DI (`Vision.ClickSequence`). Yeni parametre `PickerKind`
+değeri **`"image-sequence"`** — Studio'da özel sıralı adım editörü (`VisionSequenceEditorComponent`)
+render eder; her adım mevcut `image` 🎯 picker'ını kullanır. `ActivityPort.pickerKind` (Studio
+model) `'image-sequence'` değerini de kabul eder (spy türü DEĞİL, yalnız editör ipucu →
+`selector-picker-button`'a null geçilir).
+
+**2) `Sap.Gui.SelectMenu` (yeni aktivite + kontrat genişledi):** Menü çubuğunda **metin yoluyla**
+gezinip öğe seçer (örn. `Sistem/Liste/Yazdır`). Element ID gerekmez, odak/görünürlükten bağımsız
+(COM scripting). **`ISapGuiChannel.SelectMenuAsync(string menuPath)`** eklendi ("/"-ayrık metin
+yolu). İç soyutlama `ISapGuiSession.SelectMenuAsync(IReadOnlyList<string> menuTexts)`;
+`ComSapGuiSession` `wnd[0]/mbar` ağacını `Text` ile yürür (normalize: '&', sondaki '...', boşluk,
+küçük harf), `StubSapGuiSession` `LastSelectedMenu`'ye kaydeder. Katalog + keyed DI.
+
+Etkilenen paketler: Paket F (Vision), SAP GUI (Paket C), Studio activity metadata tüketicileri.
+Gerekçe: `Vision.Click`'i iki ayrı node'a bölmek açılır menülerde çalışmıyordu — menü, node 1
+onu açıp node 2 başlamadan odak kaybıyla kapanıyordu (SAP + genel Win32/Electron uygulamalarında
+doğrulandı). Ayrıca ekran yakalama `CAPTUREBLT` ile layered pencereleri (açık menü/popup) de alır
+hale getirildi (`ScreenCapture` BitBlt).
+
+---
+
+## Kontrat Değişikliği — 2026-07-14 (Job → Ajan Dispatch)
+
+Studio workflow'larının hangi ajanda koşacağı `Trigger` katmanında tanımlanır hale geldi.
+- **`Trigger`** entity: `TargetRobotTags` (virgülle ayrık tag havuzu) + `Priority` eklendi. Migration `AddTriggerRobotTargeting`.
+- **Yeni arayüz:** `IRobotDispatcher.SelectRobotAsync(trigger, ct)` — Online + kapasitesi müsait +
+  tag'leri kapsayan robotu seçer (en boş kapasite → heartbeat). Impl `RobotDispatcher` (Infrastructure).
+- **`TriggerService`** ctor'a `IRobotDispatcher` aldı; JobRun'a `AssignedRobotId` yazar, aday yoksa `Status="Pending"`.
+- **`ITriggerRepository`**: `ListTriggersAsync(projectId?, environmentId?, isActive?)` + `GetActiveJobCountsByRobotAsync()`.
+- **API:** `GET /api/triggers` (job listesi); `CreateTriggerRequest`/`UpdateTriggerRequest`/`TriggerDto` `TargetRobotTags`+`Priority` içerir.
+- **Studio:** `orchestrator/schedules` ekranı (job oluştur/liste/fire, hedef ajan tag seçimi).
+
+Kapsam dışı: Agent handoff/poll protokolü (JobRun'ın ajana gerçekten teslim edilip çalıştırılması) — ayrı spec.
+Etkilenen paketler yok (yeni özellik; mevcut in-process çalıştırma placeholder'ı korunur).
+
+---
+
 ## Kontrat Değişikliği — 2026-07-15 (Common Loop Nodes)
 
 Workflow node tiplerine `for` eklendi. `Logic.For`, dahil bitişli sayaç döngüsüdür ve
@@ -218,6 +454,26 @@ Studio aktivite modeli, mapping editörü ve property paneli.
 Gerekçe: UBL-TR e-faturalarının tekli veya batch olarak güvenli biçimde okunması, özel XPath/regex
 eşlemelerinin tasarlanması ve kararlı çıktıların workflow değişkenlerine bağlanması.
 
+---
+
+## Kontrat Değişikliği — 2026-07-15 (Vision metin çapası ofset tıklama)
+
+`IVisionAutomationChannel.ClickTextOffsetAsync(anchorText, dx, dy, language, matchMode, clickType, timeoutMs)`
+eklendi — OCR metin çapasının kelime kutusu merkezinden piksel ofsetle tıklar (etiketin yanındaki
+boş input gibi hedefler). Yeni aktivite `Vision.ClickTextOffset` (kategori "Görüntü", capability
+`vision`). Yeni picker kind `text-offset` (iki aşamalı: çapa metni seç + hedef nokta tıkla → dx/dy
+otomatik). `SpyElementMessage`'a `Kind="text-offset"`, `AnchorText`, `Dx`, `Dy` + `FromTextOffset`;
+`StudioHub.SupportedKinds`'e `text-offset`. Referans: çapanın OCR tight kelime kutusu **merkezi**
+(picker-zamanı ve runtime aynı basis) → çapa çalışma anında yeniden konumlanır. Kısıt: `dx/dy`
+sabit piksel ofsetidir; picker ile runtime **aynı çözünürlük/DPI**'da eşleşir, farklıysa ofset
+ölçeklenmez (UiPath CV ile aynı kısıt). Picker OCR dili tasarım-zamanında sabit `tur+eng`.
+
+Etkilenen paketler: Paket F (Vision), Studio picker metadata tüketicileri, Agent UI Spy transport.
+Gerekçe: erişilebilirlik ağacı olmayan ekranlarda etiket-yanı boş alanlara tıklama (UiPath CV
+"anchor + relative offset" modeli).
+
+---
+
 ## Kontrat Değişikliği — 2026-07-16 (Proje Kapsamlı E-Fatura Profilleri)
 
 Domain modeline `EInvoiceProfile` ve değişmez yayın snapshot'larını taşıyan
@@ -230,6 +486,8 @@ Etkilenen paketler: Domain varlıkları, Infrastructure EF/persistence ve profil
 WebAPI proje profil uçları, Studio proje sekmesi/Designer değişken kataloğu.
 Gerekçe: XML eşlemelerini workflow node'undan ayırıp proje kapsamında sürümlü ve tekrar
 kullanılabilir hale getirmek; profil şemasını nesne tabanlı RPA değişkenlerine otomatik taşımak.
+
+---
 
 ## Kontrat Değişiklik Prosedürü
 
@@ -293,7 +551,7 @@ Main branch'e yalnızca PR → review → merge. Her paketi kendi branch'te yapm
 <body>
 
 <footer>
-Co-Authored-By: Codex <agent-type> <noreply@anthropic.com>
+Co-Authored-By: Claude <agent-type> <noreply@anthropic.com>
 ```
 
 Örnekler:
@@ -304,7 +562,7 @@ feat(domain): Project varlığı ve Workflow ilişkileri
 - Workflow → Project ilişkisi, OneToMany
 - Unit testler ✓
 
-Co-Authored-By: Codex Opus <noreply@anthropic.com>
+Co-Authored-By: Claude Opus <noreply@anthropic.com>
 
 ---
 
@@ -316,7 +574,7 @@ Golden-file senaryolar (5 test pass).
 
 Spec Bölüm 5.2 birebir implementasyon.
 
-Co-Authored-By: Codex Opus <noreply@anthropic.com>
+Co-Authored-By: Claude Opus <noreply@anthropic.com>
 ```
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `perf`
