@@ -13,10 +13,12 @@ import {
   previewRule,
   relativizeXPath,
 } from './einvoice-mapping.model';
+import { RegexWizardComponent } from './regex-wizard.component';
 
 @Component({
   selector: 'app-einvoice-mapping-editor',
   standalone: true,
+  imports: [RegexWizardComponent],
   templateUrl: './einvoice-mapping-editor.component.html',
   styleUrls: ['./einvoice-mapping-editor.component.scss'],
 })
@@ -219,6 +221,33 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
         fields: collection.fields.map(field => ({ ...field })),
       })),
     };
+  }
+
+  wizardTarget: 'regex' | 'fallbackRegex' | null = null;
+
+  openRegexWizard(target: 'regex' | 'fallbackRegex'): void {
+    this.wizardTarget = this.wizardTarget === target ? null : target;
+  }
+
+  applyWizardPattern(result: { pattern: string; group: string }): void {
+    if (this.wizardTarget === 'regex') {
+      this.draft = { ...this.draft, regex: result.pattern, group: result.group };
+    } else if (this.wizardTarget === 'fallbackRegex') {
+      this.draft = { ...this.draft, fallbackRegex: result.pattern, fallbackGroup: result.group };
+    }
+    this.wizardTarget = null;
+    this.cancelRegexPreview();
+  }
+
+  /** Sihirbaza verilecek örnek metin: XPath'in bulduğu ham değer; yoksa belgenin notları/metni. */
+  wizardSampleText(): string {
+    if (!this.sampleDocument) return '';
+    if (this.wizardTarget === 'regex') {
+      const base = previewRule({ ...this.draft, regex: null, group: null, type: 'string' }, this.sampleDocument);
+      if (typeof base.raw === 'string') return base.raw;
+      if (Array.isArray(base.raw)) return base.raw.join('\n');
+    }
+    return this.sampleDocument.documentElement.textContent?.trim() ?? '';
   }
 
   savedRulePreviews(): Array<{ rule: EInvoiceMappingRule; preview: RulePreview }> {

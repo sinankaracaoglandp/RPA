@@ -1,0 +1,21 @@
+<section class="regex-wizard" data-testid="regex-wizard" aria-label="Regex yardımcısı">
+  <h5>Regex yardımcısı</h5>
+  <p class="regex-wizard__hint">Regex bilmene gerek yok: hazır bir desen seç ya da aşağıdaki örnek metinde çıkarmak istediğin değeri fareyle seçip "Seçimden üret"e bas.</p>
+  <div class="regex-wizard__chips" role="group" aria-label="Hazır desenler">
+    @for (preset of presets; track preset.id) {
+      <button type="button" class="regex-wizard__chip" [attr.data-testid]="'regex-preset-' + preset.id"
+        (click)="usePreset(preset)">{{ preset.label }}</button>
+    }
+  </div>
+  <label for="regex-wizard-sample">Örnek metin</label>
+  <textarea #sample id="regex-wizard-sample" data-testid="regex-wizard-sample" rows="4" readonly>{{ sampleText }}</textarea>
+  <button type="button" data-testid="regex-wizard-generate" (click)="generateFromSelection(sample)">Seçimden üret</button>
+  @if (pattern) {
+    <label for="regex-wizard-pattern">Üretilen desen</label>
+    <input id="regex-wizard-pattern" data-testid="regex-wizard-pattern" [value]="pattern" readonly />
+    <p class="regex-wizard__explain" data-testid="regex-wizard-explanation">{{ explanation() }}</p>
+    <p class="regex-wizard__live" data-testid="regex-wizard-live" aria-live="polite">{{ liveMatch() }}</p>
+  }
+  @if (error) { <p class="regex-wizard__error" role="alert">{{ error }}</p> }
+  <button type="button" data-testid="regex-wizard-apply" (click)="apply()">Alana uygula</button>
+</section>

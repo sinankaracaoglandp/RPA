@@ -372,6 +372,24 @@ describe('EInvoiceMappingEditorComponent', () => {
       .toBe('./cac:Item/cbc:SellersItemIdentification/cbc:ID');
   });
 
+  it('regex sihirbazı hedef alana desen ve grubu yazar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openRegexWizard('fallbackRegex');
+    expect(component.wizardTarget).toBe('fallbackRegex');
+    component.applyWizardPattern({ pattern: 'TR\\d{24}', group: 'deger' });
+    expect(component.draft.fallbackRegex).toBe('TR\\d{24}');
+    expect(component.draft.fallbackGroup).toBe('deger');
+    expect(component.wizardTarget).toBeNull();
+  });
+
+  it('regex sihirbazı regex hedefinde regex/group alanlarına yazar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openRegexWizard('regex');
+    component.applyWizardPattern({ pattern: 'IBAN[: ]+(?<deger>TR\\d{24})', group: 'deger' });
+    expect(component.draft.regex).toBe('IBAN[: ]+(?<deger>TR\\d{24})');
+    expect(component.draft.group).toBe('deger');
+  });
+
   it('kaydedilmiş kural önizlemesi bulunan değeri ve eşleşme kaynağını döner', () => {
     const component = new EInvoiceMappingEditorComponent();
     component.loadSampleXml(PREVIEW_SAMPLE);

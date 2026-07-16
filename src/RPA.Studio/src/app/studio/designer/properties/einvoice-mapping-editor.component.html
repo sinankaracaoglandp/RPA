@@ -41,6 +41,13 @@
     <label for="einvoice-rule-fallback-group">Fallback grup adı</label>
     <input id="einvoice-rule-fallback-group" data-testid="einvoice-fallback-group"
       [value]="draft.fallbackGroup ?? ''" (input)="updateDraft('fallbackGroup', $any($event.target).value)" />
+    <div>
+      <button type="button" data-testid="open-wizard-regex" (click)="openRegexWizard('regex')">Regex yardımcısı</button>
+      <button type="button" data-testid="open-wizard-fallback" (click)="openRegexWizard('fallbackRegex')">Fallback yardımcısı</button>
+    </div>
+    @if (wizardTarget) {
+      <app-regex-wizard [sampleText]="wizardSampleText()" (patternApply)="applyWizardPattern($event)"></app-regex-wizard>
+    }
     <label for="einvoice-rule-type">Veri tipi</label><select id="einvoice-rule-type" [value]="draft.type" (change)="updateDraft('type', $any($event.target).value)">
       <option value="string">Metin</option><option value="integer">Tamsayı</option><option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option></select>
     <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>

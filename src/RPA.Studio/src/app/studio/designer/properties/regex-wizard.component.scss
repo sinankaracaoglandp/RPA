@@ -1,0 +1,10 @@
+.regex-wizard {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  border: 1px solid #ddd; border-radius: 0.5rem; padding: 0.75rem;
+  textarea, input { font-family: monospace; font-size: 0.8rem; }
+}
+.regex-wizard__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.regex-wizard__chip { border-radius: 1rem; padding: 0.2rem 0.7rem; cursor: pointer; }
+.regex-wizard__hint, .regex-wizard__explain { font-size: 0.8rem; opacity: 0.8; }
+.regex-wizard__live { font-size: 0.85rem; font-weight: 600; }
+.regex-wizard__error { color: #c62828; font-size: 0.8rem; }
