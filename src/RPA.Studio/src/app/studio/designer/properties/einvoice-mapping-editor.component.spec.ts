@@ -262,6 +262,55 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.profileDefinition().collections[0].fields[0].name).toBe('MalzemeKodu');
   });
 
+  it('loads an existing profile definition with root and collection fields into the editor', () => {
+    const component = fixture.componentInstance;
+    component.value = JSON.stringify({
+      fields: [{ ...MAPPING, name: 'faturaNo' }],
+      collections: [
+        {
+          name: 'satirlar',
+          scopeXPath: '/Invoice/cac:InvoiceLine',
+          fields: [{ ...MAPPING, name: 'MalzemeKodu', valueXPath: './cac:Item/cbc:ID' }],
+        },
+      ],
+    });
+    fixture.detectChanges();
+
+    expect(component.rules.map(rule => rule.name)).toEqual(['faturaNo']);
+    expect(component.collections[0].name).toBe('satirlar');
+    expect(component.collections[0].fields[0].name).toBe('MalzemeKodu');
+    expect(fixture.nativeElement.textContent).toContain('satirlar.MalzemeKodu');
+  });
+
+  it('lets the user add a visible invoice-line collection field from the selected XML node', () => {
+    const component = fixture.componentInstance;
+    const emitted: string[] = [];
+    component.profileDefinitionChange.subscribe(value => emitted.push(value));
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('[data-node-name="cac:InvoiceLine"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="collection-name"]') as HTMLInputElement).value = 'satirlar';
+    (fixture.nativeElement.querySelector('[data-testid="collection-name"]') as HTMLInputElement)
+      .dispatchEvent(new Event('input'));
+    (fixture.nativeElement.querySelector('[data-testid="add-collection"]') as HTMLButtonElement).click();
+
+    component.draft = {
+      name: 'MalzemeKodu',
+      source: 'XPath',
+      valueXPath: './cac:Item/cbc:ID',
+      type: 'string',
+      required: true,
+      multiple: false,
+    };
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="add-line-field"]') as HTMLButtonElement).click();
+
+    expect(component.collections[0].fields[0].name).toBe('MalzemeKodu');
+    expect(JSON.parse(emitted.at(-1)!).collections[0].fields[0].name).toBe('MalzemeKodu');
+  });
+
   it('never emits sample XML while saving a profile draft definition', () => {
     const component = fixture.componentInstance;
     const emitted: string[] = [];
@@ -271,9 +320,9 @@ describe('EInvoiceMappingEditorComponent', () => {
     component.addCollectionField('satirlar', { ...MAPPING, name: 'MalzemeKodu', valueXPath: './cac:Item/cbc:ID' });
     component.emitProfileDefinition();
 
-    expect(emitted.length).toBe(1);
+    expect(emitted.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(emitted)).not.toContain('<Invoice');
-    expect(JSON.parse(emitted[0]).collections[0].name).toBe('satirlar');
+    expect(JSON.parse(emitted.at(-1)!).collections[0].name).toBe('satirlar');
   });
 
   it.each(['missing', '9'])('reports missing regex group %s instead of converting an empty value', group => {

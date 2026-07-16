@@ -49,6 +49,56 @@
     </ul>
   </div>
 
+  <div class="einvoice-mapping__panel einvoice-mapping__panel--collection" data-testid="collection-panel">
+    <h4>Satır koleksiyonu</h4>
+    <p>Fatura satırları gibi tekrar eden XML bloklarını dizi olarak tanımla.</p>
+    <label for="einvoice-collection-name">Koleksiyon adı</label>
+    <input
+      id="einvoice-collection-name"
+      data-testid="collection-name"
+      [value]="collectionName"
+      (input)="collectionName = $any($event.target).value"
+      placeholder="satirlar"
+    />
+    <label for="einvoice-collection-scope">Satır scope XPath</label>
+    <input
+      id="einvoice-collection-scope"
+      data-testid="collection-scope"
+      [value]="collectionScopeXPath"
+      (input)="collectionScopeXPath = $any($event.target).value"
+      placeholder="//cac:InvoiceLine"
+    />
+    <button type="button" data-testid="add-collection" (click)="addCollectionFromDraft()">Satır dizisi oluştur</button>
+
+    @if (collections.length) {
+      <label for="einvoice-selected-collection">Alan eklenecek dizi</label>
+      <select
+        id="einvoice-selected-collection"
+        data-testid="selected-collection"
+        [value]="selectedCollectionName"
+        (change)="selectedCollectionName = $any($event.target).value"
+      >
+        @for (collection of collections; track collection.name) {
+          <option [value]="collection.name">{{ collection.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="add-line-field" (click)="addDraftAsCollectionField()">Seçili alanı satıra ekle</button>
+      <ul aria-label="Satır alanları">
+        @for (collection of collections; track collection.name) {
+          <li>
+            <strong>{{ collection.name }}</strong>
+            <span>{{ collection.scopeXPath }}</span>
+            <ul>
+              @for (field of collection.fields; track field.name) {
+                <li>{{ collection.name }}.{{ field.name }} ← {{ field.valueXPath }}</li>
+              }
+            </ul>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+
   <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel"><h4>Önizleme</h4>
     <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre></div>
 </section>

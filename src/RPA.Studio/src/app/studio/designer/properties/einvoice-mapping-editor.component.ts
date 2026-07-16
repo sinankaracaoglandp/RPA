@@ -42,8 +42,25 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   };
 
   @Input() set value(value: string | EInvoiceMappingRule[] | null | undefined) {
-    if (!value) this.rules = [];
-    else this.rules = (typeof value === 'string' ? JSON.parse(value) : value).map((rule: EInvoiceMappingRule) => ({ ...rule }));
+    if (!value) {
+      this.rules = [];
+      this.collections = [];
+      return;
+    }
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (Array.isArray(parsed)) {
+      this.rules = parsed.map((rule: EInvoiceMappingRule) => ({ ...rule }));
+      this.collections = [];
+      return;
+    }
+    const definition = parsed as Partial<EInvoiceProfileDefinition>;
+    this.rules = (definition.fields ?? []).map((rule: EInvoiceMappingRule) => ({ ...rule }));
+    this.collections = (definition.collections ?? []).map((collection: EInvoiceCollectionDefinition) => ({
+      name: collection.name,
+      scopeXPath: collection.scopeXPath,
+      fields: collection.fields.map(field => ({ ...field })),
+    }));
+    this.cdr?.markForCheck();
   }
   @Output() readonly valueChange = new EventEmitter<string>();
   @Output() readonly profileDefinitionChange = new EventEmitter<string>();
@@ -119,6 +136,9 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
 
   selectNode(node: XmlTreeNode): void {
     this.draft = { ...this.draft, valueXPath: this.buildXPath(node) };
+    if (node.children.length || this.repeatedCount(node) > 1) {
+      this.collectionScopeXPath = this.buildXPath(node);
+    }
   }
 
   updateDraft(field: keyof EInvoiceMappingRule, value: unknown): void {
@@ -165,6 +185,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     if (!this.isIdentifier(normalized) || !scope || this.collections.some(item => item.name.toLowerCase() === normalized.toLowerCase())) return;
     this.collections = [...this.collections, { name: normalized, scopeXPath: scope, fields: [] }];
     this.selectedCollectionName = normalized;
+    this.emitProfileDefinition();
   }
 
   addCollectionFromDraft(): void {
@@ -179,6 +200,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
       if (collection.fields.some(item => item.name.toLowerCase() === field.name.toLowerCase())) return collection;
       return { ...collection, fields: [...collection.fields, { ...field }] };
     });
+    this.emitProfileDefinition();
   }
 
   addDraftAsCollectionField(): void {
@@ -245,6 +267,9 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   ngOnDestroy(): void { this.cancelRegexPreview(); }
   addRule(rule: EInvoiceMappingRule): void { this.rules = [...this.rules, { ...rule }]; this.emit(); }
   serializedValue(): EInvoiceMappingRule[] { return this.rules.map(rule => ({ ...rule })); }
-  private emit(): void { this.valueChange.emit(JSON.stringify(this.serializedValue())); }
+  private emit(): void {
+    this.valueChange.emit(JSON.stringify(this.serializedValue()));
+    this.emitProfileDefinition();
+  }
   private isIdentifier(value: string): boolean { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value); }
 }
