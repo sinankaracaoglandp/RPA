@@ -76,6 +76,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.tree = parsed.tree;
     this.expanded.clear();
     this.allTree().filter(item => item.node.children.length > 0).forEach(item => this.expanded.add(item.node));
+    if (this.tree.length) this.activeStep = 2;
     this.cdr?.markForCheck();
   }
 
@@ -221,6 +222,26 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
         fields: collection.fields.map(field => ({ ...field })),
       })),
     };
+  }
+
+  activeStep: 1 | 2 | 3 = 1;
+  draftTarget = 'root';
+  newCollectionOpen = false;
+
+  setStep(step: 1 | 2 | 3): void {
+    this.activeStep = step;
+    this.cdr?.markForCheck();
+  }
+
+  /** Alan kartındaki tek "Alanı ekle" butonu: hedefe göre kök kurala veya koleksiyona yazar. */
+  addDraft(): void {
+    if (this.draftTarget === 'root') {
+      this.addDraftRule();
+      return;
+    }
+    this.selectedCollectionName = this.draftTarget;
+    this.addDraftAsCollectionField();
+    this.draft = { ...this.draft, name: '' };
   }
 
   wizardTarget: 'regex' | 'fallbackRegex' | null = null;

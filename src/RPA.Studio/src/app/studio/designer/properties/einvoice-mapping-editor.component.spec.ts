@@ -44,11 +44,15 @@ describe('EInvoiceMappingEditorComponent', () => {
 
   it('renders accessible tree rule and preview panels with an XML-only file picker', () => {
     const root = fixture.nativeElement as HTMLElement;
-    expect(root.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="einvoice-rule-panel"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="einvoice-preview-panel"]')).toBeTruthy();
     const picker = root.querySelector('input[type="file"]') as HTMLInputElement;
     expect(picker.accept).toBe('.xml,text/xml,application/xml');
+
+    fixture.componentInstance.setStep(2); fixture.detectChanges();
+    expect(root.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="einvoice-rule-panel"]')).toBeTruthy();
+
+    fixture.componentInstance.setStep(3); fixture.detectChanges();
+    expect(root.querySelector('[data-testid="einvoice-preview-panel"]')).toBeTruthy();
   });
 
   it('reads the sample with File.text without emitting the file or XML', async () => {
@@ -80,6 +84,7 @@ describe('EInvoiceMappingEditorComponent', () => {
 
   it('offers every rule field and editable kur and IBAN presets', () => {
     const root = fixture.nativeElement as HTMLElement;
+    fixture.componentInstance.setStep(2); fixture.detectChanges();
     for (const id of ['source', 'scope', 'xpath', 'regex', 'group', 'type'])
       expect(root.querySelector(`#einvoice-rule-${id}`)).toBeTruthy();
     (root.querySelector('[data-testid="einvoice-preset-iban"]') as HTMLButtonElement).click();
@@ -92,6 +97,7 @@ describe('EInvoiceMappingEditorComponent', () => {
     fixture.componentInstance.loadSampleXml(SAMPLE_UBL);
     expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
     fixture.componentInstance.draft = ibanPreset();
+    fixture.componentInstance.setStep(3);
     fixture.detectChanges();
     expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
     const preview = fixture.nativeElement.querySelector('[data-testid="einvoice-draft-preview"]') as HTMLElement;
@@ -102,6 +108,7 @@ describe('EInvoiceMappingEditorComponent', () => {
   });
 
   it('provides an editable common invoice-note starter preset', () => {
+    fixture.componentInstance.setStep(2); fixture.detectChanges();
     const button = fixture.nativeElement.querySelector('[data-testid="einvoice-preset-note"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     expect(fixture.componentInstance.draft.source).toBe('InvoiceNotes');
@@ -282,6 +289,7 @@ describe('EInvoiceMappingEditorComponent', () => {
         },
       ],
     });
+    component.setStep(2);
     fixture.detectChanges();
 
     expect(component.rules.map(rule => rule.name)).toEqual(['faturaNo']);
@@ -298,6 +306,7 @@ describe('EInvoiceMappingEditorComponent', () => {
     fixture.detectChanges();
 
     (fixture.nativeElement.querySelector('[data-node-name="cac:InvoiceLine"]') as HTMLButtonElement).click();
+    component.newCollectionOpen = true;
     fixture.detectChanges();
     (fixture.nativeElement.querySelector('[data-testid="collection-name"]') as HTMLInputElement).value = 'satirlar';
     (fixture.nativeElement.querySelector('[data-testid="collection-name"]') as HTMLInputElement)
@@ -312,8 +321,9 @@ describe('EInvoiceMappingEditorComponent', () => {
       required: true,
       multiple: false,
     };
+    component.draftTarget = 'satirlar';
     fixture.detectChanges();
-    (fixture.nativeElement.querySelector('[data-testid="add-line-field"]') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('[data-testid="einvoice-add-rule"]') as HTMLButtonElement).click();
 
     expect(component.collections[0].fields[0].name).toBe('MalzemeKodu');
     expect(JSON.parse(emitted.at(-1)!).collections[0].fields[0].name).toBe('MalzemeKodu');
@@ -370,6 +380,33 @@ describe('EInvoiceMappingEditorComponent', () => {
     });
     expect(component.collections[0].fields[0].valueXPath)
       .toBe('./cac:Item/cbc:SellersItemIdentification/cbc:ID');
+  });
+
+  it('örnek XML yüklenince otomatik 2. adıma geçer', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    expect(component.activeStep).toBe(1);
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    expect(component.activeStep).toBe(2);
+  });
+
+  it('hedef fatura alanı iken addDraft kök kurala ekler', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.draftTarget = 'root';
+    component.draft = { name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false };
+    component.addDraft();
+    expect(component.rules.length).toBe(1);
+    expect(component.rules[0].name).toBe('faturaNo');
+  });
+
+  it('hedef satır dizisi iken addDraft alanı koleksiyona ekler', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.draftTarget = 'satirlar';
+    component.draft = { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false };
+    component.addDraft();
+    expect(component.collections[0].fields.length).toBe(1);
+    expect(component.collections[0].fields[0].name).toBe('Miktar');
+    expect(component.rules.length).toBe(0);
   });
 
   it('regex sihirbazı hedef alana desen ve grubu yazar', () => {

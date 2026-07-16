@@ -1,150 +1,190 @@
 <section class="einvoice-mapping" aria-label="E-fatura eşleme editörü">
-  <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
-    <h4>XML ağacı</h4>
-    <label for="einvoice-sample">Örnek XML seç</label>
-    <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml" (change)="onSampleFileSelected($event)" />
-    @if (sampleError) { <p role="alert">{{ sampleError }}</p> }
-    <ul class="einvoice-mapping__tree" aria-label="XML elemanları">
-      @for (item of flatTree(); track item.node.element) {
-        <li [style.padding-left.rem]="item.depth">
-          @if (item.node.children.length) {
-            <button type="button" [attr.data-toggle-name]="item.node.name" [attr.aria-expanded]="isExpanded(item.node)"
-              [attr.aria-label]="item.node.name + ' dalını aç veya kapat'" (click)="toggleNode(item.node)">▸</button>
-          }
-          <button type="button" data-testid="einvoice-tree-node" [attr.data-node-name]="item.node.name"
-            [attr.aria-expanded]="item.node.children.length ? isExpanded(item.node) : null"
-            (click)="selectNode(item.node)" (keydown)="onTreeKeydown($event, item.node)">
-            {{ item.node.name }} @if (nodeSample(item.node)) { <span>{{ nodeSample(item.node) }}</span> }
-            @if (repeatedCount(item.node) > 1) { <span>×{{ repeatedCount(item.node) }}</span> }
-          </button>
-        </li>
-      }
-    </ul>
-  </div>
+  <nav class="einvoice-mapping__steps" aria-label="Adresleme adımları">
+    <button type="button" data-testid="einvoice-step-1"
+      class="einvoice-mapping__step" [class.einvoice-mapping__step--active]="activeStep === 1"
+      [attr.aria-current]="activeStep === 1 ? 'step' : null" (click)="setStep(1)">1. Örnek XML</button>
+    <button type="button" data-testid="einvoice-step-2"
+      class="einvoice-mapping__step" [class.einvoice-mapping__step--active]="activeStep === 2"
+      [attr.aria-current]="activeStep === 2 ? 'step' : null" (click)="setStep(2)">2. Alanları bağla</button>
+    <button type="button" data-testid="einvoice-step-3"
+      class="einvoice-mapping__step" [class.einvoice-mapping__step--active]="activeStep === 3"
+      [attr.aria-current]="activeStep === 3 ? 'step' : null" (click)="setStep(3)">3. Doğrula</button>
+  </nav>
 
-  <div class="einvoice-mapping__panel" data-testid="einvoice-rule-panel">
-    <h4>Eşleme kuralı</h4>
-    <div><button type="button" data-testid="einvoice-preset-kur" (click)="applyPreset('kur')">Kur preset</button>
-      <button type="button" data-testid="einvoice-preset-iban" (click)="applyPreset('iban')">IBAN preset</button>
-      <button type="button" data-testid="einvoice-preset-note" (click)="applyPreset('note')">Fatura notu</button></div>
-    <label for="einvoice-rule-name">Alan adı</label><input id="einvoice-rule-name" [value]="draft.name" (input)="updateDraft('name', $any($event.target).value)" />
-    <label for="einvoice-rule-source">Kaynak</label><select id="einvoice-rule-source" [value]="draft.source" (change)="updateDraft('source', $any($event.target).value)">
-      <option>Standard</option><option>XPath</option><option>InvoiceNotes</option><option>LineNotes</option></select>
-    <label for="einvoice-rule-scope">Scope XPath</label><input id="einvoice-rule-scope" [value]="draft.scopeXPath ?? ''" (input)="updateDraft('scopeXPath', $any($event.target).value)" />
-    <label for="einvoice-rule-xpath">Value XPath</label><input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''" (input)="updateDraft('valueXPath', $any($event.target).value)" />
-    <label for="einvoice-rule-regex">Regex</label><input id="einvoice-rule-regex" [value]="draft.regex ?? ''" (input)="updateDraft('regex', $any($event.target).value)" />
-    <label for="einvoice-rule-group">Group</label><input id="einvoice-rule-group" [value]="draft.group ?? ''" (input)="updateDraft('group', $any($event.target).value)" />
-    <label for="einvoice-rule-fallback-regex">Bulunamazsa regex ile ara (fallback)</label>
-    <input id="einvoice-rule-fallback-regex" data-testid="einvoice-fallback-regex"
-      [value]="draft.fallbackRegex ?? ''" (input)="updateDraft('fallbackRegex', $any($event.target).value)"
-      placeholder="örn. TR\d{24}" />
-    <label for="einvoice-rule-fallback-group">Fallback grup adı</label>
-    <input id="einvoice-rule-fallback-group" data-testid="einvoice-fallback-group"
-      [value]="draft.fallbackGroup ?? ''" (input)="updateDraft('fallbackGroup', $any($event.target).value)" />
-    <div>
-      <button type="button" data-testid="open-wizard-regex" (click)="openRegexWizard('regex')">Regex yardımcısı</button>
-      <button type="button" data-testid="open-wizard-fallback" (click)="openRegexWizard('fallbackRegex')">Fallback yardımcısı</button>
+  @if (activeStep === 1) {
+    <div class="einvoice-mapping__panel" data-testid="einvoice-sample-panel">
+      <h4>Örnek XML seç</h4>
+      <p class="einvoice-mapping__hint">Alanları üzerinde işaretleyeceğin örnek bir e-fatura XML dosyası yükle. Dosya yalnızca tarayıcında kalır; sunucuya gönderilmez.</p>
+      <label for="einvoice-sample">Örnek XML seç</label>
+      <input id="einvoice-sample" type="file" accept=".xml,text/xml,application/xml" (change)="onSampleFileSelected($event)" />
+      @if (sampleError) { <p role="alert">{{ sampleError }}</p> }
+      @if (tree.length) {
+        <button type="button" data-testid="einvoice-goto-fields" (click)="setStep(2)">Alanları bağla →</button>
+      }
     </div>
-    @if (wizardTarget) {
-      <app-regex-wizard [sampleText]="wizardSampleText()" (patternApply)="applyWizardPattern($event)"></app-regex-wizard>
-    }
-    <label for="einvoice-rule-type">Veri tipi</label><select id="einvoice-rule-type" [value]="draft.type" (change)="updateDraft('type', $any($event.target).value)">
-      <option value="string">Metin</option><option value="integer">Tamsayı</option><option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option></select>
-    <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
-    <label><input type="checkbox" [checked]="draft.multiple" (change)="updateDraft('multiple', $any($event.target).checked)" /> Çoklu</label>
-    <button type="button" (click)="saveDraftRule()">{{ editingIndex === null ? 'Kural ekle' : 'Kuralı güncelle' }}</button>
-    <ul aria-label="Kaydedilmiş eşleme kuralları">
-      @for (rule of rules; track $index) {
-        <li><span>{{ rule.name }}</span>
-          <button type="button" (click)="editRule($index)">Düzenle</button>
-          <button type="button" (click)="removeRule($index)">Sil</button>
-        </li>
-      }
-    </ul>
-  </div>
+  }
 
-  <div class="einvoice-mapping__panel einvoice-mapping__panel--collection" data-testid="collection-panel">
-    <h4>Satır koleksiyonu</h4>
-    <p>Fatura satırları gibi tekrar eden XML bloklarını dizi olarak tanımla.</p>
-    <label for="einvoice-collection-name">Koleksiyon adı</label>
-    <input
-      id="einvoice-collection-name"
-      data-testid="collection-name"
-      [value]="collectionName"
-      (input)="collectionName = $any($event.target).value"
-      placeholder="satirlar"
-    />
-    <label for="einvoice-collection-scope">Satır scope XPath</label>
-    <input
-      id="einvoice-collection-scope"
-      data-testid="collection-scope"
-      [value]="collectionScopeXPath"
-      (input)="collectionScopeXPath = $any($event.target).value"
-      placeholder="//cac:InvoiceLine"
-    />
-    <button type="button" data-testid="add-collection" (click)="addCollectionFromDraft()">Satır dizisi oluştur</button>
-
-    @if (collections.length) {
-      <label for="einvoice-selected-collection">Alan eklenecek dizi</label>
-      <select
-        id="einvoice-selected-collection"
-        data-testid="selected-collection"
-        [value]="selectedCollectionName"
-        (change)="selectedCollectionName = $any($event.target).value"
-      >
-        @for (collection of collections; track collection.name) {
-          <option [value]="collection.name">{{ collection.name }}</option>
+  @if (activeStep === 2) {
+    <div class="einvoice-mapping__workbench">
+      <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
+        <h4>XML ağacı</h4>
+        <p class="einvoice-mapping__hint">Bir öğeye tıkla; yolu sağdaki alan kartına yazılır. ×N işaretli öğeler tekrar eder (satır adayı).</p>
+        @if (!tree.length) {
+          <p class="einvoice-mapping__empty">Önce 1. adımda örnek XML yükle.</p>
         }
-      </select>
-      <button type="button" data-testid="add-line-field" (click)="addDraftAsCollectionField()">Seçili alanı satıra ekle</button>
-      <ul aria-label="Satır alanları">
-        @for (collection of collections; track collection.name) {
-          <li>
-            <strong>{{ collection.name }}</strong>
-            <span>{{ collection.scopeXPath }}</span>
-            <ul>
-              @for (field of collection.fields; track field.name) {
-                <li>{{ collection.name }}.{{ field.name }} ← {{ field.valueXPath }}</li>
+        <ul class="einvoice-mapping__tree" aria-label="XML elemanları">
+          @for (item of flatTree(); track item.node.element) {
+            <li [style.padding-left.rem]="item.depth">
+              @if (item.node.children.length) {
+                <button type="button" [attr.data-toggle-name]="item.node.name" [attr.aria-expanded]="isExpanded(item.node)"
+                  [attr.aria-label]="item.node.name + ' dalını aç veya kapat'" (click)="toggleNode(item.node)">▸</button>
               }
-            </ul>
+              <button type="button" data-testid="einvoice-tree-node" [attr.data-node-name]="item.node.name"
+                [attr.aria-expanded]="item.node.children.length ? isExpanded(item.node) : null"
+                (click)="selectNode(item.node)" (keydown)="onTreeKeydown($event, item.node)">
+                {{ item.node.name }} @if (nodeSample(item.node)) { <span>{{ nodeSample(item.node) }}</span> }
+                @if (repeatedCount(item.node) > 1) { <span>×{{ repeatedCount(item.node) }}</span> }
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+
+      <div class="einvoice-mapping__panel" data-testid="einvoice-rule-panel">
+        <h4>Alan kartı</h4>
+        <label for="einvoice-rule-name">Alan adı</label>
+        <input id="einvoice-rule-name" [value]="draft.name" (input)="updateDraft('name', $any($event.target).value)" placeholder="örn. faturaTarihi" />
+
+        <label for="einvoice-rule-type">Veri tipi</label>
+        <select id="einvoice-rule-type" [value]="draft.type" (change)="updateDraft('type', $any($event.target).value)">
+          <option value="string">Metin</option><option value="integer">Tamsayı</option><option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option>
+        </select>
+
+        <label for="einvoice-rule-target">Nereye eklensin?</label>
+        <select id="einvoice-rule-target" data-testid="selected-collection"
+          [value]="draftTarget" (change)="draftTarget = $any($event.target).value">
+          <option value="root">Fatura alanı</option>
+          @for (collection of collections; track collection.name) {
+            <option [value]="collection.name">{{ collection.name }} (satır alanı)</option>
+          }
+        </select>
+        <button type="button" class="einvoice-mapping__link" data-testid="einvoice-new-collection"
+          (click)="newCollectionOpen = !newCollectionOpen">+ Yeni satır dizisi</button>
+        @if (newCollectionOpen) {
+          <div class="einvoice-mapping__subform" data-testid="collection-panel">
+            <label for="einvoice-collection-name">Dizi adı</label>
+            <input id="einvoice-collection-name" data-testid="collection-name"
+              [value]="collectionName" (input)="collectionName = $any($event.target).value" placeholder="satirlar" />
+            <label for="einvoice-collection-scope">Satır scope XPath</label>
+            <input id="einvoice-collection-scope" data-testid="collection-scope"
+              [value]="collectionScopeXPath" (input)="collectionScopeXPath = $any($event.target).value" placeholder="//cac:InvoiceLine" />
+            <p class="einvoice-mapping__hint">Ağaçta tekrar eden bir öğeye tıklarsan scope otomatik dolar.</p>
+            <button type="button" data-testid="add-collection"
+              (click)="addCollectionFromDraft(); newCollectionOpen = false; draftTarget = collections.length ? collections[collections.length - 1].name : 'root'">
+              Satır dizisi oluştur
+            </button>
+          </div>
+        }
+
+        <label for="einvoice-rule-xpath">Value XPath</label>
+        <input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''" (input)="updateDraft('valueXPath', $any($event.target).value)" placeholder="ağaçtan tıklayınca dolar" />
+
+        <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
+        <label><input type="checkbox" [checked]="draft.multiple" (change)="updateDraft('multiple', $any($event.target).checked)" /> Çoklu</label>
+
+        <details class="einvoice-mapping__advanced">
+          <summary>Gelişmiş (kaynak, regex, fallback)</summary>
+          <div>
+            <button type="button" data-testid="einvoice-preset-kur" (click)="applyPreset('kur')">Kur preset</button>
+            <button type="button" data-testid="einvoice-preset-iban" (click)="applyPreset('iban')">IBAN preset</button>
+            <button type="button" data-testid="einvoice-preset-note" (click)="applyPreset('note')">Fatura notu</button>
+          </div>
+          <label for="einvoice-rule-source">Kaynak</label>
+          <select id="einvoice-rule-source" [value]="draft.source" (change)="updateDraft('source', $any($event.target).value)">
+            <option>Standard</option><option>XPath</option><option>InvoiceNotes</option><option>LineNotes</option>
+          </select>
+          <label for="einvoice-rule-scope">Scope XPath</label>
+          <input id="einvoice-rule-scope" [value]="draft.scopeXPath ?? ''" (input)="updateDraft('scopeXPath', $any($event.target).value)" />
+          <label for="einvoice-rule-regex">Regex (XPath sonucunu süzer)</label>
+          <input id="einvoice-rule-regex" [value]="draft.regex ?? ''" (input)="updateDraft('regex', $any($event.target).value)" />
+          <label for="einvoice-rule-group">Group</label>
+          <input id="einvoice-rule-group" [value]="draft.group ?? ''" (input)="updateDraft('group', $any($event.target).value)" />
+          <label for="einvoice-rule-fallback-regex">Bulunamazsa regex ile ara (fallback)</label>
+          <input id="einvoice-rule-fallback-regex" data-testid="einvoice-fallback-regex"
+            [value]="draft.fallbackRegex ?? ''" (input)="updateDraft('fallbackRegex', $any($event.target).value)"
+            placeholder="örn. TR\d{24}" />
+          <label for="einvoice-rule-fallback-group">Fallback grup adı</label>
+          <input id="einvoice-rule-fallback-group" data-testid="einvoice-fallback-group"
+            [value]="draft.fallbackGroup ?? ''" (input)="updateDraft('fallbackGroup', $any($event.target).value)" />
+          <div>
+            <button type="button" data-testid="open-wizard-regex" (click)="openRegexWizard('regex')">Regex yardımcısı</button>
+            <button type="button" data-testid="open-wizard-fallback" (click)="openRegexWizard('fallbackRegex')">Fallback yardımcısı</button>
+          </div>
+          @if (wizardTarget) {
+            <app-regex-wizard [sampleText]="wizardSampleText()" (patternApply)="applyWizardPattern($event)"></app-regex-wizard>
+          }
+        </details>
+
+        <button type="button" class="einvoice-mapping__primary" data-testid="einvoice-add-rule"
+          (click)="editingIndex === null ? addDraft() : saveDraftRule()">
+          {{ editingIndex === null ? 'Alanı ekle' : 'Alanı güncelle' }}
+        </button>
+
+        <h5>Tanımlı alanlar</h5>
+        <ul aria-label="Kaydedilmiş eşleme kuralları">
+          @for (rule of rules; track $index) {
+            <li><span>{{ rule.name }}</span>
+              <button type="button" (click)="editRule($index)">Düzenle</button>
+              <button type="button" (click)="removeRule($index)">Sil</button>
+            </li>
+          }
+        </ul>
+        @for (collection of collections; track collection.name) {
+          <p class="einvoice-mapping__collection-title"><strong>{{ collection.name }}</strong> <span>{{ collection.scopeXPath }}</span></p>
+          <ul aria-label="Satır alanları">
+            @for (field of collection.fields; track field.name) {
+              <li>{{ collection.name }}.{{ field.name }} ← {{ field.valueXPath }}</li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+  }
+
+  @if (activeStep === 3) {
+    <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel">
+      <h4>Doğrulama</h4>
+      @if (!tree.length) {
+        <p class="einvoice-mapping__empty">Bulunan değerleri görmek için 1. adımda örnek XML yükleyin.</p>
+      }
+      <ul class="einvoice-mapping__validation" aria-label="Alan doğrulama sonuçları">
+        @for (item of savedRulePreviews(); track item.rule.name) {
+          <li class="einvoice-mapping__validation-row"
+            [class.einvoice-mapping__validation-row--ok]="!item.preview.error && item.preview.converted !== null"
+            [class.einvoice-mapping__validation-row--fail]="item.preview.error || item.preview.converted === null"
+            [attr.data-testid]="'einvoice-validation-' + item.rule.name">
+            <strong>{{ item.rule.name }}</strong>
+            <span class="einvoice-mapping__validation-value">{{ previewText(item.preview) }}</span>
+            @if (item.preview.matchedBy === 'xpath') { <span class="einvoice-mapping__badge">XPath</span> }
+            @if (item.preview.matchedBy === 'fallback') { <span class="einvoice-mapping__badge einvoice-mapping__badge--fallback">Regex fallback</span> }
           </li>
         }
       </ul>
-    }
-  </div>
-
-  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel">
-    <h4>Doğrulama</h4>
-    @if (!tree.length) {
-      <p class="einvoice-mapping__empty">Bulunan değerleri görmek için örnek XML yükleyin.</p>
-    }
-    <ul class="einvoice-mapping__validation" aria-label="Alan doğrulama sonuçları">
-      @for (item of savedRulePreviews(); track item.rule.name) {
-        <li class="einvoice-mapping__validation-row"
-          [class.einvoice-mapping__validation-row--ok]="!item.preview.error && item.preview.converted !== null"
-          [class.einvoice-mapping__validation-row--fail]="item.preview.error || item.preview.converted === null"
-          [attr.data-testid]="'einvoice-validation-' + item.rule.name">
-          <strong>{{ item.rule.name }}</strong>
-          <span class="einvoice-mapping__validation-value">{{ previewText(item.preview) }}</span>
-          @if (item.preview.matchedBy === 'xpath') { <span class="einvoice-mapping__badge">XPath</span> }
-          @if (item.preview.matchedBy === 'fallback') { <span class="einvoice-mapping__badge einvoice-mapping__badge--fallback">Regex fallback</span> }
-        </li>
+      @for (collection of collections; track collection.name) {
+        <h5>{{ collection.name }} (ilk 5 satır)</h5>
+        <table class="einvoice-mapping__table" [attr.data-testid]="'einvoice-collection-preview-' + collection.name">
+          <thead><tr>@for (column of collectionColumns(collection); track column) { <th>{{ column }}</th> }</tr></thead>
+          <tbody>
+            @for (row of collectionPreviewRows(collection); track $index) {
+              <tr>@for (column of collectionColumns(collection); track column) { <td>{{ row[column] ?? '—' }}</td> }</tr>
+            }
+          </tbody>
+        </table>
       }
-    </ul>
-    @for (collection of collections; track collection.name) {
-      <h5>{{ collection.name }} (ilk 5 satır)</h5>
-      <table class="einvoice-mapping__table" [attr.data-testid]="'einvoice-collection-preview-' + collection.name">
-        <thead><tr>@for (column of collectionColumns(collection); track column) { <th>{{ column }}</th> }</tr></thead>
-        <tbody>
-          @for (row of collectionPreviewRows(collection); track $index) {
-            <tr>@for (column of collectionColumns(collection); track column) { <td>{{ row[column] ?? '—' }}</td> }</tr>
-          }
-        </tbody>
-      </table>
-    }
-    <details class="einvoice-mapping__json">
-      <summary>Teknik JSON önizleme</summary>
-      <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre>
-    </details>
-  </div>
+      <details class="einvoice-mapping__json">
+        <summary>Teknik JSON önizleme</summary>
+        <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre>
+      </details>
+    </div>
+  }
 </section>

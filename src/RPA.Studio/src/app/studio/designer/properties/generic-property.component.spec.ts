@@ -179,7 +179,7 @@ describe('GenericPropertyComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('app-einvoice-mapping-editor')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-step-2"]')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('[data-testid="prop-mappings"]')).toBeFalsy();
   });
 
