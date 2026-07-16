@@ -122,8 +122,30 @@ builder.Services.AddScoped<IInstallationKeyStore>(_ =>
     new DpapiInstallationKeyStore(
         builder.Configuration["Licensing:KeyDirectory"]
         ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Licensing")));
-builder.Services.AddScoped<IVendorLicenseVerifier>(_ =>
-    new VendorLicenseVerifier(builder.Configuration["Licensing:VendorPublicKeyPem"] ?? TestOnlyVendorPublicKeyPem));
+// Lisanslamanın GÜVEN KÖKÜ. Yapılandırma yoksa Production'da AÇILMAYI REDDEDER — sessizce
+// test anahtarına düşmek, unutulan tek bir ayar yüzünden tüm lisans doğrulamasını devre dışı
+// bırakır (test özel anahtarını elinde tutan herkes geçerli lisans üretebilirdi). Bu yüzden
+// yalnızca Development'ta, yüksek sesle uyararak test anahtarına izin verilir.
+var vendorPublicKeyPem = builder.Configuration["Licensing:VendorPublicKeyPem"];
+if (string.IsNullOrWhiteSpace(vendorPublicKeyPem))
+{
+    if (!builder.Environment.IsDevelopment())
+    {
+        throw new InvalidOperationException(
+            "Licensing:VendorPublicKeyPem yapılandırılmamış. Vendor açık anahtarı lisans " +
+            "doğrulamasının güven köküdür ve Development dışındaki ortamlarda zorunludur. " +
+            "Anahtarı appsettings veya ortam değişkeni ile sağlayın " +
+            "(bkz. docs/operations/offline-licensing.md).");
+    }
+
+    vendorPublicKeyPem = TestOnlyVendorPublicKeyPem;
+    Log.Warning(
+        "Licensing:VendorPublicKeyPem yapılandırılmamış — SALT GELİŞTİRME amaçlı gömülü test " +
+        "vendor anahtarı kullanılıyor. Lisans doğrulaması bu anahtarla imzalanmış SAHTE " +
+        "lisansları kabul eder. Production'da uygulama bu ayar olmadan başlamaz.");
+}
+
+builder.Services.AddScoped<IVendorLicenseVerifier>(_ => new VendorLicenseVerifier(vendorPublicKeyPem));
 builder.Services.AddScoped<RPA.Domain.Interfaces.IAgentIdentityRepository, EfAgentIdentityRepository>();
 builder.Services.AddScoped<EfAgentIdentityRepository>();
 builder.Services.AddScoped<IAgentActivationCodeStore, EfAgentActivationCodeStore>();
