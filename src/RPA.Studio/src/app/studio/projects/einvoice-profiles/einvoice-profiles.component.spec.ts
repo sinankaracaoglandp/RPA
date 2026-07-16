@@ -1,8 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
+import { EInvoiceMappingEditorComponent } from '../../designer/properties/einvoice-mapping-editor.component';
 import { EInvoiceProfilesComponent } from './einvoice-profiles.component';
 
 describe('EInvoiceProfilesComponent', () => {
@@ -52,6 +54,30 @@ describe('EInvoiceProfilesComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.draftJson()).toContain('"fields"');
+  });
+
+  it('presents the page as the e-invoice addressing workspace and passes the selected draft into the editor', () => {
+    const draft = '{"fields":[{"name":"faturaNo","source":"XPath","valueXPath":"/Invoice/cbc:ID","type":"string","required":true,"multiple":false}],"collections":[]}';
+    fixture.detectChanges();
+    http.expectOne('/api/projects/p1/einvoice-profiles').flush([
+      {
+        id: 'profile-1',
+        projectId: 'p1',
+        name: 'Satis',
+        draftDefinitionJson: draft,
+        createdAt: '2026-07-16T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('E-Fatura Adresleme');
+    fixture.componentInstance.openDraft('profile-1');
+    http.expectOne('/api/projects/p1/einvoice-profiles/profile-1/versions').flush([]);
+    fixture.detectChanges();
+
+    const editor = fixture.debugElement.query(By.directive(EInvoiceMappingEditorComponent))
+      .componentInstance as EInvoiceMappingEditorComponent;
+    expect(editor.rules.map(rule => rule.name)).toEqual(['faturaNo']);
   });
 
   it('publishes draft and refreshes immutable versions', () => {

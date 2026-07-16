@@ -1,7 +1,7 @@
 <section class="einvoice-profiles">
   <header class="einvoice-profiles__header">
     <div>
-      <p class="einvoice-profiles__eyebrow">E-Fatura Profilleri</p>
+      <p class="einvoice-profiles__eyebrow">E-Fatura Adresleme</p>
       <h1>Profil adresleme alanı</h1>
       <p>XML alanlarını proje içinde sürümleyip workflow değişkenlerine hazırla.</p>
     </div>
@@ -83,6 +83,7 @@
 
       @if (selectedProfileId()) {
         <app-einvoice-mapping-editor
+          [value]="draftJson()"
           (profileDefinitionChange)="draftJson.set($event)"
         />
         <textarea
