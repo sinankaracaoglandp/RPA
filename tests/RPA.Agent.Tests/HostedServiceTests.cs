@@ -246,7 +246,8 @@ public class HostedServiceTests
             s.AddSingleton<IAgentState>(state);
             s.AddSingleton<ExceptionClassifier>();
             s.AddSingleton(Options.Create(new AgentOptions { QueueName = "StudioRun" }));
-            s.AddSingleton(NullLogger<QueueAgentJobSource>.Instance);
+            s.AddSingleton<Microsoft.Extensions.Logging.ILogger<QueueAgentJobSource>>(
+                NullLogger<QueueAgentJobSource>.Instance);
             s.AddScoped<IAgentJobSource, QueueAgentJobSource>();
             s.AddScoped(sp => new JobExecutor(
                 sp.GetRequiredService<IWorkflowRunner>(),

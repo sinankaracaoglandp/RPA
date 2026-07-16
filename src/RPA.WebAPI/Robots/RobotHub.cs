@@ -11,7 +11,7 @@ using RPA.WebAPI.Hubs;
 /// Yalnızca kimliği doğrulanmış (JWT) bağlantılar kabul edilir. Robot register/heartbeat
 /// sinyalleri ve workflow olay yayınları bu hub üzerinden akar.
 /// </summary>
-// [Authorize]
+[Authorize]
 public class RobotHub : Hub
 {
     private readonly IRobotService _robotService;
