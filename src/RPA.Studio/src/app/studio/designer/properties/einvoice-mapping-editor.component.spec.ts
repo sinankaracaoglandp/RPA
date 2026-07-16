@@ -348,4 +348,29 @@ describe('EInvoiceMappingEditorComponent', () => {
       expect(preview.error).toContain('date');
     },
   );
+
+  it("koleksiyona eklenen alanın mutlak XPath yolu scope'a göre göreceli kaydedilir", () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '/Invoice/cac:InvoiceLine');
+    component.addCollectionField('satirlar', {
+      name: 'MalzemeKodu',
+      source: 'XPath',
+      valueXPath: '/Invoice/cac:InvoiceLine/cac:Item/cbc:SellersItemIdentification/cbc:ID',
+      type: 'string',
+      required: false,
+      multiple: false,
+    });
+    expect(component.collections[0].fields[0].valueXPath)
+      .toBe('./cac:Item/cbc:SellersItemIdentification/cbc:ID');
+  });
+
+  it('koleksiyona eklenen zaten göreceli yol değişmez', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', {
+      name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity',
+      type: 'decimal', required: false, multiple: false,
+    });
+    expect(component.collections[0].fields[0].valueXPath).toBe('./cbc:InvoicedQuantity');
+  });
 });

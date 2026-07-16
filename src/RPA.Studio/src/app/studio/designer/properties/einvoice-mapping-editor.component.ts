@@ -11,6 +11,7 @@ import {
   parseSampleXml,
   previewProfileDefinition,
   previewRule,
+  relativizeXPath,
 } from './einvoice-mapping.model';
 
 @Component({
@@ -198,7 +199,8 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.collections = this.collections.map(collection => {
       if (collection.name !== collectionName || !this.isIdentifier(field.name)) return collection;
       if (collection.fields.some(item => item.name.toLowerCase() === field.name.toLowerCase())) return collection;
-      return { ...collection, fields: [...collection.fields, { ...field }] };
+      const valueXPath = field.valueXPath ? relativizeXPath(field.valueXPath, collection.scopeXPath) : field.valueXPath;
+      return { ...collection, fields: [...collection.fields, { ...field, valueXPath }] };
     });
     this.emitProfileDefinition();
   }
