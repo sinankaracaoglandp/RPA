@@ -34,6 +34,13 @@
     <label for="einvoice-rule-xpath">Value XPath</label><input id="einvoice-rule-xpath" [value]="draft.valueXPath ?? ''" (input)="updateDraft('valueXPath', $any($event.target).value)" />
     <label for="einvoice-rule-regex">Regex</label><input id="einvoice-rule-regex" [value]="draft.regex ?? ''" (input)="updateDraft('regex', $any($event.target).value)" />
     <label for="einvoice-rule-group">Group</label><input id="einvoice-rule-group" [value]="draft.group ?? ''" (input)="updateDraft('group', $any($event.target).value)" />
+    <label for="einvoice-rule-fallback-regex">Bulunamazsa regex ile ara (fallback)</label>
+    <input id="einvoice-rule-fallback-regex" data-testid="einvoice-fallback-regex"
+      [value]="draft.fallbackRegex ?? ''" (input)="updateDraft('fallbackRegex', $any($event.target).value)"
+      placeholder="örn. TR\d{24}" />
+    <label for="einvoice-rule-fallback-group">Fallback grup adı</label>
+    <input id="einvoice-rule-fallback-group" data-testid="einvoice-fallback-group"
+      [value]="draft.fallbackGroup ?? ''" (input)="updateDraft('fallbackGroup', $any($event.target).value)" />
     <label for="einvoice-rule-type">Veri tipi</label><select id="einvoice-rule-type" [value]="draft.type" (change)="updateDraft('type', $any($event.target).value)">
       <option value="string">Metin</option><option value="integer">Tamsayı</option><option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option></select>
     <label><input type="checkbox" [checked]="draft.required" (change)="updateDraft('required', $any($event.target).checked)" /> Zorunlu</label>
@@ -99,6 +106,38 @@
     }
   </div>
 
-  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel"><h4>Önizleme</h4>
-    <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre></div>
+  <div class="einvoice-mapping__panel" data-testid="einvoice-preview-panel">
+    <h4>Doğrulama</h4>
+    @if (!tree.length) {
+      <p class="einvoice-mapping__empty">Bulunan değerleri görmek için örnek XML yükleyin.</p>
+    }
+    <ul class="einvoice-mapping__validation" aria-label="Alan doğrulama sonuçları">
+      @for (item of savedRulePreviews(); track item.rule.name) {
+        <li class="einvoice-mapping__validation-row"
+          [class.einvoice-mapping__validation-row--ok]="!item.preview.error && item.preview.converted !== null"
+          [class.einvoice-mapping__validation-row--fail]="item.preview.error || item.preview.converted === null"
+          [attr.data-testid]="'einvoice-validation-' + item.rule.name">
+          <strong>{{ item.rule.name }}</strong>
+          <span class="einvoice-mapping__validation-value">{{ previewText(item.preview) }}</span>
+          @if (item.preview.matchedBy === 'xpath') { <span class="einvoice-mapping__badge">XPath</span> }
+          @if (item.preview.matchedBy === 'fallback') { <span class="einvoice-mapping__badge einvoice-mapping__badge--fallback">Regex fallback</span> }
+        </li>
+      }
+    </ul>
+    @for (collection of collections; track collection.name) {
+      <h5>{{ collection.name }} (ilk 5 satır)</h5>
+      <table class="einvoice-mapping__table" [attr.data-testid]="'einvoice-collection-preview-' + collection.name">
+        <thead><tr>@for (column of collectionColumns(collection); track column) { <th>{{ column }}</th> }</tr></thead>
+        <tbody>
+          @for (row of collectionPreviewRows(collection); track $index) {
+            <tr>@for (column of collectionColumns(collection); track column) { <td>{{ row[column] ?? '—' }}</td> }</tr>
+          }
+        </tbody>
+      </table>
+    }
+    <details class="einvoice-mapping__json">
+      <summary>Teknik JSON önizleme</summary>
+      <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre>
+    </details>
+  </div>
 </section>

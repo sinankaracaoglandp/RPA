@@ -12,3 +12,21 @@
 .einvoice-mapping__tree-child { padding-left: 1.5rem; }
 .einvoice-mapping__panel pre { overflow: auto; white-space: pre-wrap; }
 @media (max-width: 760px) { .einvoice-mapping { grid-template-columns: 1fr; } }
+
+.einvoice-mapping__validation { list-style: none; margin: 0; padding: 0; }
+.einvoice-mapping__validation-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.25rem 0.5rem; border-left: 3px solid transparent;
+}
+.einvoice-mapping__validation-row--ok { border-left-color: #2e7d32; }
+.einvoice-mapping__validation-row--fail { border-left-color: #c62828; }
+.einvoice-mapping__validation-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.einvoice-mapping__badge {
+  font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 0.5rem;
+  background: #e3f2fd; color: #1565c0;
+}
+.einvoice-mapping__badge--fallback { background: #fff3e0; color: #e65100; }
+.einvoice-mapping__table { border-collapse: collapse; font-size: 0.8rem;
+  th, td { border: 1px solid #ddd; padding: 0.2rem 0.5rem; } }
+.einvoice-mapping__json summary { cursor: pointer; font-size: 0.8rem; }
+.einvoice-mapping__empty { font-size: 0.85rem; opacity: 0.7; }

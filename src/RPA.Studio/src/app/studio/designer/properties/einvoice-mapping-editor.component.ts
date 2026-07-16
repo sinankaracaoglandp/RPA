@@ -221,6 +221,30 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     };
   }
 
+  savedRulePreviews(): Array<{ rule: EInvoiceMappingRule; preview: RulePreview }> {
+    if (!this.sampleDocument) {
+      return this.rules.map(rule => ({ rule, preview: { raw: null, converted: null, error: 'Örnek XML yüklenmedi.' } }));
+    }
+    return this.rules.map(rule => ({ rule, preview: previewRule(rule, this.sampleDocument!) }));
+  }
+
+  collectionPreviewRows(collection: EInvoiceCollectionDefinition): Array<Record<string, unknown>> {
+    if (!this.sampleDocument) return [];
+    const preview = previewProfileDefinition({ fields: [], collections: [collection] }, this.sampleDocument);
+    const rows = preview[collection.name];
+    return Array.isArray(rows) ? rows.slice(0, 5) : [];
+  }
+
+  collectionColumns(collection: EInvoiceCollectionDefinition): string[] {
+    return collection.fields.map(field => field.name);
+  }
+
+  previewText(preview: RulePreview): string {
+    if (preview.error) return preview.error;
+    if (preview.converted === null || preview.converted === undefined) return '—';
+    return Array.isArray(preview.converted) ? preview.converted.map(String).join(', ') : String(preview.converted);
+  }
+
   previewDefinition(): Record<string, any> {
     if (!this.sampleDocument) return {};
     return previewProfileDefinition(this.profileDefinition(), this.sampleDocument);
