@@ -1,7 +1,18 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { buildPatternFromSelection, explainRegex, REGEX_PRESETS, RegexPresetChip } from './regex-wizard.model';
+import {
+  explainRegex,
+  findValue,
+  REGEX_PRESETS,
+  RegexPresetChip,
+  TextScope,
+  ValueMatch,
+} from './regex-wizard.model';
 
+/**
+ * Değer bulucu: kullanıcı aradığı değeri yazar; örnek XML'de nerede geçtiği
+ * vurgulanır ve o değeri yakalayan regex üretilir. Regex bilgisi gerekmez.
+ */
 @Component({
   selector: 'app-regex-wizard',
   standalone: true,
@@ -10,49 +21,38 @@ import { buildPatternFromSelection, explainRegex, REGEX_PRESETS, RegexPresetChip
   styleUrls: ['./regex-wizard.component.scss'],
 })
 export class RegexWizardComponent {
-  @Input() sampleText = '';
+  /** Örnek XML'deki (yol, metin) çiftleri; arama bunların içinde yapılır. */
+  @Input() scopes: TextScope[] = [];
+  /** Regex desenini alana yaz. */
   @Output() readonly patternApply = new EventEmitter<{ pattern: string; group: string }>();
+  /** Değer bir XML öğesinde bulunduysa doğrudan o yolu kullan (regex'e gerek yok). */
+  @Output() readonly pathApply = new EventEmitter<string>();
 
   readonly presets = REGEX_PRESETS;
-  pattern = '';
-  group = 'deger';
-  error = '';
+  searchValue = '';
+  presetsOpen = false;
+
+  matches(): ValueMatch[] {
+    return findValue(this.scopes, this.searchValue);
+  }
+
+  get searched(): boolean {
+    return this.searchValue.trim().length > 0;
+  }
+
+  explain(pattern: string): string {
+    return explainRegex(pattern);
+  }
+
+  usePath(match: ValueMatch): void {
+    this.pathApply.emit(match.path);
+  }
+
+  usePattern(match: ValueMatch): void {
+    this.patternApply.emit({ pattern: match.pattern, group: match.group });
+  }
 
   usePreset(preset: RegexPresetChip): void {
-    this.pattern = preset.pattern;
-    this.group = preset.group;
-    this.error = '';
-  }
-
-  generateFromSelection(textarea: HTMLTextAreaElement): void {
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    if (start === end) { this.error = 'Önce örnek metinde çıkarmak istediğin değeri seç.'; return; }
-    const built = buildPatternFromSelection(textarea.value, start, end);
-    this.pattern = built.pattern;
-    this.group = built.group;
-    this.error = '';
-  }
-
-  explanation(): string {
-    return this.pattern ? explainRegex(this.pattern) : '';
-  }
-
-  /** Örnek metin üzerinde canlı deneme; hatalı desen kullanıcıya nazikçe bildirilir. */
-  liveMatch(): string {
-    if (!this.pattern || !this.sampleText) return '';
-    try {
-      const match = new RegExp(this.pattern).exec(this.sampleText);
-      if (!match) return 'Örnek metinde eşleşme yok.';
-      const value = this.group ? match.groups?.[this.group] ?? match[0] : match[0];
-      return `Bulunan: ${value}`;
-    } catch {
-      return 'Desen geçersiz.';
-    }
-  }
-
-  apply(): void {
-    if (!this.pattern) { this.error = 'Önce bir desen seç veya üret.'; return; }
-    this.patternApply.emit({ pattern: this.pattern, group: this.group });
+    this.patternApply.emit({ pattern: preset.pattern, group: preset.group });
   }
 }

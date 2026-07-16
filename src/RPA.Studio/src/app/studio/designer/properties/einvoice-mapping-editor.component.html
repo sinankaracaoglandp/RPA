@@ -93,6 +93,9 @@
               <li class="einvoice-mapping__field-row">
                 <span class="einvoice-mapping__field-main">
                   <strong>{{ rule.name }}</strong>
+                  @if (fieldValueText(rule); as found) {
+                    <span class="einvoice-mapping__field-value" [attr.data-testid]="'einvoice-field-value-' + rule.name">{{ found }}</span>
+                  }
                   <code>{{ rule.valueXPath }}</code>
                 </span>
                 <span class="einvoice-mapping__field-type">{{ rule.type }}</span>
@@ -115,6 +118,12 @@
               <li class="einvoice-mapping__field-row">
                 <span class="einvoice-mapping__field-main">
                   <strong>{{ collection.name }}.{{ field.name }}</strong>
+                  @if (collectionFieldValueText(collection, field); as found) {
+                    <span class="einvoice-mapping__field-value"
+                      [attr.data-testid]="'einvoice-field-value-' + collection.name + '-' + field.name">
+                      {{ found }} <em>(1. satır)</em>
+                    </span>
+                  }
                   <code>{{ field.valueXPath }}</code>
                 </span>
                 <span class="einvoice-mapping__field-type">{{ field.type }}</span>
@@ -212,7 +221,8 @@
               {{ wizardTarget === 'fallbackRegex' ? 'Yardımcıyı kapat' : 'Regex yardımcısını aç' }}
             </button>
             @if (wizardTarget === 'fallbackRegex') {
-              <app-regex-wizard [sampleText]="wizardSampleText()" (patternApply)="applyWizardPattern($event)"></app-regex-wizard>
+              <app-regex-wizard [scopes]="wizardScopes()"
+                (patternApply)="applyWizardPattern($event)" (pathApply)="applyWizardPath($event)"></app-regex-wizard>
             }
             <label for="einvoice-rule-fallback-regex">Desen</label>
             <input id="einvoice-rule-fallback-regex" data-testid="einvoice-fallback-regex"
@@ -244,7 +254,8 @@
               {{ wizardTarget === 'regex' ? 'Yardımcıyı kapat' : 'Süzme regex yardımcısı' }}
             </button>
             @if (wizardTarget === 'regex') {
-              <app-regex-wizard [sampleText]="wizardSampleText()" (patternApply)="applyWizardPattern($event)"></app-regex-wizard>
+              <app-regex-wizard [scopes]="wizardScopes()"
+                (patternApply)="applyWizardPattern($event)" (pathApply)="applyWizardPath($event)"></app-regex-wizard>
             }
           </details>
         </div>

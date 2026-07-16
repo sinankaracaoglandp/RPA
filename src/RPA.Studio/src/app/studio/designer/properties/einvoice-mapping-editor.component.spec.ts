@@ -496,6 +496,42 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.rules.length).toBe(0);
   });
 
+  it('eklenen alanın yanında örnek XML\'den bulunan değer gösterilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addRule({ name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false });
+
+    expect(component.fieldValueText(component.rules[0])).toBe('FTR2026001');
+  });
+
+  it('satır alanının yanında ilk satırın değeri gösterilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+
+    expect(component.collectionFieldValueText(component.collections[0], component.collections[0].fields[0])).toBe('2');
+  });
+
+  it('sihirbaz kapsamları örnek XML yollarını içerir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+
+    expect(component.wizardScopes().some(scope => scope.path === '/Invoice/cbc:ID')).toBe(true);
+  });
+
+  it('sihirbazdan gelen XML yolu forma yazılır ve kaynak XPath olur', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openFieldDialog();
+    component.openRegexWizard('fallbackRegex');
+
+    component.applyWizardPath('/Invoice/cbc:IssueDate');
+
+    expect(component.draft.valueXPath).toBe('/Invoice/cbc:IssueDate');
+    expect(component.draft.source).toBe('XPath');
+    expect(component.wizardTarget).toBeNull();
+  });
+
   it('regex sihirbazı hedef alana desen ve grubu yazar', () => {
     const component = new EInvoiceMappingEditorComponent();
     component.openRegexWizard('fallbackRegex');

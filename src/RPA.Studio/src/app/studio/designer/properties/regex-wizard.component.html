@@ -1,21 +1,57 @@
-<section class="regex-wizard" data-testid="regex-wizard" aria-label="Regex yardımcısı">
-  <h5>Regex yardımcısı</h5>
-  <p class="regex-wizard__hint">Regex bilmene gerek yok: hazır bir desen seç ya da aşağıdaki örnek metinde çıkarmak istediğin değeri fareyle seçip "Seçimden üret"e bas.</p>
-  <div class="regex-wizard__chips" role="group" aria-label="Hazır desenler">
-    @for (preset of presets; track preset.id) {
-      <button type="button" class="regex-wizard__chip" [attr.data-testid]="'regex-preset-' + preset.id"
-        (click)="usePreset(preset)">{{ preset.label }}</button>
-    }
-  </div>
-  <label for="regex-wizard-sample">Örnek metin</label>
-  <textarea #sample id="regex-wizard-sample" data-testid="regex-wizard-sample" rows="4" readonly>{{ sampleText }}</textarea>
-  <button type="button" data-testid="regex-wizard-generate" (click)="generateFromSelection(sample)">Seçimden üret</button>
-  @if (pattern) {
-    <label for="regex-wizard-pattern">Üretilen desen</label>
-    <input id="regex-wizard-pattern" data-testid="regex-wizard-pattern" [value]="pattern" readonly />
-    <p class="regex-wizard__explain" data-testid="regex-wizard-explanation">{{ explanation() }}</p>
-    <p class="regex-wizard__live" data-testid="regex-wizard-live" aria-live="polite">{{ liveMatch() }}</p>
+<section class="regex-wizard" data-testid="regex-wizard" aria-label="Değer bulucu">
+  <h5>Değer bul</h5>
+  <p class="regex-wizard__hint">
+    Faturadan almak istediğin değeri aynen yaz (örn. <code>16.07.2026</code> veya bir IBAN).
+    Örnek XML'de nerede geçtiğini gösterip sana uygun regex'i üretelim.
+  </p>
+
+  <label for="regex-wizard-search">Aradığın değer</label>
+  <input id="regex-wizard-search" data-testid="regex-wizard-search" type="text"
+    [value]="searchValue" (input)="searchValue = $any($event.target).value"
+    placeholder="örn. TR120001200012345678901234" autocomplete="off" />
+
+  @if (searched && !matches().length) {
+    <p class="regex-wizard__none" data-testid="regex-wizard-none" role="status">
+      Bu değer örnek XML'de bulunamadı. Yazımını kontrol et ya da değerin bir parçasını dene.
+    </p>
   }
-  @if (error) { <p class="regex-wizard__error" role="alert">{{ error }}</p> }
-  <button type="button" data-testid="regex-wizard-apply" (click)="apply()">Alana uygula</button>
+
+  @if (matches().length) {
+    <p class="regex-wizard__count" data-testid="regex-wizard-count" aria-live="polite">
+      {{ matches().length }} yerde bulundu:
+    </p>
+  }
+
+  <ul class="regex-wizard__matches" aria-label="Bulunan yerler">
+    @for (match of matches(); track $index) {
+      <li class="regex-wizard__match" [attr.data-testid]="'regex-wizard-match-' + $index">
+        <code class="regex-wizard__path">{{ match.path }}</code>
+        <p class="regex-wizard__context">
+          <span>{{ match.before }}</span><mark>{{ match.match }}</mark><span>{{ match.after }}</span>
+        </p>
+        <div class="regex-wizard__match-actions">
+          <button type="button" class="regex-wizard__primary"
+            [attr.data-testid]="'regex-wizard-use-path-' + $index" (click)="usePath(match)">
+            Bu XML yolunu kullan
+          </button>
+          <button type="button" [attr.data-testid]="'regex-wizard-use-pattern-' + $index" (click)="usePattern(match)">
+            Regex olarak uygula
+          </button>
+        </div>
+        <code class="regex-wizard__pattern">{{ match.pattern }}</code>
+        <p class="regex-wizard__explain">{{ explain(match.pattern) }}</p>
+      </li>
+    }
+  </ul>
+
+  <details class="regex-wizard__presets" [open]="presetsOpen">
+    <summary>Hazır desenler (değeri bilmiyorsan)</summary>
+    <p class="regex-wizard__hint">Değer her faturada değişiyorsa tipine göre hazır bir desen seç.</p>
+    <div class="regex-wizard__chips" role="group" aria-label="Hazır desenler">
+      @for (preset of presets; track preset.id) {
+        <button type="button" class="regex-wizard__chip" [attr.data-testid]="'regex-preset-' + preset.id"
+          (click)="usePreset(preset)">{{ preset.label }}</button>
+      }
+    </div>
+  </details>
 </section>

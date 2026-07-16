@@ -10,8 +10,27 @@
 .einvoice-mapping__panel { min-width: 0; padding: 0.75rem; border: 1px solid #d7dde5; }
 .einvoice-mapping__panel input:not([type='checkbox']),
 .einvoice-mapping__panel select { box-sizing: border-box; display: block; margin: 0.25rem 0 0.75rem; width: 100%; }
-.einvoice-mapping__tree { display: flex; flex-direction: column; align-items: stretch; margin-top: 0.75rem; }
-.einvoice-mapping__tree button { text-align: left; }
+/* Uzun XML değerleri sütunu genişletip alan listesinin üstüne taşıyordu:
+   ağaç kendi içinde kaydırılır, düğüm metni tek satırda kırpılır. */
+.einvoice-mapping__tree {
+  display: flex; flex-direction: column; align-items: stretch;
+  margin-top: 0.75rem;
+  max-height: 26rem;
+  overflow: auto;
+}
+.einvoice-mapping__tree li { display: flex; align-items: center; gap: 0.2rem; min-width: 0; }
+.einvoice-mapping__tree button {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.einvoice-mapping__tree button span {
+  opacity: 0.6;
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+}
 .einvoice-mapping__tree-child { padding-left: 1.5rem; }
 .einvoice-mapping__panel pre { overflow: auto; white-space: pre-wrap; }
 
@@ -146,4 +165,17 @@
   margin: 0.3rem 0; padding: 0.4rem 0.6rem;
   border: 1px solid #1565c0; border-radius: 0.3rem; background: #e3f2fd;
   color: #0f4c96; font-size: 0.82rem; font-weight: 600;
+}
+
+/* Eklenen alanın yanında örnek XML'den bulunan gerçek değer:
+   kullanıcı doğru öğeyi işaretlediğini buradan görür. */
+.einvoice-mapping__field-value {
+  color: #2e7d32;
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  em { color: #667085; font-weight: 400; font-size: 0.7rem; }
 }

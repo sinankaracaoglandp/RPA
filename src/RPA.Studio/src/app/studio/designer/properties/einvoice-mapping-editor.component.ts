@@ -14,6 +14,7 @@ import {
   relativizeXPath,
 } from './einvoice-mapping.model';
 import { RegexWizardComponent } from './regex-wizard.component';
+import { collectTextScopes, TextScope } from './regex-wizard.model';
 
 @Component({
   selector: 'app-einvoice-mapping-editor',
@@ -360,15 +361,31 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.cancelRegexPreview();
   }
 
-  /** Sihirbaza verilecek örnek metin: XPath'in bulduğu ham değer; yoksa belgenin notları/metni. */
-  wizardSampleText(): string {
+  /** Sihirbazın içinde arama yapacağı (XML yolu, metin) çiftleri. */
+  wizardScopes(): TextScope[] {
+    return this.sampleDocument ? collectTextScopes(this.sampleDocument) : [];
+  }
+
+  /** Sihirbazda "Bu XML yolunu kullan": değeri taşıyan öğenin yolunu forma yazar. */
+  applyWizardPath(path: string): void {
+    this.draft = { ...this.draft, source: 'XPath', valueXPath: path };
+    this.wizardTarget = null;
+    this.cancelRegexPreview();
+  }
+
+  /** Eklenen alan listesinde gösterilecek "bulunan değer" (doğru öğeyi seçtiğini görmek için). */
+  fieldValueText(rule: EInvoiceMappingRule): string {
     if (!this.sampleDocument) return '';
-    if (this.wizardTarget === 'regex') {
-      const base = previewRule({ ...this.draft, regex: null, group: null, type: 'string' }, this.sampleDocument);
-      if (typeof base.raw === 'string') return base.raw;
-      if (Array.isArray(base.raw)) return base.raw.join('\n');
-    }
-    return this.sampleDocument.documentElement.textContent?.trim() ?? '';
+    return this.previewText(previewRule(rule, this.sampleDocument));
+  }
+
+  /** Satır alanları için: koleksiyon kapsamındaki ilk satırın değeri. */
+  collectionFieldValueText(collection: EInvoiceCollectionDefinition, field: EInvoiceMappingRule): string {
+    const rows = this.collectionPreviewRows(collection);
+    if (!rows.length) return '';
+    const value = rows[0][field.name];
+    if (value === null || value === undefined) return '—';
+    return Array.isArray(value) ? value.map(String).join(', ') : String(value);
   }
 
   savedRulePreviews(): Array<{ rule: EInvoiceMappingRule; preview: RulePreview }> {

@@ -1,10 +1,131 @@
 .regex-wizard {
-  display: flex; flex-direction: column; gap: 0.4rem;
-  border: 1px solid #ddd; border-radius: 0.5rem; padding: 0.75rem;
-  textarea, input { font-family: monospace; font-size: 0.8rem; }
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #c7d1df;
+  border-radius: 0.4rem;
+  background: #fff;
+
+  h5 { margin: 0; font-size: 0.9rem; }
+  label { font-size: 0.8rem; font-weight: 600; margin-top: 0.3rem; }
+  input { font-family: inherit; }
+  code { font-family: Consolas, "Liberation Mono", monospace; }
 }
-.regex-wizard__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.regex-wizard__chip { border-radius: 1rem; padding: 0.2rem 0.7rem; cursor: pointer; }
-.regex-wizard__hint, .regex-wizard__explain { font-size: 0.8rem; opacity: 0.8; }
-.regex-wizard__live { font-size: 0.85rem; font-weight: 600; }
-.regex-wizard__error { color: #c62828; font-size: 0.8rem; }
+
+.regex-wizard__hint {
+  margin: 0;
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.regex-wizard__none {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid #c62828;
+  background: #fdecea;
+  color: #8a1c14;
+  font-size: 0.8rem;
+}
+
+.regex-wizard__count {
+  margin: 0.5rem 0 0.2rem;
+  color: #2e7d32;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.regex-wizard__matches {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.regex-wizard__match {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid #d7dee8;
+  border-left: 3px solid #2e7d32;
+  background: #fbfdfb;
+}
+
+.regex-wizard__path {
+  color: #1565c0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.regex-wizard__context {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  span { color: #667085; }
+
+  mark {
+    padding: 0.05rem 0.2rem;
+    border-radius: 0.2rem;
+    background: #fff59d;
+    color: #5d4200;
+    font-weight: 700;
+  }
+}
+
+.regex-wizard__match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.regex-wizard__primary {
+  border-color: #1565c0;
+  background: #1565c0;
+  color: #fff;
+  font-weight: 600;
+}
+
+.regex-wizard__primary:hover { background: #0f4c96; }
+
+.regex-wizard__pattern {
+  padding: 0.25rem 0.35rem;
+  background: #f4f6f8;
+  color: #243247;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.regex-wizard__explain {
+  margin: 0;
+  color: #667085;
+  font-size: 0.72rem;
+}
+
+.regex-wizard__presets {
+  margin-top: 0.4rem;
+
+  summary { cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+}
+
+.regex-wizard__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.regex-wizard__chip {
+  border-radius: 1rem;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+}
