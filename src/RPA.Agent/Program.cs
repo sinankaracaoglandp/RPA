@@ -29,7 +29,16 @@ try
 {
     Log.Information("RPA Agent başlatılıyor.");
 
-    var builder = Host.CreateApplicationBuilder(args);
+    // ContentRoot = exe'nin bulundugu dizin (CALISMA DIZINI DEGIL). Varsayilan davranis config'i
+    // cwd'den okur; bu, ajani baska bir dizinden calistirinca (ornegin repo kokunden
+    // "dotnet run --project src/RPA.Agent -- --activate <kod>") appsettings.json'in HIC
+    // yuklenmemesine ve "AgentId yapilandirilmamis" gibi yaniltici hatalara yol acar.
+    // Windows Service olarak koserken cwd zaten C:\Windows\System32'dir.
+    var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+    {
+        Args = args,
+        ContentRootPath = AppContext.BaseDirectory,
+    });
 
 #if DEBUG
     // DEBUG derlemede user-secrets'ı ortamdan bağımsız yükle. Host.CreateApplicationBuilder
