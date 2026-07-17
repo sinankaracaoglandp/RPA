@@ -663,4 +663,16 @@ describe('EInvoiceMappingEditorComponent', () => {
     component.createListFromWizard();
     expect(component.collections.find(item => item.name === 'kalemler')).toBeTruthy();
   });
+
+  it('liste sihirbazı: tam ekran aç/kapa ve kapanınca sıfırlanır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+
+    expect(component.wizardFullscreen).toBe(false);
+    component.toggleWizardFullscreen();
+    expect(component.wizardFullscreen).toBe(true);
+    component.closeWizard();
+    expect(component.wizardFullscreen).toBe(false);
+  });
 });

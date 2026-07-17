@@ -238,3 +238,26 @@
   background: #fdecea; color: #b0201b; font-size: 0.82rem; font-weight: 600;
 }
 .einvoice-wizard__name-input--dup { border: 1px solid #c62828 !important; background: #fdecea; }
+
+.einvoice-wizard__header-actions { display: flex; align-items: center; gap: 0.25rem; }
+.einvoice-wizard__icon-button {
+  border: none; background: none; cursor: pointer; font-size: 1rem; line-height: 1;
+  padding: 0.2rem 0.4rem; border-radius: 0.25rem; color: #334155;
+}
+.einvoice-wizard__icon-button:hover { background: #eef1f5; }
+.einvoice-wizard__icon-button:focus-visible { outline: 2px solid #0f4c96; outline-offset: 2px; }
+.einvoice-wizard__table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Tam ekran: butonla ya da küçük ekranda otomatik. */
+.einvoice-wizard__dialog--full {
+  width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; border-radius: 0;
+}
+.einvoice-mapping__overlay:has(.einvoice-wizard__dialog--full) { padding: 0; }
+
+@media (max-width: 640px) {
+  .einvoice-mapping__overlay { padding: 0; }
+  .einvoice-wizard__dialog {
+    width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; border-radius: 0;
+  }
+  .einvoice-wizard__name-input { width: 6.5rem !important; }
+}

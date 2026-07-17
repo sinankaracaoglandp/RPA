@@ -442,6 +442,12 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   wizardListName = '';
   wizardScopeXPath = '';
   activeWizardList: string | null = null;
+  wizardFullscreen = false;
+
+  toggleWizardFullscreen(): void {
+    this.wizardFullscreen = !this.wizardFullscreen;
+    this.cdr?.markForCheck();
+  }
 
   /** Örnek XML'de bulunan tekrar eden listeler. */
   discoveredLists(): DiscoveredList[] {
@@ -471,6 +477,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   }
 
   closeWizard(): void {
+    this.wizardFullscreen = false;
     this.activeWizardList = null;
     this.wizardColumns = [];
     this.wizardListName = '';

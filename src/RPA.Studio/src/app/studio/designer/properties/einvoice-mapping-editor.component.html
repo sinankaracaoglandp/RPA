@@ -191,11 +191,18 @@
 
   @if (activeWizardList) {
     <div class="einvoice-mapping__overlay" data-testid="einvoice-wizard-dialog" (click)="closeWizard()">
-      <section class="einvoice-mapping__dialog einvoice-wizard__dialog" role="dialog" aria-modal="true"
-        aria-label="Liste alanları" (click)="$event.stopPropagation()">
+      <section class="einvoice-mapping__dialog einvoice-wizard__dialog"
+        [class.einvoice-wizard__dialog--full]="wizardFullscreen"
+        role="dialog" aria-modal="true" aria-label="Liste alanları" (click)="$event.stopPropagation()">
         <header class="einvoice-mapping__dialog-header">
           <h4>Liste alanlarını seç</h4>
-          <button type="button" data-testid="einvoice-wizard-close" aria-label="Kapat" (click)="closeWizard()">×</button>
+          <span class="einvoice-wizard__header-actions">
+            <button type="button" class="einvoice-wizard__icon-button" data-testid="einvoice-wizard-fullscreen"
+              [attr.aria-pressed]="wizardFullscreen"
+              [attr.aria-label]="wizardFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
+              (click)="toggleWizardFullscreen()">{{ wizardFullscreen ? '🗗' : '🗖' }}</button>
+            <button type="button" class="einvoice-wizard__icon-button" data-testid="einvoice-wizard-close" aria-label="Kapat" (click)="closeWizard()">×</button>
+          </span>
         </header>
 
         <div class="einvoice-mapping__dialog-body">
@@ -217,6 +224,7 @@
             </p>
           }
 
+          <div class="einvoice-wizard__table-scroll">
           <table class="einvoice-wizard__table" data-testid="einvoice-wizard-columns">
             <thead>
               <tr><th>Ekle</th><th>Alan yolu</th><th>Örnek değer</th><th>Ad</th><th>Tip</th><th>Böl</th></tr>
@@ -257,6 +265,7 @@
               }
             </tbody>
           </table>
+          </div>
         </div>
 
         <footer class="einvoice-mapping__dialog-actions">
