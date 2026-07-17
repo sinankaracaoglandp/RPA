@@ -108,6 +108,7 @@
     <app-canvas
       [workflow]="workflow()"
       [breakpointNodeIds]="breakpointNodeIds()"
+      [bodyHighlightNodeIds]="loopBodyHighlightIds()"
       [currentNodeId]="debugCurrentNodeId()"
       (nodeSelect)="onNodeSelect($event)"
       (graphChanged)="onGraphChanged($event)"

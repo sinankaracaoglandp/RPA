@@ -3,6 +3,7 @@
   [class.canvas-node--selected]="node.selected"
   [class.canvas-node--breakpoint]="node.breakpoint"
   [class.canvas-node--current]="node.current"
+  [class.canvas-node--body-highlight]="node.bodyHighlight"
   [class.canvas-node--branch]="isBranchNode"
   [class.canvas-node--if]="node.nodeType === 'if'"
   [class.canvas-node--try-catch]="node.nodeType === 'tryCatch'"
@@ -39,6 +40,14 @@
   <header class="canvas-node__header">
     <span class="canvas-node__icon" aria-hidden="true">{{ node.icon || '▸' }}</span>
     <span class="canvas-node__title" data-testid="canvas-node-title">{{ node.label }}</span>
+    @if (node.exitUnconnected) {
+      <span
+        class="canvas-node__exit-hint"
+        data-testid="canvas-node-exit-hint"
+        [attr.title]="'foreach.exitUnconnected' | translate"
+        aria-hidden="true"
+      >⚠</span>
+    }
     <button
       type="button"
       class="canvas-node__delete"

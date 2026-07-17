@@ -20,7 +20,7 @@ import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 import { LogConsoleComponent } from './log-console/log-console.component';
 import { ExecutionLogService } from '../../shared/services/execution-log.service';
 import { RunLogService } from '../../shared/services/run-log.service';
-import { injectedLoopVariables } from './loop-item-schema';
+import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -94,6 +94,30 @@ export class DesignerComponent implements OnDestroy {
       return base;
     }
     return [...base, ...injectedLoopVariables(nodeId, graph, base)];
+  });
+
+  /**
+   * Seçili node bir ForEach ise (veya bir ForEach'in gövdesindeyse) vurgulanacak
+   * gövde node id'leri. Seçili ForEach'in kendi gövdesini önceler; gövde node'u
+   * seçiliyse onu saran (en yakın) döngünün gövdesini vurgular.
+   */
+  readonly loopBodyHighlightIds = computed<string[]>(() => {
+    const graph = this.currentGraph() ?? this.workflow();
+    const nodeId = this.selectedNodeId();
+    if (!graph || !nodeId) {
+      return [];
+    }
+    const selected = graph.nodes.find((n) => n.id === nodeId);
+    const loopId =
+      selected?.type === 'forEach'
+        ? nodeId
+        : enclosingForEachNodes(nodeId, graph).at(-1)?.id;
+    if (!loopId) {
+      return [];
+    }
+    return graph.nodes
+      .filter((n) => enclosingForEachNodes(n.id, graph).some((fe) => fe.id === loopId))
+      .map((n) => n.id);
   });
 
   readonly workflowId = signal<string | null>(null);
