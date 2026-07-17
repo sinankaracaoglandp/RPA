@@ -80,6 +80,115 @@ namespace RPA.Infrastructure.Migrations
                     b.ToTable("ActionItems");
                 });
 
+            modelBuilder.Entity("RPA.Domain.Entities.AgentActivation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActivationCodeHash")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<Guid>("AgentIdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActivationCodeHash")
+                        .IsUnique();
+
+                    b.HasIndex("AgentIdentityId");
+
+                    b.ToTable("AgentActivations");
+                });
+
+            modelBuilder.Entity("RPA.Domain.Entities.AgentIdentity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CredentialHash")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<DateTimeOffset?>("DeactivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("LicenseInstallationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MachineFingerprint")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LicenseInstallationId", "MachineFingerprint")
+                        .IsUnique();
+
+                    b.ToTable("AgentIdentities");
+                });
+
             modelBuilder.Entity("RPA.Domain.Entities.AlertRule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -375,6 +484,67 @@ namespace RPA.Infrastructure.Migrations
                     b.HasIndex("WorkflowVersionId", "Status");
 
                     b.ToTable("JobRuns");
+                });
+
+            modelBuilder.Entity("RPA.Domain.Entities.LicenseInstallation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerReference")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("InstallationCreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InstallationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("InstalledLicenseRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ProductId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PublicKeyFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("SignedLicenseDocument")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstallationId")
+                        .IsUnique();
+
+                    b.ToTable("LicenseInstallations");
                 });
 
             modelBuilder.Entity("RPA.Domain.Entities.Project", b =>
@@ -831,6 +1001,24 @@ namespace RPA.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("WorkflowVersions");
+                });
+
+            modelBuilder.Entity("RPA.Domain.Entities.AgentActivation", b =>
+                {
+                    b.HasOne("RPA.Domain.Entities.AgentIdentity", null)
+                        .WithMany()
+                        .HasForeignKey("AgentIdentityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RPA.Domain.Entities.AgentIdentity", b =>
+                {
+                    b.HasOne("RPA.Domain.Entities.LicenseInstallation", null)
+                        .WithMany()
+                        .HasForeignKey("LicenseInstallationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>

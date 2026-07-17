@@ -676,3 +676,31 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 Plan hazır ve kayıtlı: `C:\Source\RPA\docs\plans\2026-07-04-implementation.md`
 
 Faz 1'in ilk 3 task'ı (1.1.1 → 1.2.1 → 1.3.1) **Opus alt ajanlara** paralel dağıtılacak; her task sonrası code-review; entegre sonrasında Faz 1 geri kalan paketler başlayacak.
+
+---
+
+## Ek Faz: Offline Agent Licensing (2026-07-16 — tamamlandı)
+
+Bu plan yazıldığında lisanslama kapsam dışıydı: platform aktive agent sayısını sınırlamıyor ve
+robot SignalR bağlantıları anonim kabul ediliyordu. Ayrı bir spec/plan ile kapatıldı.
+
+**Spec:** `docs/superpowers/specs/2026-07-16-offline-agent-licensing-design.md`
+**Plan:** `docs/superpowers/plans/2026-07-16-offline-agent-licensing.md` (10 task, tamamlandı)
+**Operasyon:** `docs/operations/offline-licensing.md` — satıcı lisans üretimi, müşteri import,
+sunucu taşıma, agent aktivasyonu, credential rotasyonu, yedekleme dışlamaları, olay müdahalesi.
+**Backlog:** `docs/backlog/hybrid-licensing.md` — hibrit sürüm için ZORUNLU işler (merkezî
+doğrulama, imzalı iptal listesi, çift-kullanım tespiti, imzalı online kira, offline grace,
+devir/deaktivasyon, satıcı denetim izi, TPM, gizlilik-korumalı telemetri, agent yeniden
+kaydolmadan migration).
+
+Teslim edilenler:
+- Kurulum-bağlı, satıcı imzalı (RSA-PSS/SHA-256) offline lisans; kanonik yük; monotonik revizyon.
+- Aktive agent koltuk zorlaması — **tek yetkili WebAPI'dir** (tek işlem + PostgreSQL satır kilidi).
+- Agent kaydı + kısa ömürlü (10 dk) agent JWT'si; Studio/agent yetki ayrımı (`LicenseAdministrator`,
+  `StudioSpyUser`, `AgentClient`).
+- 15 dakikalık bağlantı kirası: çalışan node biter, sonraki node başlamaz (`BaseRunner` +
+  `IExecutionContinuationGate`); kira agent heartbeat'i ile beslenir.
+- Studio `/orchestrator/licensing` + `/orchestrator/agents` ekranları.
+- Satıcıya özel `tools/RPA.LicenseGenerator` CLI (çalışan ürünün bağımlılığı DEĞİLDİR).
+
+İlk sürüm bilinçli olarak **offline**'dır; online doğrulama/iptal yukarıdaki backlog'dadır.

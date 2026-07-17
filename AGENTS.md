@@ -504,6 +504,143 @@ Etkilenen paketler: EInvoice profil editörü (Studio `einvoice-mapping.model.ts
 `OutputSchemaJson` üretimi etkilenmez (fallback yalnız değer bulma stratejisidir, tip aynı).
 Gerekçe: "önce XPath ile ara, bulamazsan regex ile ham metinde ara" kullanıcı akışı mevcut
 modelde ifade edilemiyordu.
+---
+
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing)
+
+Offline lisans belgesi, kurulum kimliği ve agent kimliği için Domain kontratları eklendi.
+Agent durumları `PendingActivation`, `Activated`, `Disabled` ve `Deactivated` olarak tanımlandı;
+yalnızca `Activated` ve `Disabled` durumları lisans koltuğu tüketir. Taşıma belgeleri immutable
+record, kalıcı lisans/agent modelleri `BaseEntity` türevi olarak tanımlandı. Agent aktivasyon kodları
+ve credential değerleri yalnızca hash olarak saklanır ve WebAPI DTO'larında açığa çıkarılmaz.
+
+Etkilenen paketler: Domain, Infrastructure persistence/authentication, WebAPI, Agent, Studio ve
+LicenseGenerator.
+
+Gerekçe: İnternet erişimi olmayan Orchestrator kurulumlarında kurulum-bağlı, vendor-imzalı lisans
+doğrulaması ve aktive agent sayısının güvenli biçimde sınırlandırılması.
+
+---
+
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — Task 6: süreklilik kapısı)
+
+**Yeni arayüz:** `src/RPA.Domain/Interfaces/IExecutionContinuationGate.cs` —
+`EnsureMayStartNodeAsync(Guid jobRunId, string nodeId, CancellationToken)`. Runner SIRADAKİ node'u
+başlatmadan önce danışır; izin yoksa **`RPA.Domain.Exceptions.ExecutionSuspendedException`**
+(yeni, `SystemException` türevi; `JobRunId` + `NextNodeId` korunur) fırlatılır.
+
+- **`BaseRunner`** ctor'a opsiyonel `IExecutionContinuationGate? continuationGate` parametresi aldı
+  (son parametre, varsayılan `null` → mevcut çağıranlar etkilenmez; kapı yoksa sınır uygulanmaz).
+  Kapı yalnız `RunSequenceAsync` içinde, node başlamadan ÖNCE çağrılır — çalışan node hiçbir
+  koşulda yarıda kesilmez. Askıya alma `Fail(...)` + checkpoint verisiyle döner.
+- **Agent:** `RPA.Agent.Connectivity.ConnectivityLease` (15 dk, `TimeProvider` ile sürülür; 14:59
+  geçerli / 15:00 geçersiz), `ConnectivityLeaseContinuationGate` (kapının kira tabanlı
+  implementasyonu), `AgentOutbox` + `AgentOutboxOverflowException` (anahtar tabanlı idempotent,
+  atomik kalıcı, kapasite taşması AÇIK hata — sessiz kayıt düşürme yok).
+- **`JobExecutionOutcome.IsSuspended`** eklendi (türetilmiş özellik; mevcut alanlar değişmedi).
+- **Aktivite public imzaları DEĞİŞMEDİ.**
+
+Etkilenen paketler: Domain (yeni arayüz + istisna), Infrastructure (BaseRunner), Agent
+(Connectivity + Jobs). Studio/WebAPI/LicenseGenerator etkilenmez.
+Gerekçe: Bağlantı koptuğunda çalışan node normal tamamlanma sınırına ulaşmalı, ancak 15 dakikalık
+offline kira dolduktan sonra hiçbir yeni node başlamamalıdır (Spec — "Connectivity and Offline Lease").
+
+---
+
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — payload edition + müşteri adı)
+
+`OfflineLicensePayload`'a iki **zorunlu** alan eklendi: `Edition` (string) ve `CustomerName`
+(string) — tasarım spec'i (`docs/superpowers/specs/2026-07-16-offline-agent-licensing-design.md`,
+"Vendor license generation" + "Studio Experience") lisans yükünün sürümü ve müşteri görünen adını
+taşımasını ve Studio'nun bunları göstermesini şart koşuyordu; Task 1 bunları atlamıştı.
+Boş/whitespace değer `ArgumentException` fırlatır (üretici operatörü her ikisini de girer).
+
+- **Kanonik JSON sırası (imza altına giren baytlar) SABİT ve genişledi:** `schemaVersion,
+  licenseId, revision, customerId, customerName, edition, installationId,
+  installationPublicKeyFingerprint, maxActivatedAgents, issuedAt, expiresAt, features`.
+  Yeni alanlar `customerId`'den hemen sonra (kimlik alanları bir arada) yerleştirildi.
+  `CanonicalLicenseSerializer` yazma sırası bu kuralın tek kaynağıdır. `Edition`/`CustomerName`
+  kurcalanması artık `MaxActivatedAgents` gibi imza doğrulamasını **bozar** (test edildi).
+- **`schemaVersion` 1'de KALDI** — henüz hiçbir gerçek lisans üretilmedi/dağıtılmadı, dolayısıyla
+  kırılacak eski imzalı belge yok; sürüm artırmak yalnız ölü bir migration yolu doğururdu.
+- `LicenseStatus` (+ `GET /api/license/status` yanıtı) `customerName` ve `edition` alanlarını
+  yüzeye çıkarır (lisans yoksa/imza geçersizse null).
+- **Studio:** uydurma `edition:<ad>` feature-etiketi konvansiyonu ve `editionOf()` yardımcısı
+  **silindi** (backend'de hiç var olmamıştı; ekran üretimde her zaman "—" gösterirdi). Sürüm artık
+  `status.edition`'dan okunur; müşteri alanı `customerName ?? customerId` gösterir.
+
+Etkilenen paketler: Domain (`RPA.Domain.Licensing`), Infrastructure lisanslama
+(`CanonicalLicenseSerializer`, `LicenseDocumentJson`, `LicenseService`), WebAPI (`LicenseController`),
+Studio (`orchestrator/licensing`) ve **henüz yazılmamış `RPA.LicenseGenerator` (Task 9)** —
+üretici CLI, operatörden edition + müşteri görünen adı istemek ZORUNDADIR. Task 10 (E2E) henüz yok.
+
+---
+
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — agent credential rotasyonu)
+
+Tasarım spec'i (`docs/superpowers/specs/2026-07-16-offline-agent-licensing-design.md`) credential
+rotasyonunu şart koşuyordu ("agent credential storage and rotation";
+"`POST /api/agents/{id}/rotate-credential` authorizes a controlled credential replacement flow";
+"Credential rotation invalidates the previous credential immediately"), ancak Task 4 ucu hiç
+kurmamıştı: `IAgentIdentityRepository.RotateCredentialAsync` (Task 1) ve
+`EfAgentIdentityRepository.RotateCredentialAsync` (Task 3) **ölü koddu** (sıfır çağıran, test yok),
+Task 8 de var olmayan uca UI uydurmayı doğru şekilde reddetmişti. Bu kayıt boşluğu kapatır.
+
+- **Yeni uç:** `POST /api/agents/{id}/rotate-credential` (`AgentsController`) — diğer yönetim
+  uçlarıyla **aynı** `LicenseAdministrator` politikası. Yanıt: yeni `RotateCredentialResponse`
+  (`agentId`, `credential`). Plaintext **yalnızca bu yanıtta bir kez** döner; loglanmaz, düz
+  metin kalıcılaşmaz. Üretim/hash şeması aktivasyon akışıyla **aynıdır** (`SecretGenerator.CreateToken`
+  + `SecretHasher.Hash`; ikinci bir şema **icat edilmedi**); kalıcılaşan tek şey hash'tir
+  (mevcut `RotateCredentialAsync` üzerinden).
+- **Eski credential derhal geçersiz:** token değişimi (`AgentAuthController.Token`) yalnızca
+  `AgentIdentity.CredentialHash` karşılaştırması yapar → hash üzerine yazıldığı an eski değer
+  hiçbir yerde eşleşmez. Halihazırda verilmiş JWT'ler kendi 10 dk ömürleriyle dolar (`AgentTokenService`).
+- **Durum kuralı:** yalnızca `Activated` agent rotasyona uygundur; aksi hâlde `409 AGENT_NOT_ACTIVATED`
+  ve credential'a **dokunulmaz**. Gerekçe: `PendingActivation`'ın credential'ı yoktur,
+  `Deactivated`'ınki silinmiştir (ikisi de aktivasyon akışından credential alır), `Disabled` ise
+  zaten token alamaz — bu durumlarda rotasyon operatöre yanlış bir "yenilendi" izlenimi verirdi.
+- **Studio:** `orchestrator/agents` ekranına rotasyon eylemi (yalnız `Activated` satırlarda).
+  Task 8 desenleri birebir: eylem öncesi onay, yeni credential **bir kez** bellek-içi signal'den
+  gösterilir (kapat/`ngOnDestroy` temizler), local/sessionStorage'a **asla** yazılmaz (test edilir),
+  mutasyon sonrası yetkili yeniden okuma (`GET /api/agents` + `GET /api/license/status`).
+- **Test altyapısı:** `RPA.WebAPI` → `InternalsVisibleTo("RPA.WebAPI.Tests")` (testler hash şemasını
+  kopyalamak yerine üretim `SecretHasher`'ını çağırır); `RPA.WebAPI.Tests`'e
+  `Microsoft.EntityFrameworkCore.InMemory` eklendi — rotasyonun token yolunu gerçekten etkilediği
+  gerçek EF + gerçek `EfAgentIdentityRepository` ile uçtan uca kanıtlanır.
+
+Etkilenen paketler: WebAPI (`Licensing/AgentsController`), Studio (`orchestrator/agents`),
+WebAPI testleri. Domain/Infrastructure **imzaları değişmedi** (mevcut ölü metotlar artık çağrılıyor).
+Agent tarafı rotasyon sonrası yeniden yapılandırma akışı (ajanın yeni credential'ı alması) kapsam
+dışıdır — operatör credential'ı ajana elle taşır (aktivasyon kodu akışındaki gibi).
+
+---
+
+## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing — Task 10: kira kablolaması)
+
+Task 6 `IExecutionContinuationGate` + `ConnectivityLease` + `ConnectivityLeaseContinuationGate`
+sözleşmesini tanımlamış ama **hiçbir yerde kablolamamıştı**: kapıyı kimse oluşturmuyordu, dolayısıyla
+15 dakikalık offline sınırı **üretimde hiç uygulanmıyordu** (yalnız birim testlerinde vardı). Task 10
+bu boşluğu kapatır. **Arayüz imzaları değişmedi.**
+
+- **`AddAgentCore`:** `ConnectivityLease` (**singleton** — scope başına ayrı kira 15 dakikayı sürekli
+  yeniden başlatırdı) + `IExecutionContinuationGate` → `ConnectivityLeaseContinuationGate` kaydedildi.
+  `BaseRunner` (transient) opsiyonel `continuationGate` parametresini artık DI'dan çözer → sınır
+  gerçekten uygulanır. Davranışla doğrulanır (`ConnectivityLeaseWiringTests.
+  ResolvedWorkflowRunner_SuspendsAtNodeBoundary_WhenLeaseExpired`).
+- **`HeartbeatBackgroundService`** ctor'a opsiyonel `ConnectivityLease? lease` parametresi aldı
+  (son parametre, varsayılan `null` → mevcut çağıranlar/testler etkilenmez). **Kirayı besleyen tek
+  kaynak budur:** başarılı heartbeat = "son BAŞARILI sunucu doğrulaması" → `RecordServerValidation()`;
+  başarısız heartbeat → `MarkDisconnected()` (kira SÜRESİ kısalmaz — çalışan node normal sınırına
+  ulaşmalıdır). Heartbeat aralığı (varsayılan 30 sn) 15 dk kiradan çok küçüktür.
+- **Kapsam dışı (bilinçli):** `POST /api/agent-auth/refresh-lease` (spec'in API yüzeyinde var,
+  implementasyonu YOK — heartbeat kira beslemesidir); hub connect/disconnect olaylarının
+  `IsConnected`'ı beslemesi (`IsConnected`/`MarkDisconnected`'ın henüz tüketicisi yok — "yeni iş
+  kabulünü durdur" akışı yazılmadı); yeniden bağlanınca askıya alınan node'dan devam.
+  `docs/backlog/hybrid-licensing.md` içinde kayıtlıdır.
+
+Etkilenen paketler: Agent (`AgentServiceCollectionExtensions`, `Hosting/HeartbeatBackgroundService`).
+Domain/Infrastructure/WebAPI/Studio/LicenseGenerator **etkilenmez**.
+Gerekçe: sözleşmesi tanımlanmış ama bağlanmamış bir kapı, uygulanmayan bir güvenlik sınırıdır.
 
 ---
 

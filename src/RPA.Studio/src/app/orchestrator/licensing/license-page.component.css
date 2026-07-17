@@ -1,0 +1,4 @@
+/* Lisans yonetimi ekrani — duzen Tailwind ile; burada yalniz ekrana ozgu ince ayarlar. */
+dl dd {
+  word-break: break-word;
+}

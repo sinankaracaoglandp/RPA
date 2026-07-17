@@ -21,22 +21,19 @@ public sealed class RobotHubClient : IJobHubClient
     private readonly ILogger<RobotHubClient> _logger;
 
     public RobotHubClient(
-        Microsoft.Extensions.Options.IOptions<AgentOptions> options,
+        RPA.Agent.Authentication.IAgentHubConnectionFactory connectionFactory,
         HubConnectionStatusCoordinator statusCoordinator,
         JobEventRouter jobEventRouter,
         UserPromptService userPromptService,
         ILogger<RobotHubClient> logger)
     {
-        var optionsValue = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(connectionFactory);
         _statusCoordinator = statusCoordinator ?? throw new ArgumentNullException(nameof(statusCoordinator));
         _jobEventRouter = jobEventRouter ?? throw new ArgumentNullException(nameof(jobEventRouter));
         _userPromptService = userPromptService ?? throw new ArgumentNullException(nameof(userPromptService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _connection = new HubConnectionBuilder()
-            .WithUrl($"{optionsValue.OrchestratorUrl.TrimEnd('/')}/hubs/robot")
-            .WithAutomaticReconnect()
-            .Build();
+        _connection = connectionFactory.Create("/hubs/robot");
 
         _connection.Reconnecting += error => { _statusCoordinator.OnReconnecting(error); return Task.CompletedTask; };
         _connection.Reconnected += _ => { _statusCoordinator.OnReconnected(); return Task.CompletedTask; };

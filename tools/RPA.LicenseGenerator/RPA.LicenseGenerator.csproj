@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Vendor-only arac. Calisan urun (WebAPI/Agent/Studio) bu projeye ASLA bagimli olmaz;
+    bagimlilik yonu tek yonludur: LicenseGenerator -> Domain/Infrastructure.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>RPA.LicenseGenerator</RootNamespace>
+    <AssemblyName>RPA.LicenseGenerator</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RPA.Domain\RPA.Domain.csproj" />
+    <ProjectReference Include="..\..\src\RPA.Infrastructure\RPA.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

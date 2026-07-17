@@ -55,8 +55,12 @@ public class RobotHubTests : IClassFixture<WebApplicationFactory<Program>>
     {
         using var scope = factory.Services.CreateScope();
         var opts = scope.ServiceProvider.GetRequiredService<IOptions<AuthenticationOptions>>();
-        var tokenService = new JwtTokenService(opts);
-        return tokenService.GenerateToken("robot-agent", new[] { "Robot" });
+        return new AgentTokenService(opts).GenerateAccessToken(new AgentIdentity
+        {
+            Id = Guid.NewGuid(),
+            LicenseInstallationId = Guid.NewGuid(),
+            Status = AgentIdentityStatus.Activated,
+        });
     }
 
     [Fact]

@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using RPA.Domain.Entities;
+using RPA.Domain.Enums;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.UISpy;
 
@@ -24,6 +26,18 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         using var scope = _factory.Services.CreateScope();
         var opts = scope.ServiceProvider.GetRequiredService<IOptions<AuthenticationOptions>>();
         return new JwtTokenService(opts).GenerateToken("studio-user", new[] { "Designer" });
+    }
+
+    private string GenerateAgentToken()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var opts = scope.ServiceProvider.GetRequiredService<IOptions<AuthenticationOptions>>();
+        return new AgentTokenService(opts).GenerateAccessToken(new AgentIdentity
+        {
+            Id = Guid.NewGuid(),
+            LicenseInstallationId = Guid.NewGuid(),
+            Status = AgentIdentityStatus.Activated,
+        });
     }
 
     private HttpClient AuthedClient()
@@ -108,7 +122,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         var token = GenerateToken();
         var owner = CreateHubConnection(token);
         var other = CreateHubConnection(token);
-        var agent = CreateHubConnection(token);
+        var agent = CreateHubConnection(GenerateAgentToken());
         var sessionId = Guid.NewGuid();
         var ownerReceived = new TaskCompletionSource<SpyElementMessage>();
         var otherReceived = new TaskCompletionSource<SpyElementMessage>();
@@ -144,7 +158,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var token = GenerateToken();
         var owner = CreateHubConnection(token);
-        var agent = CreateHubConnection(token);
+        var agent = CreateHubConnection(GenerateAgentToken());
         var sessionId = Guid.NewGuid();
         var received = new TaskCompletionSource<SpyElementMessage>();
 
@@ -174,7 +188,7 @@ public class UiSpyTests : IClassFixture<WebApplicationFactory<Program>>
         var token = GenerateToken();
         var owner = CreateHubConnection(token);
         var other = CreateHubConnection(token);
-        var agent = CreateHubConnection(token);
+        var agent = CreateHubConnection(GenerateAgentToken());
         var sessionId = Guid.NewGuid();
         var received = new TaskCompletionSource<SpyElementMessage>();
 

@@ -37,7 +37,31 @@ public sealed class AgentOptions
     /// <summary>Heartbeat aralığı. Varsayılan 30 saniye; offline eşiği 5 dk (Spec Bölüm 9).</summary>
     public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Orchestrator tarafından oluşturulan ajan kimliği (Task 5 — lisanslama/kimlik doğrulama).
+    /// Aktivasyon ve token takasında kullanılır.
+    /// </summary>
+    public Guid AgentId { get; set; }
+
+    /// <summary>Lisanslı Orchestrator kurulum kimliği (aktivasyonda doğrulanır).</summary>
+    public string InstallationId { get; set; } = "";
+
+    /// <summary>
+    /// Korumalı credential dosyasının yolu. Boşsa ProgramData altındaki varsayılan kullanılır.
+    /// GÜVENLİK: burada yalnızca YOL tutulur — credential'ın kendisi asla appsettings.json'da bulunmaz;
+    /// DPAPI LocalMachine ile şifreli olarak bu dosyada saklanır.
+    /// </summary>
+    public string CredentialFilePath { get; set; } = "";
+
     /// <summary>Etkin makine adını döndürür (yapılandırma boşsa ortamdan alır).</summary>
     public string EffectiveMachineName
         => string.IsNullOrWhiteSpace(MachineName) ? Environment.MachineName : MachineName;
+
+    /// <summary>Etkin credential dosyası yolu (yapılandırma boşsa ProgramData varsayılanı).</summary>
+    public string EffectiveCredentialFilePath
+        => string.IsNullOrWhiteSpace(CredentialFilePath)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "RPA", "Agent", "agent-credential.bin")
+            : CredentialFilePath;
 }

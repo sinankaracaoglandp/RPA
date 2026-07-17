@@ -30,6 +30,7 @@ public static class AuthenticationServiceCollectionExtensions
         }
 
         services.AddScoped<ITokenService, JwtTokenService>();
+        services.AddScoped<AgentTokenService>();
         services.AddScoped<IAuthenticationService, LdapAuthService>();
 
         return services;

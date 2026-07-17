@@ -32,7 +32,11 @@
     "environmentsTitle": "Ortamlar",
     "environmentsDesc": "Ortam ve dağıtım yapılandırması",
     "credentialsTitle": "Credentials",
-    "credentialsDesc": "Vault key ve secret referanslari"
+    "credentialsDesc": "Vault key ve secret referanslari",
+    "licensingTitle": "Lisans",
+    "licensingDesc": "Lisans durumu, kurulum talebi ve iceri alma",
+    "agentsTitle": "Agentlar",
+    "agentsDesc": "Lisans koltuklari ve agent aktivasyonu"
   },
   "designer": {
     "save": "Kaydet",
@@ -324,5 +328,49 @@
         "local": "Yerel"
       }
     }
+  },
+  "licensing": {
+    "title": "Orchestrator — Lisans",
+    "refresh": "Yenile",
+    "loading": "Yükleniyor…",
+    "downloadRequest": "Kurulum talebini indir",
+    "import": "Lisans yükle (.lic)",
+    "importSuccess": "Lisans başarıyla içeri alındı.",
+    "notInstalled": "Kurulu lisans yok. Kurulum talebini indirip satıcıya iletin, dönen .lic dosyasını yükleyin.",
+    "customer": "Müşteri",
+    "edition": "Sürüm",
+    "licenseId": "Lisans No",
+    "validity": "Geçerlilik",
+    "valid": "Geçerli",
+    "invalid": "Geçersiz",
+    "expiresAt": "Bitiş",
+    "seats": "Koltuk (etkin / azami)",
+    "features": "Özellikler"
+  },
+  "agents": {
+    "title": "Orchestrator — Agentlar",
+    "refresh": "Yenile",
+    "loading": "Yükleniyor…",
+    "seats": "Koltuk (etkin / azami)",
+    "name": "Ad",
+    "status": "Durum",
+    "seat": "Koltuk",
+    "seatConsumed": "Koltuk kullanıyor",
+    "seatFree": "Koltuk kullanmıyor",
+    "machine": "Makine",
+    "lastSeen": "Son görülme",
+    "actions": "İşlemler",
+    "create": "Agent oluştur",
+    "namePlaceholder": "Yeni agent adı",
+    "activationCode": "Aktivasyon kodu",
+    "activationCodeOnce": "Bu aktivasyon kodu yalnızca bir kez gösterilir. Şimdi kopyalayın.",
+    "activationCodeExpires": "Son geçerlilik",
+    "close": "Kapat",
+    "disable": "Devre dışı bırak",
+    "deactivate": "Aktivasyonu geri al",
+    "rotateCredential": "Credential yenile",
+    "credentialOnce": "Bu credential yalnızca bir kez gösterilir. Şimdi kopyalayın.",
+    "credentialRotatedHint": "Agent'ın eski credential'ı anında geçersiz oldu. Yeni credential'ı agent yapılandırmasına siz taşımalısınız; aksi halde agent bağlanamaz.",
+    "empty": "Kayıtlı agent yok."
   }
 }

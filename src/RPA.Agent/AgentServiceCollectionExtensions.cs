@@ -37,6 +37,30 @@ public static class AgentServiceCollectionExtensions
         // Paylaşılan çalışma zamanı durumu (tek örnek).
         services.AddSingleton<IAgentState, AgentState>();
 
+        // Kimlik doğrulama (Task 5): korumalı credential deposu + paylaşılan erişim tokeni sağlayıcısı.
+        // Credential yalnızca DPAPI LocalMachine ile korunan dosyada tutulur (Windows dışı ortamlarda —
+        // ör. testler — depo ayrıca kaydedilmez; sağlayıcı arayüz üzerinden çalışır).
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<Authentication.IAgentCredentialStore, Authentication.DpapiAgentCredentialStore>();
+        }
+
+        services.AddHttpClient<Authentication.AgentEnrollmentClient>();
+        services.AddSingleton<Authentication.IAgentTokenClient>(sp =>
+            sp.GetRequiredService<Authentication.AgentEnrollmentClient>());
+        services.AddSingleton<Authentication.IAgentAccessTokenProvider, Authentication.AgentAccessTokenProvider>();
+
+        // Tüm SignalR hub bağlantılarının tek üretim noktası (orkestratör URL'i + ajan JWT'si).
+        services.AddSingleton<Authentication.IAgentHubConnectionFactory, Authentication.AgentHubConnectionFactory>();
+
+        // Bağlantı kirası + süreklilik kapısı (Task 6 kontratı, Task 10'da kablolandı).
+        // Kira TEKİLDİR ve HeartbeatBackgroundService tarafından beslenir (başarılı heartbeat =
+        // başarılı sunucu doğrulaması). Kapı IExecutionContinuationGate olarak kaydedilir; BaseRunner
+        // (transient) bu opsiyonel parametreyi DI'dan çözer → 15 dakikalık offline sınırı artık
+        // gerçekten uygulanır (önceden kapı hiçbir yerde oluşturulmuyordu).
+        services.AddSingleton<Connectivity.ConnectivityLease>();
+        services.AddSingleton<IExecutionContinuationGate, Connectivity.ConnectivityLeaseContinuationGate>();
+
         // İstisna sınıflandırıcı (Business/System) — iş sonucu raporlama için.
         services.AddSingleton<ExceptionClassifier>();
 
