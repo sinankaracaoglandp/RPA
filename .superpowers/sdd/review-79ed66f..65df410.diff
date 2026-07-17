@@ -1,0 +1,262 @@
+# Review package: 79ed66f..65df410
+
+## Commits
+65df410 feat(domain): offline lisans ve agent kimlik kontratlari
+
+## Files changed
+ AGENTS.md                                          | 14 ++++++
+ src/RPA.Domain/Entities/AgentActivation.cs         |  9 ++++
+ src/RPA.Domain/Entities/AgentIdentity.cs           | 16 +++++++
+ src/RPA.Domain/Entities/LicenseInstallation.cs     | 13 ++++++
+ src/RPA.Domain/Enums/AgentIdentityStatus.cs        | 15 ++++++
+ .../Interfaces/IAgentIdentityRepository.cs         | 15 ++++++
+ src/RPA.Domain/Interfaces/ILicenseService.cs       | 11 +++++
+ src/RPA.Domain/Licensing/LicenseDocuments.cs       | 53 ++++++++++++++++++++++
+ tests/RPA.Domain.Tests/LicensingContractTests.cs   | 25 ++++++++++
+ 9 files changed, 171 insertions(+)
+
+## Diff
+diff --git a/AGENTS.md b/AGENTS.md
+index 7edd931..267b7b3 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -211,20 +211,34 @@ Workflow aktivite kontratına `EInvoice.ReadUbl` ve `EInvoice.ReadUblBatch` kiml
+ `EInvoice.ReadUbl` girdileri `filePath`, `xmlContent`, `mappings`, `outputBindings`; çıktıları
+ `invoice`, `lines`, `customFields` olarak tanımlanmıştır. `EInvoice.ReadUblBatch` girdileri
+ `filePaths`, `xmlContents`, `errorMode`, `mappings`, `outputBindings`; çıktısı `results` olarak
+ tanımlanmıştır. Tekli ve batch kaynak çiftleri karşılıklı dışlayıcıdır.
+ 
+ Etkilenen paketler: Domain `WorkflowSchema.json`, Infrastructure UBL parser/aktiviteleri/katalog/DI,
+ Studio aktivite modeli, mapping editörü ve property paneli.
+ Gerekçe: UBL-TR e-faturalarının tekli veya batch olarak güvenli biçimde okunması, özel XPath/regex
+ eşlemelerinin tasarlanması ve kararlı çıktıların workflow değişkenlerine bağlanması.
+ 
++## Kontrat Değişikliği — 2026-07-16 (Offline Agent Licensing)
++
++Offline lisans belgesi, kurulum kimliği ve agent kimliği için Domain kontratları eklendi.
++Agent durumları `PendingActivation`, `Activated`, `Disabled` ve `Deactivated` olarak tanımlandı;
++yalnızca `Activated` ve `Disabled` durumları lisans koltuğu tüketir. Taşıma belgeleri immutable
++record, kalıcı lisans/agent modelleri `BaseEntity` türevi olarak tanımlandı. Agent aktivasyon kodları
++ve credential değerleri yalnızca hash olarak saklanır ve WebAPI DTO'larında açığa çıkarılmaz.
++
++Etkilenen paketler: Domain, Infrastructure persistence/authentication, WebAPI, Agent, Studio ve
++LicenseGenerator.
++
++Gerekçe: İnternet erişimi olmayan Orchestrator kurulumlarında kurulum-bağlı, vendor-imzalı lisans
++doğrulaması ve aktive agent sayısının güvenli biçimde sınırlandırılması.
++
+ ## Kontrat Değişiklik Prosedürü
+ 
+ Arayüz / şema / enum değişikliği gerekirse:
+ 
+ 1. **Gerekçe:** Bu AGENTS.md dosyasında `## Kontrat Değişikliği — [tarih]` başlığı ekle. Etkilenen paketleri listele.
+    ```
+    ## Kontrat Değişikliği — 2026-07-10
+ 
+    IActivity.ExecuteAsync: Timeout parametresi eklendi (CancellationToken zaten var ama explicit param).
+    Etkilenen paketler: WP-2.1 (katalog), WP-2.2 (BaseRunner), tüm aktivite implementasyonları (2.6–2.9).
+diff --git a/src/RPA.Domain/Entities/AgentActivation.cs b/src/RPA.Domain/Entities/AgentActivation.cs
+new file mode 100644
+index 0000000..1495f3d
+--- /dev/null
++++ b/src/RPA.Domain/Entities/AgentActivation.cs
+@@ -0,0 +1,9 @@
++namespace RPA.Domain.Entities;
++
++public class AgentActivation : BaseEntity
++{
++    public Guid AgentIdentityId { get; set; }
++    public string ActivationCodeHash { get; set; } = "";
++    public DateTimeOffset ExpiresAt { get; set; }
++    public DateTimeOffset? ConsumedAt { get; set; }
++}
+diff --git a/src/RPA.Domain/Entities/AgentIdentity.cs b/src/RPA.Domain/Entities/AgentIdentity.cs
+new file mode 100644
+index 0000000..961cc8f
+--- /dev/null
++++ b/src/RPA.Domain/Entities/AgentIdentity.cs
+@@ -0,0 +1,16 @@
++using RPA.Domain.Enums;
++
++namespace RPA.Domain.Entities;
++
++public class AgentIdentity : BaseEntity
++{
++    public Guid LicenseInstallationId { get; set; }
++    public string Name { get; set; } = "";
++    public string? MachineFingerprint { get; set; }
++    public AgentIdentityStatus Status { get; set; } = AgentIdentityStatus.PendingActivation;
++    public string? CredentialHash { get; set; }
++    public DateTimeOffset? ActivatedAt { get; set; }
++    public DateTimeOffset? LastSeenAt { get; set; }
++    public DateTimeOffset? DisabledAt { get; set; }
++    public DateTimeOffset? DeactivatedAt { get; set; }
++}
+diff --git a/src/RPA.Domain/Entities/LicenseInstallation.cs b/src/RPA.Domain/Entities/LicenseInstallation.cs
+new file mode 100644
+index 0000000..e058b43
+--- /dev/null
++++ b/src/RPA.Domain/Entities/LicenseInstallation.cs
+@@ -0,0 +1,13 @@
++namespace RPA.Domain.Entities;
++
++public class LicenseInstallation : BaseEntity
++{
++    public string InstallationId { get; set; } = "";
++    public string PublicKey { get; set; } = "";
++    public string PublicKeyFingerprint { get; set; } = "";
++    public string ProductId { get; set; } = "";
++    public string? CustomerReference { get; set; }
++    public DateTimeOffset InstallationCreatedAt { get; set; }
++    public string? SignedLicenseDocument { get; set; }
++    public int? InstalledLicenseRevision { get; set; }
++}
+diff --git a/src/RPA.Domain/Enums/AgentIdentityStatus.cs b/src/RPA.Domain/Enums/AgentIdentityStatus.cs
+new file mode 100644
+index 0000000..5f3da5c
+--- /dev/null
++++ b/src/RPA.Domain/Enums/AgentIdentityStatus.cs
+@@ -0,0 +1,15 @@
++namespace RPA.Domain.Enums;
++
++public enum AgentIdentityStatus
++{
++    PendingActivation,
++    Activated,
++    Disabled,
++    Deactivated,
++}
++
++public static class AgentIdentityStatusExtensions
++{
++    public static bool ConsumesSeat(this AgentIdentityStatus value) =>
++        value is AgentIdentityStatus.Activated or AgentIdentityStatus.Disabled;
++}
+diff --git a/src/RPA.Domain/Interfaces/IAgentIdentityRepository.cs b/src/RPA.Domain/Interfaces/IAgentIdentityRepository.cs
+new file mode 100644
+index 0000000..b231574
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/IAgentIdentityRepository.cs
+@@ -0,0 +1,15 @@
++using RPA.Domain.Entities;
++
++namespace RPA.Domain.Interfaces;
++
++public interface IAgentIdentityRepository
++{
++    Task<AgentIdentity> CreateAsync(AgentIdentity identity, CancellationToken cancellationToken = default);
++    Task<AgentIdentity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
++    Task<AgentIdentity?> GetByMachineFingerprintAsync(Guid licenseInstallationId, string machineFingerprint, CancellationToken cancellationToken = default);
++    Task<IReadOnlyList<AgentIdentity>> ListAsync(Guid licenseInstallationId, CancellationToken cancellationToken = default);
++    Task ActivateAsync(Guid id, string machineFingerprint, string credentialHash, DateTimeOffset activatedAt, CancellationToken cancellationToken = default);
++    Task DisableAsync(Guid id, DateTimeOffset disabledAt, CancellationToken cancellationToken = default);
++    Task DeactivateAsync(Guid id, DateTimeOffset deactivatedAt, CancellationToken cancellationToken = default);
++    Task RotateCredentialAsync(Guid id, string credentialHash, CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Domain/Interfaces/ILicenseService.cs b/src/RPA.Domain/Interfaces/ILicenseService.cs
+new file mode 100644
+index 0000000..cd81e48
+--- /dev/null
++++ b/src/RPA.Domain/Interfaces/ILicenseService.cs
+@@ -0,0 +1,11 @@
++using RPA.Domain.Licensing;
++
++namespace RPA.Domain.Interfaces;
++
++public interface ILicenseService
++{
++    Task<LicenseStatus> GetStatusAsync(CancellationToken cancellationToken = default);
++    Task<InstallationRequestDocument> ExportInstallationRequestAsync(CancellationToken cancellationToken = default);
++    Task<LicenseStatus> ImportAsync(SignedLicenseDocument document, CancellationToken cancellationToken = default);
++    Task EnsureAgentCapacityAsync(CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Domain/Licensing/LicenseDocuments.cs b/src/RPA.Domain/Licensing/LicenseDocuments.cs
+new file mode 100644
+index 0000000..820f0f6
+--- /dev/null
++++ b/src/RPA.Domain/Licensing/LicenseDocuments.cs
+@@ -0,0 +1,53 @@
++namespace RPA.Domain.Licensing;
++
++public sealed record OfflineLicensePayload(
++    int SchemaVersion,
++    string LicenseId,
++    int Revision,
++    string CustomerId,
++    string InstallationId,
++    string InstallationPublicKeyFingerprint,
++    int MaxActivatedAgents,
++    DateTimeOffset IssuedAt,
++    DateTimeOffset ExpiresAt,
++    IReadOnlyList<string> Features)
++{
++    public static OfflineLicensePayload Create(
++        string licenseId,
++        int revision,
++        string customerId,
++        string installationId,
++        string installationPublicKeyFingerprint,
++        int maxActivatedAgents,
++        DateTimeOffset issuedAt,
++        DateTimeOffset expiresAt,
++        IEnumerable<string> features) =>
++        new(1, licenseId, revision, customerId, installationId, installationPublicKeyFingerprint,
++            maxActivatedAgents, issuedAt, expiresAt, features.Order(StringComparer.Ordinal).ToArray());
++}
++
++public sealed record SignedLicenseDocument(
++    OfflineLicensePayload Payload,
++    string Signature,
++    string Algorithm = "RSA-PSS-SHA256");
++
++public sealed record InstallationRequestDocument(
++    int SchemaVersion,
++    string InstallationId,
++    string InstallationPublicKey,
++    string InstallationPublicKeyFingerprint,
++    string ProductId,
++    string? CustomerReference,
++    DateTimeOffset CreatedAt);
++
++public sealed record LicenseStatus(
++    bool IsInstalled,
++    bool IsValid,
++    string? LicenseId,
++    int? Revision,
++    string? CustomerId,
++    DateTimeOffset? ExpiresAt,
++    int MaxActivatedAgents,
++    int ActivatedAgents,
++    IReadOnlyList<string> Features,
++    string? ErrorCode = null);
+diff --git a/tests/RPA.Domain.Tests/LicensingContractTests.cs b/tests/RPA.Domain.Tests/LicensingContractTests.cs
+new file mode 100644
+index 0000000..5eeede7
+--- /dev/null
++++ b/tests/RPA.Domain.Tests/LicensingContractTests.cs
+@@ -0,0 +1,25 @@
++using RPA.Domain.Enums;
++using RPA.Domain.Licensing;
++
++namespace RPA.Domain.Tests;
++
++public class LicensingContractTests
++{
++    [Theory]
++    [InlineData(AgentIdentityStatus.PendingActivation, false)]
++    [InlineData(AgentIdentityStatus.Activated, true)]
++    [InlineData(AgentIdentityStatus.Disabled, true)]
++    [InlineData(AgentIdentityStatus.Deactivated, false)]
++    public void AgentIdentityStatus_ConsumesSeat_AsSpecified(AgentIdentityStatus status, bool expected)
++        => Assert.Equal(expected, status.ConsumesSeat());
++
++    [Fact]
++    public void OfflineLicensePayload_RequiresStableIdentityFields()
++    {
++        var payload = OfflineLicensePayload.Create("LIC-1", 1, "ACME", "install-1", "ABC", 5,
++            DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2027-01-01T00:00:00Z"), ["Studio"]);
++
++        Assert.Equal(5, payload.MaxActivatedAgents);
++        Assert.Equal(1, payload.Revision);
++    }
++}

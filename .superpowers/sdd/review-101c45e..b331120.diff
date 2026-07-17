@@ -1,0 +1,1856 @@
+# Review package: 101c45e..b331120
+
+## Commits
+b331120 feat(persistence): agent koltuk kotasini atomik uygula
+
+## Files changed
+ .../Licensing/LicenseDocumentJson.cs               |  24 +
+ src/RPA.Infrastructure/Licensing/LicenseService.cs |  90 ++
+ ...0260716084447_OfflineAgentLicensing.Designer.cs | 949 +++++++++++++++++++++
+ .../20260716084447_OfflineAgentLicensing.cs        | 132 +++
+ .../Migrations/RpaDbContextModelSnapshot.cs        | 188 ++++
+ .../Repositories/EfAgentIdentityRepository.cs      | 103 +++
+ .../EfLicenseInstallationRepository.cs             |  18 +
+ src/RPA.Infrastructure/Persistence/RpaDbContext.cs |  34 +
+ .../Licensing/AgentSeatEnforcementTests.cs         | 153 ++++
+ 9 files changed, 1691 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Infrastructure/Licensing/LicenseDocumentJson.cs b/src/RPA.Infrastructure/Licensing/LicenseDocumentJson.cs
+new file mode 100644
+index 0000000..475cf41
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/LicenseDocumentJson.cs
+@@ -0,0 +1,24 @@
++using System.Text.Json;
++using RPA.Domain.Licensing;
++
++namespace RPA.Infrastructure.Licensing;
++
++internal static class LicenseDocumentJson
++{
++    public static string Serialize(SignedLicenseDocument document) => JsonSerializer.Serialize(document);
++
++    public static SignedLicenseDocument Deserialize(string json)
++    {
++        using var root = JsonDocument.Parse(json);
++        var document = root.RootElement;
++        var payload = document.GetProperty("Payload");
++        var features = payload.GetProperty("Features").EnumerateArray().Select(x => x.GetString()!).ToArray();
++        return new SignedLicenseDocument(new OfflineLicensePayload(
++            payload.GetProperty("SchemaVersion").GetInt32(), payload.GetProperty("LicenseId").GetString()!,
++            payload.GetProperty("Revision").GetInt32(), payload.GetProperty("CustomerId").GetString()!,
++            payload.GetProperty("InstallationId").GetString()!, payload.GetProperty("InstallationPublicKeyFingerprint").GetString()!,
++            payload.GetProperty("MaxActivatedAgents").GetInt32(), payload.GetProperty("IssuedAt").GetDateTimeOffset(),
++            payload.GetProperty("ExpiresAt").GetDateTimeOffset(), features),
++            document.GetProperty("Signature").GetString()!, document.GetProperty("Algorithm").GetString()!);
++    }
++}
+diff --git a/src/RPA.Infrastructure/Licensing/LicenseService.cs b/src/RPA.Infrastructure/Licensing/LicenseService.cs
+new file mode 100644
+index 0000000..e51a9c6
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/LicenseService.cs
+@@ -0,0 +1,90 @@
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Exceptions;
++using RPA.Domain.Interfaces;
++using RPA.Domain.Licensing;
++using RPA.Infrastructure.Persistence;
++
++namespace RPA.Infrastructure.Licensing;
++
++public sealed class LicenseService : ILicenseService
++{
++    private readonly RpaDbContext _db;
++    private readonly IInstallationIdentityService _identityService;
++    private readonly IVendorLicenseVerifier _verifier;
++    private readonly string _productId;
++    private readonly string? _customerReference;
++
++    public LicenseService(RpaDbContext db, IInstallationIdentityService identityService,
++        IVendorLicenseVerifier verifier, string productId, string? customerReference = null)
++    {
++        _db = db ?? throw new ArgumentNullException(nameof(db));
++        _identityService = identityService ?? throw new ArgumentNullException(nameof(identityService));
++        _verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
++        ArgumentException.ThrowIfNullOrWhiteSpace(productId);
++        _productId = productId;
++        _customerReference = customerReference;
++    }
++
++    public async Task<InstallationRequestDocument> ExportInstallationRequestAsync(CancellationToken cancellationToken = default)
++    {
++        var identity = await _identityService.GetOrCreateAsync(cancellationToken);
++        var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(x => x.InstallationId == identity.InstallationId, cancellationToken);
++        if (installation is null)
++        {
++            installation = new LicenseInstallation
++            {
++                InstallationId = identity.InstallationId, PublicKey = identity.PublicKey,
++                PublicKeyFingerprint = identity.PublicKeyFingerprint, ProductId = _productId,
++                CustomerReference = _customerReference, InstallationCreatedAt = DateTimeOffset.UtcNow
++            };
++            _db.Add(installation);
++            await _db.SaveChangesAsync(cancellationToken);
++        }
++        return new InstallationRequestDocument(1, installation.InstallationId, installation.PublicKey,
++            installation.PublicKeyFingerprint, installation.ProductId, installation.CustomerReference, installation.InstallationCreatedAt);
++    }
++
++    public async Task<LicenseStatus> ImportAsync(SignedLicenseDocument document, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(document);
++        if (!_verifier.Verify(document)) throw new BusinessException("LICENSE_SIGNATURE_INVALID");
++        var request = await ExportInstallationRequestAsync(cancellationToken);
++        if (!string.Equals(document.Payload.InstallationId, request.InstallationId, StringComparison.Ordinal) ||
++            !string.Equals(document.Payload.InstallationPublicKeyFingerprint, request.InstallationPublicKeyFingerprint, StringComparison.Ordinal))
++            throw new BusinessException("LICENSE_INSTALLATION_MISMATCH");
++        if (document.Payload.ExpiresAt <= DateTimeOffset.UtcNow) throw new BusinessException("LICENSE_EXPIRED");
++        var installation = await _db.LicenseInstallations.SingleAsync(x => x.InstallationId == request.InstallationId, cancellationToken);
++        if (installation.InstalledLicenseRevision is int revision && document.Payload.Revision <= revision)
++            throw new BusinessException("LICENSE_REVISION_INVALID");
++        installation.SignedLicenseDocument = LicenseDocumentJson.Serialize(document);
++        installation.InstalledLicenseRevision = document.Payload.Revision;
++        await _db.SaveChangesAsync(cancellationToken);
++        return await GetStatusAsync(cancellationToken);
++    }
++
++    public async Task<LicenseStatus> GetStatusAsync(CancellationToken cancellationToken = default)
++    {
++        var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(x => !x.IsDeleted, cancellationToken);
++        if (installation?.SignedLicenseDocument is null)
++            return new(false, false, null, null, null, null, 0, 0, [], "LICENSE_MISSING");
++        var document = LicenseDocumentJson.Deserialize(installation.SignedLicenseDocument);
++        if (document is null || !_verifier.Verify(document))
++            return new(true, false, null, installation.InstalledLicenseRevision, null, null, 0, 0, [], "LICENSE_SIGNATURE_INVALID");
++        var used = await _db.AgentIdentities.CountAsync(x => x.LicenseInstallationId == installation.Id && !x.IsDeleted &&
++            (x.Status == AgentIdentityStatus.Activated || x.Status == AgentIdentityStatus.Disabled), cancellationToken);
++        var valid = document.Payload.ExpiresAt > DateTimeOffset.UtcNow;
++        return new(true, valid, document.Payload.LicenseId, document.Payload.Revision, document.Payload.CustomerId,
++            document.Payload.ExpiresAt, document.Payload.MaxActivatedAgents, used, document.Payload.Features,
++            valid ? null : "LICENSE_EXPIRED");
++    }
++
++    public async Task EnsureAgentCapacityAsync(CancellationToken cancellationToken = default)
++    {
++        var status = await GetStatusAsync(cancellationToken);
++        if (!status.IsInstalled) throw new BusinessException("LICENSE_MISSING");
++        if (!status.IsValid) throw new BusinessException(status.ErrorCode ?? "LICENSE_INVALID");
++        if (status.ActivatedAgents >= status.MaxActivatedAgents) throw new BusinessException("AGENT_LICENSE_LIMIT_REACHED");
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.Designer.cs b/src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.Designer.cs
+new file mode 100644
+index 0000000..e473a66
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.Designer.cs
+@@ -0,0 +1,949 @@
++﻿// <auto-generated />
++using System;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
++using RPA.Infrastructure.Persistence;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    [DbContext(typeof(RpaDbContext))]
++    [Migration("20260716084447_OfflineAgentLicensing")]
++    partial class OfflineAgentLicensing
++    {
++        /// <inheritdoc />
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "10.0.9")
++                .HasAnnotation("Relational:MaxIdentifierLength", 63);
++
++            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
++
++            modelBuilder.Entity("RPA.Domain.Entities.ActionItem", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<Guid?>("AssignedRoleId")
++                        .HasColumnType("uuid");
++
++                    b.Property<Guid?>("AssignedUserId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<Guid?>("JobRunId")
++                        .HasColumnType("uuid");
++
++                    b.Property<Guid?>("QueueItemId")
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("ResolutionNote")
++                        .HasColumnType("text");
++
++                    b.Property<DateTime?>("ResolvedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<DateTime?>("TimeoutAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("Type")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("ActionItems");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AgentActivation", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("ActivationCodeHash")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<Guid>("AgentIdentityId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTimeOffset?>("ConsumedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<DateTimeOffset>("ExpiresAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("ActivationCodeHash")
++                        .IsUnique();
++
++                    b.HasIndex("AgentIdentityId");
++
++                    b.ToTable("AgentActivations");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AgentIdentity", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTimeOffset?>("ActivatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("CredentialHash")
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<DateTimeOffset?>("DeactivatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateTimeOffset?>("DisabledAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<DateTimeOffset?>("LastSeenAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<Guid>("LicenseInstallationId")
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("MachineFingerprint")
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("LicenseInstallationId", "MachineFingerprint")
++                        .IsUnique();
++
++                    b.ToTable("AgentIdentities");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AlertRule", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("Channel")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<string>("Condition")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<bool>("IsActive")
++                        .HasColumnType("boolean");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<string>("Recipients")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("AlertRules");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("Action")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("NewValue")
++                        .HasColumnType("text");
++
++                    b.Property<string>("OldValue")
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("ResourceId")
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("ResourceType")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("UserId")
++                        .HasColumnType("uuid");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("UserId");
++
++                    b.ToTable("AuditLogs");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Environment", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("Description")
++                        .IsRequired()
++                        .HasMaxLength(512)
++                        .HasColumnType("character varying(512)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("Name")
++                        .IsUnique();
++
++                    b.ToTable("Environments");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.JobRun", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("ElasticsearchCorrelationId")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uuid");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("ScreenshotArchivePath")
++                        .HasColumnType("text");
++
++                    b.Property<DateTime>("StartedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<string>("TriggeredBy")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("WorkflowVersionId")
++                        .HasColumnType("uuid");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowVersionId", "Status");
++
++                    b.ToTable("JobRuns");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.LicenseInstallation", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("CustomerReference")
++                        .HasColumnType("text");
++
++                    b.Property<DateTimeOffset>("InstallationCreatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<string>("InstallationId")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<int?>("InstalledLicenseRevision")
++                        .HasColumnType("integer");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("ProductId")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<string>("PublicKey")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("PublicKeyFingerprint")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<string>("SignedLicenseDocument")
++                        .HasColumnType("text");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("InstallationId")
++                        .IsUnique();
++
++                    b.ToTable("LicenseInstallations");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Project", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("Description")
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Projects");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Queue", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<int>("MaxRetries")
++                        .HasColumnType("integer");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uuid");
++
++                    b.Property<bool>("RequireIdempotency")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("RetryBackoffPolicy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<int?>("SlaSeconds")
++                        .HasColumnType("integer");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Queues");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.QueueItem", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<Guid?>("AssignedRobotId")
++                        .HasColumnType("uuid");
++
++                    b.Property<int>("AttemptCount")
++                        .HasColumnType("integer");
++
++                    b.Property<string>("CheckpointData")
++                        .HasColumnType("text");
++
++                    b.Property<DateTime?>("CompletedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("ErrorDetail")
++                        .HasColumnType("text");
++
++                    b.Property<string>("IdempotencyKey")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("Payload")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("QueueId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime?>("StartedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<int>("Status")
++                        .HasColumnType("integer");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("QueueId", "IdempotencyKey")
++                        .IsUnique();
++
++                    b.HasIndex("QueueId", "Status");
++
++                    b.ToTable("QueueItems");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Robot", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("AgentVersion")
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<int>("Capacity")
++                        .HasColumnType("integer");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<DateTime?>("LastHeartbeat")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("MachineName")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<string>("Mode")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<string>("Tags")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("MachineName");
++
++                    b.ToTable("Robots");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Schedule", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("CronExpression")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("OverlapPolicy")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<string>("TimeZone")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<Guid>("TriggerId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("TriggerId")
++                        .IsUnique();
++
++                    b.ToTable("Schedules");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Trigger", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("Configuration")
++                        .IsRequired()
++                        .HasMaxLength(4000)
++                        .HasColumnType("character varying(4000)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uuid");
++
++                    b.Property<bool>("IsActive")
++                        .HasColumnType("boolean");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<int>("Priority")
++                        .HasColumnType("integer");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("TargetRobotTags")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("Type")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("WorkflowVersionId")
++                        .HasColumnType("uuid");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowVersionId", "IsActive");
++
++                    b.ToTable("Triggers");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("AdUsername")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("Email")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("FullName")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.ToTable("Users");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.Workflow", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<Guid?>("ActiveVersionId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("Description")
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<Guid>("ProjectId")
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("Tags")
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("ProjectId");
++
++                    b.ToTable("Workflows");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.WorkflowVersion", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("ChangeNotes")
++                        .HasMaxLength(2048)
++                        .HasColumnType("character varying(2048)");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<Guid>("EnvironmentId")
++                        .HasColumnType("uuid");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("JsonDefinition")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.Property<string>("Version")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<Guid>("WorkflowId")
++                        .HasColumnType("uuid");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("WorkflowId", "Version")
++                        .IsUnique();
++
++                    b.ToTable("WorkflowVersions");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AgentActivation", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.AgentIdentity", null)
++                        .WithMany()
++                        .HasForeignKey("AgentIdentityId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AgentIdentity", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.LicenseInstallation", null)
++                        .WithMany()
++                        .HasForeignKey("LicenseInstallationId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.User", "User")
++                        .WithMany("AuditLogs")
++                        .HasForeignKey("UserId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++
++                    b.Navigation("User");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.User", b =>
++                {
++                    b.Navigation("AuditLogs");
++                });
++#pragma warning restore 612, 618
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.cs b/src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.cs
+new file mode 100644
+index 0000000..821590e
+--- /dev/null
++++ b/src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.cs
+@@ -0,0 +1,132 @@
++﻿using System;
++using Microsoft.EntityFrameworkCore.Migrations;
++
++#nullable disable
++
++namespace RPA.Infrastructure.Migrations
++{
++    /// <inheritdoc />
++    public partial class OfflineAgentLicensing : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.CreateTable(
++                name: "LicenseInstallations",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uuid", nullable: false),
++                    InstallationId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
++                    PublicKey = table.Column<string>(type: "text", nullable: false),
++                    PublicKeyFingerprint = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
++                    ProductId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
++                    CustomerReference = table.Column<string>(type: "text", nullable: true),
++                    InstallationCreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
++                    SignedLicenseDocument = table.Column<string>(type: "text", nullable: true),
++                    InstalledLicenseRevision = table.Column<int>(type: "integer", nullable: true),
++                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
++                    CreatedBy = table.Column<string>(type: "text", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "text", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_LicenseInstallations", x => x.Id);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "AgentIdentities",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uuid", nullable: false),
++                    LicenseInstallationId = table.Column<Guid>(type: "uuid", nullable: false),
++                    Name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
++                    MachineFingerprint = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
++                    Status = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
++                    CredentialHash = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: true),
++                    ActivatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
++                    LastSeenAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
++                    DisabledAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
++                    DeactivatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
++                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
++                    CreatedBy = table.Column<string>(type: "text", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "text", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_AgentIdentities", x => x.Id);
++                    table.ForeignKey(
++                        name: "FK_AgentIdentities_LicenseInstallations_LicenseInstallationId",
++                        column: x => x.LicenseInstallationId,
++                        principalTable: "LicenseInstallations",
++                        principalColumn: "Id",
++                        onDelete: ReferentialAction.Cascade);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "AgentActivations",
++                columns: table => new
++                {
++                    Id = table.Column<Guid>(type: "uuid", nullable: false),
++                    AgentIdentityId = table.Column<Guid>(type: "uuid", nullable: false),
++                    ActivationCodeHash = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: false),
++                    ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
++                    ConsumedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
++                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
++                    CreatedBy = table.Column<string>(type: "text", nullable: false),
++                    UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
++                    UpdatedBy = table.Column<string>(type: "text", nullable: true),
++                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_AgentActivations", x => x.Id);
++                    table.ForeignKey(
++                        name: "FK_AgentActivations_AgentIdentities_AgentIdentityId",
++                        column: x => x.AgentIdentityId,
++                        principalTable: "AgentIdentities",
++                        principalColumn: "Id",
++                        onDelete: ReferentialAction.Cascade);
++                });
++
++            migrationBuilder.CreateIndex(
++                name: "IX_AgentActivations_ActivationCodeHash",
++                table: "AgentActivations",
++                column: "ActivationCodeHash",
++                unique: true);
++
++            migrationBuilder.CreateIndex(
++                name: "IX_AgentActivations_AgentIdentityId",
++                table: "AgentActivations",
++                column: "AgentIdentityId");
++
++            migrationBuilder.CreateIndex(
++                name: "IX_AgentIdentities_LicenseInstallationId_MachineFingerprint",
++                table: "AgentIdentities",
++                columns: new[] { "LicenseInstallationId", "MachineFingerprint" },
++                unique: true);
++
++            migrationBuilder.CreateIndex(
++                name: "IX_LicenseInstallations_InstallationId",
++                table: "LicenseInstallations",
++                column: "InstallationId",
++                unique: true);
++        }
++
++        /// <inheritdoc />
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.DropTable(
++                name: "AgentActivations");
++
++            migrationBuilder.DropTable(
++                name: "AgentIdentities");
++
++            migrationBuilder.DropTable(
++                name: "LicenseInstallations");
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+index bd35551..6091138 100644
+--- a/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
++++ b/src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs
+@@ -73,20 +73,129 @@ namespace RPA.Infrastructure.Migrations
+                         .HasColumnType("timestamp without time zone");
+ 
+                     b.Property<string>("UpdatedBy")
+                         .HasColumnType("text");
+ 
+                     b.HasKey("Id");
+ 
+                     b.ToTable("ActionItems");
+                 });
+ 
++            modelBuilder.Entity("RPA.Domain.Entities.AgentActivation", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("ActivationCodeHash")
++                        .IsRequired()
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<Guid>("AgentIdentityId")
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTimeOffset?>("ConsumedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<DateTimeOffset>("ExpiresAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("ActivationCodeHash")
++                        .IsUnique();
++
++                    b.HasIndex("AgentIdentityId");
++
++                    b.ToTable("AgentActivations");
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AgentIdentity", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTimeOffset?>("ActivatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("CredentialHash")
++                        .HasMaxLength(1024)
++                        .HasColumnType("character varying(1024)");
++
++                    b.Property<DateTimeOffset?>("DeactivatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateTimeOffset?>("DisabledAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<DateTimeOffset?>("LastSeenAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<Guid>("LicenseInstallationId")
++                        .HasColumnType("uuid");
++
++                    b.Property<string>("MachineFingerprint")
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(256)
++                        .HasColumnType("character varying(256)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("LicenseInstallationId", "MachineFingerprint")
++                        .IsUnique();
++
++                    b.ToTable("AgentIdentities");
++                });
++
+             modelBuilder.Entity("RPA.Domain.Entities.AlertRule", b =>
+                 {
+                     b.Property<Guid>("Id")
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uuid");
+ 
+                     b.Property<string>("Channel")
+                         .IsRequired()
+                         .HasMaxLength(32)
+                         .HasColumnType("character varying(32)");
+@@ -274,20 +383,81 @@ namespace RPA.Infrastructure.Migrations
+                     b.Property<Guid>("WorkflowVersionId")
+                         .HasColumnType("uuid");
+ 
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("WorkflowVersionId", "Status");
+ 
+                     b.ToTable("JobRuns");
+                 });
+ 
++            modelBuilder.Entity("RPA.Domain.Entities.LicenseInstallation", b =>
++                {
++                    b.Property<Guid>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("uuid");
++
++                    b.Property<DateTime>("CreatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("CreatedBy")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("CustomerReference")
++                        .HasColumnType("text");
++
++                    b.Property<DateTimeOffset>("InstallationCreatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<string>("InstallationId")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<int?>("InstalledLicenseRevision")
++                        .HasColumnType("integer");
++
++                    b.Property<bool>("IsDeleted")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("ProductId")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<string>("PublicKey")
++                        .IsRequired()
++                        .HasColumnType("text");
++
++                    b.Property<string>("PublicKeyFingerprint")
++                        .IsRequired()
++                        .HasMaxLength(128)
++                        .HasColumnType("character varying(128)");
++
++                    b.Property<string>("SignedLicenseDocument")
++                        .HasColumnType("text");
++
++                    b.Property<DateTime?>("UpdatedAt")
++                        .HasColumnType("timestamp without time zone");
++
++                    b.Property<string>("UpdatedBy")
++                        .HasColumnType("text");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("InstallationId")
++                        .IsUnique();
++
++                    b.ToTable("LicenseInstallations");
++                });
++
+             modelBuilder.Entity("RPA.Domain.Entities.Project", b =>
+                 {
+                     b.Property<Guid>("Id")
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uuid");
+ 
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("timestamp without time zone");
+ 
+                     b.Property<string>("CreatedBy")
+@@ -730,20 +900,38 @@ namespace RPA.Infrastructure.Migrations
+                         .HasColumnType("uuid");
+ 
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("WorkflowId", "Version")
+                         .IsUnique();
+ 
+                     b.ToTable("WorkflowVersions");
+                 });
+ 
++            modelBuilder.Entity("RPA.Domain.Entities.AgentActivation", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.AgentIdentity", null)
++                        .WithMany()
++                        .HasForeignKey("AgentIdentityId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++                });
++
++            modelBuilder.Entity("RPA.Domain.Entities.AgentIdentity", b =>
++                {
++                    b.HasOne("RPA.Domain.Entities.LicenseInstallation", null)
++                        .WithMany()
++                        .HasForeignKey("LicenseInstallationId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++                });
++
+             modelBuilder.Entity("RPA.Domain.Entities.AuditLog", b =>
+                 {
+                     b.HasOne("RPA.Domain.Entities.User", "User")
+                         .WithMany("AuditLogs")
+                         .HasForeignKey("UserId")
+                         .OnDelete(DeleteBehavior.Cascade)
+                         .IsRequired();
+ 
+                     b.Navigation("User");
+                 });
+diff --git a/src/RPA.Infrastructure/Persistence/Repositories/EfAgentIdentityRepository.cs b/src/RPA.Infrastructure/Persistence/Repositories/EfAgentIdentityRepository.cs
+new file mode 100644
+index 0000000..96ce949
+--- /dev/null
++++ b/src/RPA.Infrastructure/Persistence/Repositories/EfAgentIdentityRepository.cs
+@@ -0,0 +1,103 @@
++using System.Collections.Concurrent;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Storage;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Exceptions;
++using RPA.Domain.Interfaces;
++using RPA.Domain.Licensing;
++using RPA.Infrastructure.Licensing;
++
++namespace RPA.Infrastructure.Persistence.Repositories;
++
++public sealed class EfAgentIdentityRepository : IAgentIdentityRepository
++{
++    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> NonPostgresLocks = new();
++    private readonly RpaDbContext _db;
++
++    public EfAgentIdentityRepository(RpaDbContext db) => _db = db ?? throw new ArgumentNullException(nameof(db));
++
++    public async Task<AgentIdentity> CreateAsync(AgentIdentity identity, CancellationToken cancellationToken = default)
++    { _db.AgentIdentities.Add(identity); await _db.SaveChangesAsync(cancellationToken); return identity; }
++    public Task<AgentIdentity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
++        _db.AgentIdentities.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
++    public Task<AgentIdentity?> GetByMachineFingerprintAsync(Guid licenseInstallationId, string machineFingerprint, CancellationToken cancellationToken = default) =>
++        _db.AgentIdentities.SingleOrDefaultAsync(x => x.LicenseInstallationId == licenseInstallationId && x.MachineFingerprint == machineFingerprint && !x.IsDeleted, cancellationToken);
++    public async Task<IReadOnlyList<AgentIdentity>> ListAsync(Guid licenseInstallationId, CancellationToken cancellationToken = default) =>
++        await _db.AgentIdentities.Where(x => x.LicenseInstallationId == licenseInstallationId && !x.IsDeleted).ToListAsync(cancellationToken);
++
++    public Task ActivateAsync(Guid id, string machineFingerprint, string credentialHash, DateTimeOffset activatedAt, CancellationToken cancellationToken = default) =>
++        ActivateCoreAsync(null, id, machineFingerprint, credentialHash, activatedAt, cancellationToken);
++
++    public Task ActivateWithCodeAsync(Guid licenseInstallationId, string activationCodeHash, Guid id,
++        string machineFingerprint, string credentialHash, DateTimeOffset activatedAt, CancellationToken cancellationToken = default) =>
++        ActivateCoreAsync((licenseInstallationId, activationCodeHash), id, machineFingerprint, credentialHash, activatedAt, cancellationToken);
++
++    private async Task ActivateCoreAsync((Guid InstallationId, string Hash)? code, Guid id, string machineFingerprint,
++        string credentialHash, DateTimeOffset activatedAt, CancellationToken cancellationToken)
++    {
++        var installationId = code?.InstallationId ?? (await GetByIdAsync(id, cancellationToken))?.LicenseInstallationId
++            ?? throw new BusinessException("AGENT_NOT_FOUND");
++        var provider = _db.Database.ProviderName ?? "";
++        var fallbackGate = provider.Contains("Npgsql", StringComparison.Ordinal) ? null : NonPostgresLocks.GetOrAdd(installationId, _ => new(1, 1));
++        if (fallbackGate is not null) await fallbackGate.WaitAsync(cancellationToken);
++        IDbContextTransaction? transaction = null;
++        try
++        {
++            transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
++            LicenseInstallation installation;
++            if (provider.Contains("Npgsql", StringComparison.Ordinal))
++                installation = await _db.LicenseInstallations.FromSqlInterpolated(
++                    $"SELECT * FROM \"LicenseInstallations\" WHERE \"Id\" = {installationId} FOR UPDATE").SingleAsync(cancellationToken);
++            else
++                installation = await _db.LicenseInstallations.SingleAsync(x => x.Id == installationId, cancellationToken);
++
++            var document = installation.SignedLicenseDocument is null
++                ? null : LicenseDocumentJson.Deserialize(installation.SignedLicenseDocument);
++            if (document is null) throw new BusinessException("LICENSE_MISSING");
++            if (document.Payload.ExpiresAt <= activatedAt) throw new BusinessException("LICENSE_EXPIRED");
++
++            var agent = await _db.AgentIdentities.SingleOrDefaultAsync(x => x.Id == id && x.LicenseInstallationId == installationId && !x.IsDeleted, cancellationToken)
++                ?? throw new BusinessException("AGENT_NOT_FOUND");
++            AgentActivation? activation = null;
++            if (code.HasValue)
++            {
++                activation = await _db.AgentActivations.SingleOrDefaultAsync(x => x.AgentIdentityId == id && x.ActivationCodeHash == code.Value.Hash && x.ConsumedAt == null && !x.IsDeleted, cancellationToken);
++                if (activation is null) throw new BusinessException("ACTIVATION_CODE_INVALID");
++                if (activation.ExpiresAt <= activatedAt) throw new BusinessException("ACTIVATION_CODE_EXPIRED");
++            }
++
++            var used = await _db.AgentIdentities.CountAsync(x => x.LicenseInstallationId == installationId && !x.IsDeleted &&
++                (x.Status == AgentIdentityStatus.Activated || x.Status == AgentIdentityStatus.Disabled), cancellationToken);
++            if (!agent.Status.ConsumesSeat() && used >= document.Payload.MaxActivatedAgents)
++                throw new BusinessException("AGENT_LICENSE_LIMIT_REACHED");
++
++            agent.Status = AgentIdentityStatus.Activated;
++            agent.MachineFingerprint = machineFingerprint;
++            agent.CredentialHash = credentialHash;
++            agent.ActivatedAt = activatedAt;
++            agent.DisabledAt = null;
++            agent.DeactivatedAt = null;
++            if (activation is not null) activation.ConsumedAt = activatedAt;
++            await _db.SaveChangesAsync(cancellationToken);
++            await transaction.CommitAsync(cancellationToken);
++        }
++        finally
++        {
++            if (transaction is not null) await transaction.DisposeAsync();
++            fallbackGate?.Release();
++        }
++    }
++
++    public Task DisableAsync(Guid id, DateTimeOffset disabledAt, CancellationToken cancellationToken = default) => ChangeStatusAsync(id, AgentIdentityStatus.Disabled, disabledAt, cancellationToken);
++    public Task DeactivateAsync(Guid id, DateTimeOffset deactivatedAt, CancellationToken cancellationToken = default) => ChangeStatusAsync(id, AgentIdentityStatus.Deactivated, deactivatedAt, cancellationToken);
++    private async Task ChangeStatusAsync(Guid id, AgentIdentityStatus status, DateTimeOffset at, CancellationToken ct)
++    {
++        var agent = await _db.AgentIdentities.SingleAsync(x => x.Id == id, ct); agent.Status = status;
++        if (status == AgentIdentityStatus.Disabled) agent.DisabledAt = at;
++        else { agent.DeactivatedAt = at; agent.CredentialHash = null; }
++        await _db.SaveChangesAsync(ct);
++    }
++    public async Task RotateCredentialAsync(Guid id, string credentialHash, CancellationToken cancellationToken = default)
++    { var agent = await _db.AgentIdentities.SingleAsync(x => x.Id == id, cancellationToken); agent.CredentialHash = credentialHash; await _db.SaveChangesAsync(cancellationToken); }
++}
+diff --git a/src/RPA.Infrastructure/Persistence/Repositories/EfLicenseInstallationRepository.cs b/src/RPA.Infrastructure/Persistence/Repositories/EfLicenseInstallationRepository.cs
+new file mode 100644
+index 0000000..1765760
+--- /dev/null
++++ b/src/RPA.Infrastructure/Persistence/Repositories/EfLicenseInstallationRepository.cs
+@@ -0,0 +1,18 @@
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++
++namespace RPA.Infrastructure.Persistence.Repositories;
++
++public sealed class EfLicenseInstallationRepository(RpaDbContext db)
++{
++    public Task<LicenseInstallation?> GetAsync(CancellationToken cancellationToken = default) =>
++        db.LicenseInstallations.SingleOrDefaultAsync(x => !x.IsDeleted, cancellationToken);
++
++    public async Task<LicenseInstallation> SaveAsync(LicenseInstallation installation, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(installation);
++        db.Update(installation);
++        await db.SaveChangesAsync(cancellationToken);
++        return installation;
++    }
++}
+diff --git a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+index 5fa1ac7..5b04bf2 100644
+--- a/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
++++ b/src/RPA.Infrastructure/Persistence/RpaDbContext.cs
+@@ -51,20 +51,24 @@ public class RpaDbContext : DbContext
+ 
+     /// <summary>WP-6.3 — Alarm kuralları (koşul/kanal/alıcılar).</summary>
+     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
+ 
+     /// <summary>WP-6.4 — Ortamlar (Dev/Test/Prod) — deployment governance hedefleri.</summary>
+     public DbSet<Environment> Environments => Set<Environment>();
+ 
+     /// <summary>WP-6.4 — Workflow versiyonları (Draft → Test → Published yaşam döngüsü).</summary>
+     public DbSet<WorkflowVersion> WorkflowVersions => Set<WorkflowVersion>();
+ 
++    public DbSet<LicenseInstallation> LicenseInstallations => Set<LicenseInstallation>();
++    public DbSet<AgentIdentity> AgentIdentities => Set<AgentIdentity>();
++    public DbSet<AgentActivation> AgentActivations => Set<AgentActivation>();
++
+     protected override void OnModelCreating(ModelBuilder modelBuilder)
+     {
+         base.OnModelCreating(modelBuilder);
+ 
+         modelBuilder.Entity<AuditLog>(entity =>
+         {
+             entity.HasKey(a => a.Id);
+             entity.Property(a => a.Action).HasMaxLength(64).IsRequired();
+             entity.Property(a => a.ResourceType).HasMaxLength(128).IsRequired();
+         });
+@@ -204,12 +208,42 @@ public class RpaDbContext : DbContext
+             entity.Property(w => w.Name).HasMaxLength(256).IsRequired();
+             entity.Property(w => w.Description).HasMaxLength(1024);
+             entity.Property(w => w.Tags).HasMaxLength(1024);
+             entity.HasIndex(w => w.ProjectId);
+             entity.Ignore(w => w.Project);
+             entity.Ignore(w => w.ActiveVersion);
+             entity.Ignore(w => w.Versions);
+             entity.Ignore(w => w.ComponentUsages);
+             entity.Ignore(w => w.JobRuns);
+         });
++
++
++        modelBuilder.Entity<LicenseInstallation>(entity =>
++        {
++            entity.HasKey(x => x.Id);
++            entity.Property(x => x.InstallationId).HasMaxLength(128).IsRequired();
++            entity.Property(x => x.PublicKey).IsRequired();
++            entity.Property(x => x.PublicKeyFingerprint).HasMaxLength(128).IsRequired();
++            entity.Property(x => x.ProductId).HasMaxLength(128).IsRequired();
++            entity.HasIndex(x => x.InstallationId).IsUnique();
++        });
++
++        modelBuilder.Entity<AgentIdentity>(entity =>
++        {
++            entity.HasKey(x => x.Id);
++            entity.Property(x => x.Name).HasMaxLength(256).IsRequired();
++            entity.Property(x => x.MachineFingerprint).HasMaxLength(256);
++            entity.Property(x => x.CredentialHash).HasMaxLength(1024);
++            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
++            entity.HasIndex(x => new { x.LicenseInstallationId, x.MachineFingerprint }).IsUnique();
++            entity.HasOne<LicenseInstallation>().WithMany().HasForeignKey(x => x.LicenseInstallationId).OnDelete(DeleteBehavior.Cascade);
++        });
++
++        modelBuilder.Entity<AgentActivation>(entity =>
++        {
++            entity.HasKey(x => x.Id);
++            entity.Property(x => x.ActivationCodeHash).HasMaxLength(1024).IsRequired();
++            entity.HasIndex(x => x.ActivationCodeHash).IsUnique();
++            entity.HasOne<AgentIdentity>().WithMany().HasForeignKey(x => x.AgentIdentityId).OnDelete(DeleteBehavior.Cascade);
++        });
+     }
+ }
+diff --git a/tests/RPA.Infrastructure.Tests/Licensing/AgentSeatEnforcementTests.cs b/tests/RPA.Infrastructure.Tests/Licensing/AgentSeatEnforcementTests.cs
+new file mode 100644
+index 0000000..f16381f
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Licensing/AgentSeatEnforcementTests.cs
+@@ -0,0 +1,153 @@
++using System.Text.Json;
++using Microsoft.Data.Sqlite;
++using Microsoft.EntityFrameworkCore;
++using RPA.Domain.Entities;
++using RPA.Domain.Enums;
++using RPA.Domain.Exceptions;
++using RPA.Domain.Licensing;
++using RPA.Infrastructure.Licensing;
++using RPA.Infrastructure.Persistence;
++using RPA.Infrastructure.Persistence.Repositories;
++
++namespace RPA.Infrastructure.Tests.Licensing;
++
++public sealed class AgentSeatEnforcementTests
++{
++    [Fact]
++    public async Task ActivateAsync_WithZeroOfOneSeats_ConsumesCodeAndStoresOnlyHashes()
++    {
++        await using var database = await TestDatabase.CreateAsync();
++        var (installation, agent, activation) = await SeedAsync(database, 1);
++        await using var db = database.CreateContext();
++        var repository = new EfAgentIdentityRepository(db);
++
++        await repository.ActivateWithCodeAsync(installation.Id, activation.ActivationCodeHash,
++            agent.Id, "machine-1", "credential-hash", DateTimeOffset.UtcNow);
++
++        db.ChangeTracker.Clear();
++        var savedAgent = await db.AgentIdentities.SingleAsync(x => x.Id == agent.Id);
++        var savedActivation = await db.AgentActivations.SingleAsync(x => x.Id == activation.Id);
++        Assert.Equal(AgentIdentityStatus.Activated, savedAgent.Status);
++        Assert.Equal("credential-hash", savedAgent.CredentialHash);
++        Assert.NotNull(savedActivation.ConsumedAt);
++        Assert.DoesNotContain("activation-plaintext", JsonSerializer.Serialize(db.ChangeTracker.Entries().Select(x => x.Entity)));
++        Assert.DoesNotContain("credential-plaintext", JsonSerializer.Serialize(db.ChangeTracker.Entries().Select(x => x.Entity)));
++    }
++
++    [Fact]
++    public async Task ActivateAsync_WithOneOfOneSeats_ThrowsStableLimitCode()
++    {
++        await using var database = await TestDatabase.CreateAsync();
++        var (installation, agent, activation) = await SeedAsync(database, 1, AgentIdentityStatus.Activated);
++        await using var db = database.CreateContext();
++
++        var error = await Assert.ThrowsAsync<BusinessException>(() =>
++            new EfAgentIdentityRepository(db).ActivateWithCodeAsync(installation.Id,
++                activation.ActivationCodeHash, agent.Id, "machine-2", "hash", DateTimeOffset.UtcNow));
++
++        Assert.Equal("AGENT_LICENSE_LIMIT_REACHED", error.Message);
++    }
++
++    [Theory]
++    [InlineData(AgentIdentityStatus.Disabled, false)]
++    [InlineData(AgentIdentityStatus.Deactivated, true)]
++    public async Task SeatAccounting_UsesSpecifiedStates(AgentIdentityStatus existingState, bool succeeds)
++    {
++        await using var database = await TestDatabase.CreateAsync();
++        var (installation, agent, activation) = await SeedAsync(database, 1, existingState);
++        await using var db = database.CreateContext();
++        var task = new EfAgentIdentityRepository(db).ActivateWithCodeAsync(installation.Id,
++            activation.ActivationCodeHash, agent.Id, "machine", "hash", DateTimeOffset.UtcNow);
++
++        if (succeeds) await task;
++        else await Assert.ThrowsAsync<BusinessException>(() => task);
++    }
++
++    [Fact]
++    public async Task ActivationCode_IsSingleUse()
++    {
++        await using var database = await TestDatabase.CreateAsync();
++        var (installation, agent, activation) = await SeedAsync(database, 2);
++        await using var first = database.CreateContext();
++        await new EfAgentIdentityRepository(first).ActivateWithCodeAsync(installation.Id,
++            activation.ActivationCodeHash, agent.Id, "machine", "hash", DateTimeOffset.UtcNow);
++        await using var second = database.CreateContext();
++
++        var error = await Assert.ThrowsAsync<BusinessException>(() =>
++            new EfAgentIdentityRepository(second).ActivateWithCodeAsync(installation.Id,
++                activation.ActivationCodeHash, agent.Id, "machine", "hash2", DateTimeOffset.UtcNow));
++        Assert.Equal("ACTIVATION_CODE_INVALID", error.Message);
++    }
++
++    [Fact]
++    public async Task ConcurrentFinalSeat_ExactlyOneActivationSucceeds()
++    {
++        await using var database = await TestDatabase.CreateAsync();
++        var (installation, firstAgent, firstCode) = await SeedAsync(database, 1);
++        AgentIdentity secondAgent;
++        AgentActivation secondCode;
++        await using (var seed = database.CreateContext())
++        {
++            secondAgent = new AgentIdentity { LicenseInstallationId = installation.Id, Name = "second" };
++            secondCode = new AgentActivation { AgentIdentityId = secondAgent.Id, ActivationCodeHash = "code-2", ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15) };
++            seed.AddRange(secondAgent, secondCode);
++            await seed.SaveChangesAsync();
++        }
++
++        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        async Task<bool> Activate(Guid agentId, string code, string machine)
++        {
++            await using var db = database.CreateContext();
++            await start.Task;
++            try
++            {
++                await new EfAgentIdentityRepository(db).ActivateWithCodeAsync(installation.Id, code, agentId, machine, "hash", DateTimeOffset.UtcNow);
++                return true;
++            }
++            catch (BusinessException ex) when (ex.Message == "AGENT_LICENSE_LIMIT_REACHED") { return false; }
++        }
++
++        var attempts = new[] { Activate(firstAgent.Id, firstCode.ActivationCodeHash, "m1"), Activate(secondAgent.Id, secondCode.ActivationCodeHash, "m2") };
++        start.SetResult();
++        Assert.Equal(1, (await Task.WhenAll(attempts)).Count(x => x));
++    }
++
++    private static async Task<(LicenseInstallation Installation, AgentIdentity Candidate, AgentActivation Code)> SeedAsync(
++        TestDatabase database, int maxSeats, AgentIdentityStatus? existingState = null)
++    {
++        await using var db = database.CreateContext();
++        var payload = OfflineLicensePayload.Create("LIC", 1, "customer", "install", "fingerprint", maxSeats,
++            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), []);
++        var installation = new LicenseInstallation
++        {
++            InstallationId = "install", PublicKey = "key", PublicKeyFingerprint = "fingerprint", ProductId = "product",
++            InstallationCreatedAt = DateTimeOffset.UtcNow, SignedLicenseDocument = JsonSerializer.Serialize(new SignedLicenseDocument(payload, "signature")), InstalledLicenseRevision = 1
++        };
++        if (existingState.HasValue)
++            db.AgentIdentities.Add(new AgentIdentity { LicenseInstallationId = installation.Id, Name = "existing", Status = existingState.Value });
++        var candidate = new AgentIdentity { LicenseInstallationId = installation.Id, Name = "candidate" };
++        var activation = new AgentActivation { AgentIdentityId = candidate.Id, ActivationCodeHash = "code-1", ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15) };
++        db.AddRange(installation, candidate, activation);
++        await db.SaveChangesAsync();
++        return (installation, candidate, activation);
++    }
++
++    private sealed class TestDatabase : IAsyncDisposable
++    {
++        private readonly SqliteConnection _anchor;
++        private readonly string _connectionString;
++        private TestDatabase(SqliteConnection anchor, string connectionString) { _anchor = anchor; _connectionString = connectionString; }
++        public static async Task<TestDatabase> CreateAsync()
++        {
++            var cs = $"Data Source=seat-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Default Timeout=10";
++            var anchor = new SqliteConnection(cs);
++            await anchor.OpenAsync();
++            var result = new TestDatabase(anchor, cs);
++            await using var db = result.CreateContext();
++            await db.Database.EnsureCreatedAsync();
++            return result;
++        }
++        public RpaDbContext CreateContext() => new(new DbContextOptionsBuilder<RpaDbContext>().UseSqlite(_connectionString).Options);
++        public ValueTask DisposeAsync() => _anchor.DisposeAsync();
++    }
++}
