@@ -49,6 +49,17 @@ public class TriggerMigrationTests
     }
 
     [Fact]
+    public void Migration_Up_CreatesEInvoiceProfileTables()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        var script = Migrator(connection).GenerateScript();
+
+        Assert.Contains("CREATE TABLE \"EInvoiceProfiles\"", script);
+        Assert.Contains("CREATE TABLE \"EInvoiceProfileVersions\"", script);
+    }
+
+    [Fact]
     public void Migration_Down_DropsTriggerScheduleJobRunTables()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
