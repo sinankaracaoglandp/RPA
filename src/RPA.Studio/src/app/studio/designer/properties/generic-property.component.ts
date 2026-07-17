@@ -12,6 +12,7 @@ import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.compon
 import { EInvoiceProfile, EInvoiceProfileVersion } from '../../../shared/models/einvoice-profile.model';
 import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
 import { ProjectService, ProjectSummary } from '../../../shared/services/project.service';
+import { variableFieldPaths } from '../variable-schema.util';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -160,12 +161,19 @@ export class GenericPropertyComponent {
     return null;
   }
 
-  /** İfade kipinde açık token'a göre filtrelenmiş değişken önerileri. */
+  /** İfade kipinde açık token'a göre filtrelenmiş değişken + şema alan-yolu önerileri. */
   expressionSuggestions(port: ActivityPort): WorkflowVariable[] {
     const partial = this.openTokenPartial(port);
     if (partial === null) return [];
     const q = partial.trim().toLowerCase();
-    return (this.variables ?? []).filter((v) => v.name.toLowerCase().includes(q)).slice(0, 8);
+    const names: WorkflowVariable[] = (this.variables ?? []).filter((v) =>
+      v.name.toLowerCase().includes(q),
+    );
+    const fields: WorkflowVariable[] = (this.variables ?? [])
+      .flatMap((v) => variableFieldPaths(v))
+      .filter((f) => f.path.toLowerCase().includes(q))
+      .map((f) => ({ name: f.path, type: f.type }));
+    return [...names, ...fields].slice(0, 8);
   }
 
   /** Öneriyi seçince açık `{{...` token'ını `{{ad}}` ile tamamlar. */

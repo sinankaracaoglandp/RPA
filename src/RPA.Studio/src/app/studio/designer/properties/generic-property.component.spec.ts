@@ -360,4 +360,15 @@ describe('GenericPropertyComponent', () => {
     expect(examples.textContent).toContain('{{aktif}} == true');
     expect(examples.textContent).toContain('{{tarih}} == "2026-07-09T08:30:00"');
   });
+
+  it('expressionSuggestions includes schema field paths', () => {
+    component.variables = [{
+      name: 'fatura', type: 'object',
+      schema: { type: 'object', properties: { tutar: { type: 'number' } } },
+    } as never];
+    component.properties = { message: '{{fatura.tu' };
+    const port = { name: 'message', type: 'string' };
+    const labels = component.expressionSuggestions(port).map((s) => s.name);
+    expect(labels).toContain('fatura.tutar');
+  });
 });
