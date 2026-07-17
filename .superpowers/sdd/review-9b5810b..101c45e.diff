@@ -1,0 +1,529 @@
+# Review package: 9b5810b..101c45e
+
+## Commits
+101c45e fix(licensing): kurulum kimligi olusturma yarisini onle
+26dbcde feat(licensing): imzali lisans ve kurulum kimligi dogrulamasi
+
+## Files changed
+ .../Licensing/CanonicalLicenseSerializer.cs        |  35 ++++
+ .../Licensing/DpapiInstallationKeyStore.cs         | 110 +++++++++++++
+ .../Licensing/IInstallationKeyStore.cs             |   7 +
+ .../Licensing/InstallationIdentityService.cs       |  68 ++++++++
+ .../Licensing/VendorLicenseVerifier.cs             |  47 ++++++
+ src/RPA.Infrastructure/RPA.Infrastructure.csproj   |   1 +
+ .../Licensing/LicenseCryptographyTests.cs          | 183 +++++++++++++++++++++
+ 7 files changed, 451 insertions(+)
+
+## Diff
+diff --git a/src/RPA.Infrastructure/Licensing/CanonicalLicenseSerializer.cs b/src/RPA.Infrastructure/Licensing/CanonicalLicenseSerializer.cs
+new file mode 100644
+index 0000000..aec0973
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/CanonicalLicenseSerializer.cs
+@@ -0,0 +1,35 @@
++using System.Globalization;
++using System.Text.Json;
++using RPA.Domain.Licensing;
++
++namespace RPA.Infrastructure.Licensing;
++
++public static class CanonicalLicenseSerializer
++{
++    public static byte[] SerializePayload(OfflineLicensePayload payload)
++    {
++        ArgumentNullException.ThrowIfNull(payload);
++
++        using var stream = new MemoryStream();
++        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
++        {
++            writer.WriteStartObject();
++            writer.WriteNumber("schemaVersion", payload.SchemaVersion);
++            writer.WriteString("licenseId", payload.LicenseId);
++            writer.WriteNumber("revision", payload.Revision);
++            writer.WriteString("customerId", payload.CustomerId);
++            writer.WriteString("installationId", payload.InstallationId);
++            writer.WriteString("installationPublicKeyFingerprint", payload.InstallationPublicKeyFingerprint);
++            writer.WriteNumber("maxActivatedAgents", payload.MaxActivatedAgents);
++            writer.WriteString("issuedAt", payload.IssuedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
++            writer.WriteString("expiresAt", payload.ExpiresAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
++            writer.WriteStartArray("features");
++            foreach (var feature in payload.Features.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
++                writer.WriteStringValue(feature);
++            writer.WriteEndArray();
++            writer.WriteEndObject();
++        }
++
++        return stream.ToArray();
++    }
++}
+diff --git a/src/RPA.Infrastructure/Licensing/DpapiInstallationKeyStore.cs b/src/RPA.Infrastructure/Licensing/DpapiInstallationKeyStore.cs
+new file mode 100644
+index 0000000..095e63a
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/DpapiInstallationKeyStore.cs
+@@ -0,0 +1,110 @@
++using System.Security.Cryptography;
++
++namespace RPA.Infrastructure.Licensing;
++
++public interface IInstallationKeyProtection
++{
++    byte[] Protect(byte[] plaintext);
++    byte[] Unprotect(byte[] protectedData);
++}
++
++public interface IInstallationFileSystem
++{
++    bool Exists(string path);
++    Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken);
++    Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken cancellationToken);
++    void CreateDirectory(string path);
++    bool TryMoveAtomically(string temporaryPath, string destinationPath);
++    void Delete(string path);
++}
++
++public sealed class DpapiInstallationKeyStore : IInstallationKeyStore
++{
++    private const string FileName = "installation-key.pk8.protected";
++    private readonly string _directory;
++    private readonly string _path;
++    private readonly IInstallationFileSystem _files;
++    private readonly IInstallationKeyProtection _protection;
++
++    public DpapiInstallationKeyStore(string applicationDataDirectory)
++        : this(applicationDataDirectory, new PhysicalInstallationFileSystem(), new LocalMachineDpapiProtection()) { }
++
++    public DpapiInstallationKeyStore(
++        string applicationDataDirectory,
++        IInstallationFileSystem files,
++        IInstallationKeyProtection protection)
++    {
++        ArgumentException.ThrowIfNullOrWhiteSpace(applicationDataDirectory);
++        _directory = applicationDataDirectory;
++        _path = Path.Combine(applicationDataDirectory, FileName);
++        _files = files ?? throw new ArgumentNullException(nameof(files));
++        _protection = protection ?? throw new ArgumentNullException(nameof(protection));
++    }
++
++    public async Task<byte[]?> LoadAsync(CancellationToken cancellationToken = default)
++    {
++        if (!_files.Exists(_path))
++            return null;
++
++        var protectedKey = await _files.ReadAllBytesAsync(_path, cancellationToken).ConfigureAwait(false);
++        try
++        {
++            return _protection.Unprotect(protectedKey);
++        }
++        finally
++        {
++            CryptographicOperations.ZeroMemory(protectedKey);
++        }
++    }
++
++    public async Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(privateKey);
++        _files.CreateDirectory(_directory);
++        var temporaryPath = $"{_path}.{Guid.NewGuid():N}.tmp";
++        var protectedKey = _protection.Protect(privateKey);
++        try
++        {
++            await _files.WriteAllBytesAsync(temporaryPath, protectedKey, cancellationToken).ConfigureAwait(false);
++            return _files.TryMoveAtomically(temporaryPath, _path);
++        }
++        finally
++        {
++            CryptographicOperations.ZeroMemory(protectedKey);
++            _files.Delete(temporaryPath);
++        }
++    }
++}
++
++internal sealed class LocalMachineDpapiProtection : IInstallationKeyProtection
++{
++    public byte[] Protect(byte[] plaintext) =>
++        ProtectedData.Protect(plaintext, null, DataProtectionScope.LocalMachine);
++
++    public byte[] Unprotect(byte[] protectedData) =>
++        ProtectedData.Unprotect(protectedData, null, DataProtectionScope.LocalMachine);
++}
++
++internal sealed class PhysicalInstallationFileSystem : IInstallationFileSystem
++{
++    public bool Exists(string path) => File.Exists(path);
++    public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken) =>
++        File.ReadAllBytesAsync(path, cancellationToken);
++    public Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken cancellationToken) =>
++        File.WriteAllBytesAsync(path, contents, cancellationToken);
++    public void CreateDirectory(string path) => Directory.CreateDirectory(path);
++    public bool TryMoveAtomically(string temporaryPath, string destinationPath)
++    {
++        try
++        {
++            File.Move(temporaryPath, destinationPath, overwrite: false);
++            return true;
++        }
++        catch (IOException) when (File.Exists(destinationPath))
++        {
++            return false;
++        }
++    }
++
++    public void Delete(string path) => File.Delete(path);
++}
+diff --git a/src/RPA.Infrastructure/Licensing/IInstallationKeyStore.cs b/src/RPA.Infrastructure/Licensing/IInstallationKeyStore.cs
+new file mode 100644
+index 0000000..187a80b
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/IInstallationKeyStore.cs
+@@ -0,0 +1,7 @@
++namespace RPA.Infrastructure.Licensing;
++
++public interface IInstallationKeyStore
++{
++    Task<byte[]?> LoadAsync(CancellationToken cancellationToken = default);
++    Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default);
++}
+diff --git a/src/RPA.Infrastructure/Licensing/InstallationIdentityService.cs b/src/RPA.Infrastructure/Licensing/InstallationIdentityService.cs
+new file mode 100644
+index 0000000..c4e411e
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/InstallationIdentityService.cs
+@@ -0,0 +1,68 @@
++using System.Security.Cryptography;
++using System.Text;
++
++namespace RPA.Infrastructure.Licensing;
++
++public sealed record InstallationIdentity(string InstallationId, string PublicKey, string PublicKeyFingerprint);
++
++public interface IInstallationIdentityService
++{
++    Task<InstallationIdentity> GetOrCreateAsync(CancellationToken cancellationToken = default);
++}
++
++public sealed class InstallationIdentityService : IInstallationIdentityService
++{
++    private readonly IInstallationKeyStore _keyStore;
++    private readonly string _productId;
++    private readonly SemaphoreSlim _gate = new(1, 1);
++
++    public InstallationIdentityService(IInstallationKeyStore keyStore, string productId)
++    {
++        _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
++        ArgumentException.ThrowIfNullOrWhiteSpace(productId);
++        _productId = productId;
++    }
++
++    public async Task<InstallationIdentity> GetOrCreateAsync(CancellationToken cancellationToken = default)
++    {
++        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
++        try
++        {
++            var privateKey = await _keyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
++            if (privateKey is null)
++            {
++                using var generated = RSA.Create(3072);
++                var candidate = generated.ExportPkcs8PrivateKey();
++                if (await _keyStore.TrySaveAsync(candidate, cancellationToken).ConfigureAwait(false))
++                {
++                    privateKey = candidate;
++                }
++                else
++                {
++                    CryptographicOperations.ZeroMemory(candidate);
++                    privateKey = await _keyStore.LoadAsync(cancellationToken).ConfigureAwait(false)
++                        ?? throw new IOException("Installation key creation race completed without a persisted winner.");
++                }
++            }
++
++            try
++            {
++                using var rsa = RSA.Create();
++                rsa.ImportPkcs8PrivateKey(privateKey, out _);
++                var publicKey = rsa.ExportSubjectPublicKeyInfo();
++                var fingerprint = Convert.ToHexString(SHA256.HashData(publicKey));
++                var installationId = Convert.ToHexString(
++                    SHA256.HashData(Encoding.UTF8.GetBytes(_productId + ":" + fingerprint)));
++                return new InstallationIdentity(installationId, Convert.ToBase64String(publicKey), fingerprint);
++            }
++            finally
++            {
++                CryptographicOperations.ZeroMemory(privateKey);
++            }
++        }
++        finally
++        {
++            _gate.Release();
++        }
++    }
++}
+diff --git a/src/RPA.Infrastructure/Licensing/VendorLicenseVerifier.cs b/src/RPA.Infrastructure/Licensing/VendorLicenseVerifier.cs
+new file mode 100644
+index 0000000..541b0e5
+--- /dev/null
++++ b/src/RPA.Infrastructure/Licensing/VendorLicenseVerifier.cs
+@@ -0,0 +1,47 @@
++using System.Security.Cryptography;
++using RPA.Domain.Licensing;
++
++namespace RPA.Infrastructure.Licensing;
++
++public interface IVendorLicenseVerifier
++{
++    bool Verify(SignedLicenseDocument document);
++}
++
++public sealed class VendorLicenseVerifier : IVendorLicenseVerifier, IDisposable
++{
++    private readonly RSA _publicKey;
++
++    public VendorLicenseVerifier(string publicKeyPem)
++    {
++        ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyPem);
++        _publicKey = RSA.Create();
++        _publicKey.ImportFromPem(publicKeyPem);
++    }
++
++    public bool Verify(SignedLicenseDocument document)
++    {
++        ArgumentNullException.ThrowIfNull(document);
++        if (!string.Equals(document.Algorithm, "RSA-PSS-SHA256", StringComparison.Ordinal))
++            return false;
++
++        try
++        {
++            return _publicKey.VerifyData(
++                CanonicalLicenseSerializer.SerializePayload(document.Payload),
++                Convert.FromBase64String(document.Signature),
++                HashAlgorithmName.SHA256,
++                RSASignaturePadding.Pss);
++        }
++        catch (FormatException)
++        {
++            return false;
++        }
++        catch (CryptographicException)
++        {
++            return false;
++        }
++    }
++
++    public void Dispose() => _publicKey.Dispose();
++}
+diff --git a/src/RPA.Infrastructure/RPA.Infrastructure.csproj b/src/RPA.Infrastructure/RPA.Infrastructure.csproj
+index cac8e5f..c1fa8e2 100644
+--- a/src/RPA.Infrastructure/RPA.Infrastructure.csproj
++++ b/src/RPA.Infrastructure/RPA.Infrastructure.csproj
+@@ -22,20 +22,21 @@
+     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+     <PackageReference Include="NJsonSchema" Version="11.1.0" />
+     <PackageReference Include="Otp.NET" Version="1.4.0" />
+     <PackageReference Include="Polly" Version="8.5.0" />
+     <PackageReference Include="Serilog" Version="4.3.1" />
+     <PackageReference Include="Serilog.Sinks.Elasticsearch" Version="10.0.0" />
+     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
+     <PackageReference Include="System.IO.Packaging" Version="10.0.9" />
++    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <!-- Kontrat şeması (değişmez referans) — embedded resource olarak paketlenir; dosya değiştirilmez. -->
+     <EmbeddedResource Include="..\RPA.Domain\WorkflowSchema.json" Link="Workflow\WorkflowSchema.json" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <ProjectReference Include="..\RPA.Domain\RPA.Domain.csproj" />
+     <ProjectReference Include="..\RPA.Application\RPA.Application.csproj" />
+diff --git a/tests/RPA.Infrastructure.Tests/Licensing/LicenseCryptographyTests.cs b/tests/RPA.Infrastructure.Tests/Licensing/LicenseCryptographyTests.cs
+new file mode 100644
+index 0000000..95dcd25
+--- /dev/null
++++ b/tests/RPA.Infrastructure.Tests/Licensing/LicenseCryptographyTests.cs
+@@ -0,0 +1,183 @@
++using System.Security.Cryptography;
++using System.Text;
++using RPA.Domain.Licensing;
++using RPA.Infrastructure.Licensing;
++
++namespace RPA.Infrastructure.Tests.Licensing;
++
++public class LicenseCryptographyTests
++{
++    [Fact]
++    public void SerializePayload_IsDeterministicAndCanonical()
++    {
++        var first = Payload(features: ["Studio", "Agent", "Studio"]);
++        var second = Payload(features: ["Agent", "Studio"]);
++
++        var firstBytes = CanonicalLicenseSerializer.SerializePayload(first);
++        var secondBytes = CanonicalLicenseSerializer.SerializePayload(second);
++
++        Assert.Equal(firstBytes, secondBytes);
++        Assert.Equal(
++            "{\"schemaVersion\":1,\"licenseId\":\"LIC-1\",\"revision\":2,\"customerId\":\"ACME\",\"installationId\":\"install-1\",\"installationPublicKeyFingerprint\":\"ABC\",\"maxActivatedAgents\":5,\"issuedAt\":\"2026-01-01T00:00:00.0000000Z\",\"expiresAt\":\"2027-01-01T00:00:00.0000000Z\",\"features\":[\"Agent\",\"Studio\"]}",
++            Encoding.UTF8.GetString(firstBytes));
++    }
++
++    [Fact]
++    public void Verify_AcceptsUntouchedRsaPssSha256Document()
++    {
++        using var rsa = RSA.Create(2048);
++        var payload = Payload();
++        var signature = rsa.SignData(CanonicalLicenseSerializer.SerializePayload(payload), HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
++        var verifier = new VendorLicenseVerifier(rsa.ExportSubjectPublicKeyInfoPem());
++
++        Assert.True(verifier.Verify(new SignedLicenseDocument(payload, Convert.ToBase64String(signature))));
++    }
++
++    [Fact]
++    public void Verify_RejectsPayloadAndSignatureTampering()
++    {
++        using var rsa = RSA.Create(2048);
++        var payload = Payload();
++        var signature = rsa.SignData(CanonicalLicenseSerializer.SerializePayload(payload), HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
++        var verifier = new VendorLicenseVerifier(rsa.ExportSubjectPublicKeyInfoPem());
++        var signed = new SignedLicenseDocument(payload, Convert.ToBase64String(signature));
++
++        Assert.False(verifier.Verify(signed with { Payload = payload with { MaxActivatedAgents = 6 } }));
++        Assert.False(verifier.Verify(signed with { Payload = payload with { InstallationPublicKeyFingerprint = "DEF" } }));
++        signature[0] ^= 0xff;
++        Assert.False(verifier.Verify(signed with { Signature = Convert.ToBase64String(signature) }));
++    }
++
++    [Fact]
++    public async Task InstallationIdentity_GeneratesOnceAndReloadsProtectedPkcs8Key()
++    {
++        var store = new MemoryInstallationKeyStore();
++        var service = new InstallationIdentityService(store, "RPA.Platform");
++
++        var first = await service.GetOrCreateAsync();
++        var second = await new InstallationIdentityService(store, "RPA.Platform").GetOrCreateAsync();
++
++        Assert.Equal(first, second);
++        Assert.NotEmpty(first.InstallationId);
++        Assert.Equal(Convert.ToHexString(SHA256.HashData(Convert.FromBase64String(first.PublicKey))), first.PublicKeyFingerprint);
++        Assert.NotNull(store.SavedKey);
++    }
++
++    [Fact]
++    public async Task InstallationIdentity_ConcurrentFirstStartupReturnsPersistedWinner()
++    {
++        var shared = new ConcurrentInstallationKeyState();
++        var firstService = new InstallationIdentityService(new ConcurrentInstallationKeyStore(shared), "RPA.Platform");
++        var secondService = new InstallationIdentityService(new ConcurrentInstallationKeyStore(shared), "RPA.Platform");
++
++        var identities = await Task.WhenAll(firstService.GetOrCreateAsync(), secondService.GetOrCreateAsync());
++        var restarted = await new InstallationIdentityService(
++            new ConcurrentInstallationKeyStore(shared), "RPA.Platform").GetOrCreateAsync();
++
++        Assert.Equal(identities[0], identities[1]);
++        Assert.Equal(identities[0], restarted);
++    }
++
++    [Fact]
++    public async Task DpapiStore_UsesProtectionSeamAndAtomicFileReplacement()
++    {
++        var files = new MemoryInstallationFileSystem();
++        var protection = new RecordingProtection();
++        var store = new DpapiInstallationKeyStore("C:\\app-data", files, protection);
++        byte[] key = [1, 2, 3, 4];
++
++        Assert.True(await store.TrySaveAsync(key));
++        var loaded = await store.LoadAsync();
++
++        Assert.Equal(key, loaded);
++        Assert.Equal(key, protection.ProtectedInput);
++        Assert.Equal("C:\\app-data\\installation-key.pk8.protected", files.FinalPath);
++        Assert.StartsWith("C:\\app-data\\installation-key.pk8.protected.", files.TempPath);
++        Assert.EndsWith(".tmp", files.TempPath);
++    }
++
++    private static OfflineLicensePayload Payload(IEnumerable<string>? features = null) =>
++        new(1, "LIC-1", 2, "ACME", "install-1", "ABC", 5,
++            DateTimeOffset.Parse("2026-01-01T03:00:00+03:00"),
++            DateTimeOffset.Parse("2027-01-01T03:00:00+03:00"), features ?? ["Agent"]);
++
++    private sealed class MemoryInstallationKeyStore : IInstallationKeyStore
++    {
++        public byte[]? SavedKey { get; private set; }
++        public Task<byte[]?> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(SavedKey?.ToArray());
++        public Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
++        {
++            if (SavedKey is not null)
++                return Task.FromResult(false);
++            SavedKey = privateKey.ToArray();
++            return Task.FromResult(true);
++        }
++    }
++
++    private sealed class ConcurrentInstallationKeyState
++    {
++        public byte[]? SavedKey;
++        public int InitialLoadCount;
++        public readonly TaskCompletionSource InitialLoads = new(TaskCreationOptions.RunContinuationsAsynchronously);
++    }
++
++    private sealed class ConcurrentInstallationKeyStore(ConcurrentInstallationKeyState state) : IInstallationKeyStore
++    {
++        private bool _initialLoad = true;
++
++        public async Task<byte[]?> LoadAsync(CancellationToken cancellationToken = default)
++        {
++            if (_initialLoad)
++            {
++                _initialLoad = false;
++                if (Interlocked.Increment(ref state.InitialLoadCount) == 2)
++                    state.InitialLoads.TrySetResult();
++                await state.InitialLoads.Task.WaitAsync(cancellationToken);
++            }
++
++            return Volatile.Read(ref state.SavedKey)?.ToArray();
++        }
++
++        public Task<bool> TrySaveAsync(byte[] privateKey, CancellationToken cancellationToken = default)
++        {
++            var candidate = privateKey.ToArray();
++            return Task.FromResult(Interlocked.CompareExchange(ref state.SavedKey, candidate, null) is null);
++        }
++    }
++
++    private sealed class RecordingProtection : IInstallationKeyProtection
++    {
++        public byte[]? ProtectedInput { get; private set; }
++        public byte[] Protect(byte[] plaintext)
++        {
++            ProtectedInput = plaintext.ToArray();
++            return plaintext.Select(value => (byte)(value ^ 0x5a)).ToArray();
++        }
++        public byte[] Unprotect(byte[] protectedData) => protectedData.Select(value => (byte)(value ^ 0x5a)).ToArray();
++    }
++
++    private sealed class MemoryInstallationFileSystem : IInstallationFileSystem
++    {
++        private byte[]? _contents;
++        public string? TempPath { get; private set; }
++        public string? FinalPath { get; private set; }
++        public bool Exists(string path) => _contents is not null && path == FinalPath;
++        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken) => Task.FromResult(_contents!.ToArray());
++        public Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken cancellationToken)
++        {
++            TempPath = path;
++            _contents = contents.ToArray();
++            return Task.CompletedTask;
++        }
++        public void CreateDirectory(string path) { }
++        public bool TryMoveAtomically(string temporaryPath, string destinationPath)
++        {
++            TempPath = temporaryPath;
++            if (FinalPath is not null)
++                return false;
++            FinalPath = destinationPath;
++            return true;
++        }
++        public void Delete(string path) { }
++    }
++}

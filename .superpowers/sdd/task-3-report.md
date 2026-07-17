@@ -1,45 +1,54 @@
-# Task 3 Report: Kanal implementasyonu + OCR/ofset yardımcıları (Agent)
+# Task 3 Report — Persistence and atomic seat enforcement
 
-## TDD Evidence
+## Outcome
 
-### RED
-Before creating `VisionOffset.cs`, building `src/RPA.Agent` failed with two errors:
-1. `RPA.Agent.Tests` referenced `RPA.Agent.Vision.VisionOffset` which did not exist.
-2. `TesseractOpenCvVisionChannel` did not implement `IVisionAutomationChannel.ClickTextOffsetAsync(string, int, int, string, string, string?, int)`:
-```
-C:\Source\RPA\src\RPA.Agent\Vision\TesseractOpenCvVisionChannel.cs(18,52): error CS0535:
-'TesseractOpenCvVisionChannel', 'IVisionAutomationChannel.ClickTextOffsetAsync(string, int, int, string, string, string?, int)' arabirim üyesini uygulamaz
-```
+Implemented EF Core persistence for license installations, agent identities, and one-time activations; repository CRUD/state transitions; license import/status/capacity service; migration; and atomic final-seat activation.
 
-### GREEN
-After creating `VisionOffset.cs`, `OcrEngine.cs`, and modifying `TesseractOpenCvVisionChannel.cs`:
+PostgreSQL activation starts an explicit transaction and locks the selected `LicenseInstallations` row with `FOR UPDATE` before recounting `Activated`/`Disabled` identities. Agent transition, activation consumption, and credential-hash persistence are committed together. Stable failures include `AGENT_LICENSE_LIMIT_REACHED`, `ACTIVATION_CODE_INVALID`, `ACTIVATION_CODE_EXPIRED`, `LICENSE_MISSING`, and `LICENSE_EXPIRED`.
 
-- `dotnet build src/RPA.Agent/RPA.Agent.csproj` → **Oluşturma başarılı oldu. 0 Uyarı, 0 Hata.**
-- `dotnet test tests/RPA.Agent.Tests --filter FullyQualifiedName~Vision` →
-  **Başarılı! - Başarısız: 0, Başarılı: 10, Atlanan: 0, Toplam: 10.**
+SQLite cannot faithfully exercise PostgreSQL row-level locking. Focused concurrency tests therefore use a provider-specific process-local keyed semaphore only for non-Npgsql providers. The production Npgsql path always uses the database transaction plus row lock; the test seam does not replace or weaken it.
 
-## Changes
+## Files
 
-- CREATE `src/RPA.Agent/Vision/VisionOffset.cs` — pure `ClickPoint(VisionMatch anchorBox, int dx, int dy)` static helper, matches brief exactly.
-- CREATE `src/RPA.Agent/Vision/OcrEngine.cs` — extracted Tesseract word-box OCR logic (`Read(Mat image, string tessdataPath, string language)`), identical iterator/bounding-box logic to what was previously inline in `RunOcr`. Returns `(string Text, List<OcrWord> Words)`.
-- MODIFY `src/RPA.Agent/Vision/TesseractOpenCvVisionChannel.cs`:
-  - `RunOcr` now delegates to `OcrEngine.Read(image, _tessdataPath, language)` and maps `OcrEngine.OcrWord` → private `OcrWord` record, preserving the existing `SystemException` wrapping (`catch (Exception ex) when (ex is not RPA.Domain.Exceptions.SystemException)`).
-  - Added `ClickTextOffsetAsync(string anchorText, int dx, int dy, string language, string matchMode, string? clickType, int timeoutMs)` implementing `IVisionAutomationChannel.ClickTextOffsetAsync`. Reuses existing `PollForTextAsync` to find the anchor word box; throws `SystemException` if not found within timeout; otherwise computes click point via `VisionOffset.ClickPoint` and calls existing `DoClick`.
-- CREATE `tests/RPA.Agent.Tests/Vision/VisionOffsetTests.cs` — 2 tests (offset from center, zero-offset = center), verbatim from brief.
+- `src/RPA.Infrastructure/Persistence/RpaDbContext.cs`
+- `src/RPA.Infrastructure/Persistence/Repositories/EfAgentIdentityRepository.cs`
+- `src/RPA.Infrastructure/Persistence/Repositories/EfLicenseInstallationRepository.cs`
+- `src/RPA.Infrastructure/Licensing/LicenseService.cs`
+- `src/RPA.Infrastructure/Licensing/LicenseDocumentJson.cs`
+- `src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.cs`
+- `src/RPA.Infrastructure/Migrations/20260716084447_OfflineAgentLicensing.Designer.cs`
+- `src/RPA.Infrastructure/Migrations/RpaDbContextModelSnapshot.cs`
+- `tests/RPA.Infrastructure.Tests/Licensing/AgentSeatEnforcementTests.cs`
 
-## Build/Test Summary
+## TDD and verification evidence
 
-- `RPA.Agent.csproj` build: SUCCESS (0 warnings, 0 errors).
-- `RPA.Agent.Tests` (filter `Vision`): 10/10 passed.
-- Full solution now compiles since `TesseractOpenCvVisionChannel` fully implements `IVisionAutomationChannel`.
+- RED: filtered test failed with `CS0234` because `RPA.Infrastructure.Persistence.Repositories` did not exist.
+- GREEN: `dotnet test tests/RPA.Infrastructure.Tests/RPA.Infrastructure.Tests.csproj --filter FullyQualifiedName~AgentSeatEnforcementTests -v minimal --disable-build-servers -m:1 -p:UseSharedCompilation=false --no-restore` — exit 0, 6 passed, 0 failed.
+- Full Infrastructure: `dotnet test tests/RPA.Infrastructure.Tests/RPA.Infrastructure.Tests.csproj -v minimal --disable-build-servers -m:1 -p:UseSharedCompilation=false --no-restore` — exit 0, 674 passed, 0 failed.
+- WebAPI startup build for EF tooling: exit 0, 0 errors (existing warnings only).
+- Migration generation: `dotnet ef migrations add OfflineAgentLicensing --project src/RPA.Infrastructure --startup-project src/RPA.WebAPI --no-build` — exit 0.
+- `git diff --check` — exit 0; only existing line-ending warnings were printed.
+- Migration inspection confirmed unique indexes for `InstallationId`, `(LicenseInstallationId, MachineFingerprint)`, and `ActivationCodeHash`, plus both foreign keys.
+
+## Covered acceptance cases
+
+- 0/1 activation succeeds.
+- 1/1 activation fails with `AGENT_LICENSE_LIMIT_REACHED`.
+- `Disabled` retains a seat; `Deactivated` releases it.
+- Activation hash is consumed once.
+- Tracked entities contain hashes, not supplied plaintext sentinels.
+- Two concurrent final-seat attempts result in exactly one success.
+
+## Self-review and concerns
+
+- Transaction rollback is implicit on disposal for all pre-commit exceptions; no partial activation/code consumption is saved.
+- Capacity recount excludes soft-deleted identities and includes only `Activated`/`Disabled`.
+- Deactivation clears the credential hash.
+- The PostgreSQL lock SQL uses EF interpolation for the identifier value and a fixed table name.
+- No live PostgreSQL concurrency integration test was run in this environment. SQLite verifies orchestration through the documented non-production serialization seam; production row-lock semantics are visible in code and should receive a PostgreSQL integration test in the deployment test environment.
+- EF initially required a serialized startup-project restore/build. Migration generation then succeeded with `--no-build`; MSBuild parallelism remains an environment risk, not a product failure.
+- Existing NU1608/NU1900, nullable, and Windows-platform analyzer warnings remain unchanged.
 
 ## Commit
 
-`ecee5cf` — `feat(vision): ClickTextOffset kanal impl + OcrEngine/VisionOffset`
-(4 files changed: OcrEngine.cs created, VisionOffset.cs created, TesseractOpenCvVisionChannel.cs modified, VisionOffsetTests.cs created)
-
-## Concerns
-
-None. `OcrEngine.Read` preserves the exact word-box iteration/bounding-box logic that was previously inline in `RunOcr`, so runtime (this task) and the Task-5 picker will produce identical word boxes as required.
-
-Note: this file previously contained an unrelated report ("IRobotDispatcher ajan seçim algoritması") from an earlier numbering cycle; overwritten with this task's report.
+`b331120 feat(persistence): agent koltuk kotasini atomik uygula`
