@@ -12,7 +12,9 @@ import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.compon
 import { EInvoiceProfile, EInvoiceProfileVersion } from '../../../shared/models/einvoice-profile.model';
 import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
 import { ProjectService, ProjectSummary } from '../../../shared/services/project.service';
+import { TranslatePipe } from '../../../core/translate.pipe';
 import { variableFieldPaths } from '../variable-schema.util';
+import { parseRootVariableName, JsonSchemaLike, LoopItemField } from '../loop-item-schema';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -31,7 +33,7 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 @Component({
   selector: 'app-generic-property',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, EInvoiceMappingEditorComponent],
+  imports: [CommonModule, FormsModule, TranslatePipe, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, EInvoiceMappingEditorComponent],
   templateUrl: './generic-property.component.html',
   styleUrls: ['./generic-property.component.scss'],
 })
@@ -430,6 +432,9 @@ export class GenericPropertyComponent {
     this.properties = next;
     this.clearVariableError();
     this.propertiesChange.emit(next);
+    if (this.isForEach && port.name === 'itemVariable') {
+      this.validateItemVariable();
+    }
     // projectId değişince e-fatura profil listesi otomatik tazelensin (kullanıcı
     // "Profilleri getir"e basmak zorunda kalmasın; yeni kaydedilen profil hemen gelsin).
     if (port.name === 'projectId'
@@ -561,6 +566,60 @@ export class GenericPropertyComponent {
 
   get hasVariables(): boolean {
     return (this.variables ?? []).length > 0;
+  }
+
+  // ---- Logic.ForEach: eleman değişkeni + fallback alan editörü ----
+
+  itemVariableError = '';
+
+  get isForEach(): boolean {
+    return this.activityType === 'Logic.ForEach';
+  }
+
+  /** itemVariable adı geçerli mi? (boş → varsayılan 'item', geçerli sayılır). */
+  validateItemVariable(): void {
+    const name = String(this.properties['itemVariable'] ?? '').trim();
+    this.itemVariableError =
+      name === '' || /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+        ? ''
+        : 'Gecersiz degisken adi. Harf/alt cizgi ile baslamali.';
+  }
+
+  /** items ifadesi şemalı bir list<object> değişkenine çözülüyor mu? */
+  private itemsResolvesToSchema(): boolean {
+    const root = parseRootVariableName(String(this.properties['items'] ?? ''));
+    if (!root) {
+      return false;
+    }
+    const schema = this.variables.find((v) => v.name === root)?.schema as JsonSchemaLike | undefined;
+    return !!schema && schema.type === 'array' && !!schema.items?.properties;
+  }
+
+  /** Şemaya çözülemediğinde elle alan editörü gösterilir. */
+  get showManualFields(): boolean {
+    return this.isForEach && !this.itemsResolvesToSchema();
+  }
+
+  get itemFields(): LoopItemField[] {
+    return (this.properties['itemFields'] as LoopItemField[] | undefined) ?? [];
+  }
+
+  private commitItemFields(fields: LoopItemField[]): void {
+    const next = { ...this.properties, itemFields: fields };
+    this.properties = next;
+    this.propertiesChange.emit(next);
+  }
+
+  addItemField(): void {
+    this.commitItemFields([...this.itemFields, { name: '', type: 'string' }]);
+  }
+
+  updateItemField(index: number, patch: Partial<LoopItemField>): void {
+    this.commitItemFields(this.itemFields.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  }
+
+  removeItemField(index: number): void {
+    this.commitItemFields(this.itemFields.filter((_, i) => i !== index));
   }
 
   private loadMetadata(activityType: string | undefined): void {

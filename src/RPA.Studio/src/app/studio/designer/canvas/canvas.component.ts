@@ -1235,6 +1235,9 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       case 'forEach':
         writable['items'] = props['items'] as string | undefined;
         writable['itemVariable'] = props['itemVariable'] as string | undefined;
+        if (Array.isArray(props['itemFields'])) {
+          writable['itemFields'] = props['itemFields'];
+        }
         break;
       case 'for':
         writable['start'] = props['start'] as number | undefined;
@@ -1278,6 +1281,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         return {
           ...(typeof node['items'] === 'string' ? { items: node['items'] } : {}),
           ...(typeof node['itemVariable'] === 'string' ? { itemVariable: node['itemVariable'] } : {}),
+          ...(Array.isArray(node['itemFields']) ? { itemFields: node['itemFields'] } : {}),
         };
       case 'for':
         return {

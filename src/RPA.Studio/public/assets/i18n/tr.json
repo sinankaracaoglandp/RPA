@@ -79,6 +79,14 @@
     "offsetX": "Ofset X (px)",
     "offsetY": "Ofset Y (px)"
   },
+  "foreach": {
+    "itemVariable": "Eleman değişkeni",
+    "manualFieldsHint": "Kaynak listenin şeması yok; alanları elle tanımlayın.",
+    "fieldName": "Alan adı",
+    "addField": "Alan ekle",
+    "autoSchemaHint": "Alanlar kaynak listeden otomatik türetildi.",
+    "exitUnconnected": "Döngü sonrası akış bağlı değil (exit portu boş)."
+  },
   "seq": {
     "empty": "Henuz adim yok. Ic ice menuler icin sirayla adim ekleyin.",
     "addStep": "Adim ekle",

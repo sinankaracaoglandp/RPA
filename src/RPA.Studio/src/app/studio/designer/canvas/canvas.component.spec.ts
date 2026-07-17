@@ -215,6 +215,18 @@ describe('CanvasComponent', () => {
     expect(component.serialize().connections.some((connection) => connection.toPort === 'loop-back')).toBe(true);
   });
 
+  it('round-trips forEach itemFields through load and serialize', async () => {
+    await ready();
+    await component.loadWorkflow({
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [{ id: 'fe', type: 'forEach', items: '${x}', itemVariable: 'satir',
+        itemFields: [{ name: 'id', type: 'string' }] }],
+      connections: [],
+    });
+    const fe = component.serialize().nodes.find((n) => n.type === 'forEach');
+    expect(fe?.['itemFields']).toEqual([{ name: 'id', type: 'string' }]);
+  });
+
   it('loads a workflow and round-trips node/connection ids by position', async () => {
     await ready();
     const wf: WorkflowVersion = {

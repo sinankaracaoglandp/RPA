@@ -361,6 +361,31 @@ describe('GenericPropertyComponent', () => {
     expect(examples.textContent).toContain('{{tarih}} == "2026-07-09T08:30:00"');
   });
 
+  it('flags an invalid ForEach itemVariable name', () => {
+    (component as unknown as { _activityType: string })._activityType = 'Logic.ForEach';
+    component.properties = { items: '${faturalar}', itemVariable: '1bad' };
+    expect(component.isForEach).toBe(true);
+    component.validateItemVariable();
+    expect(component.itemVariableError).not.toBe('');
+  });
+
+  it('shows manual field editor when items has no resolvable schema variable', () => {
+    (component as unknown as { _activityType: string })._activityType = 'Logic.ForEach';
+    component.variables = [];
+    component.properties = { items: '${hamListe}', itemVariable: 'satir' };
+    expect(component.showManualFields).toBe(true);
+  });
+
+  it('hides manual field editor when items resolves to a list<object> variable', () => {
+    (component as unknown as { _activityType: string })._activityType = 'Logic.ForEach';
+    component.variables = [{
+      name: 'faturalar', type: 'list<object>',
+      schema: { type: 'array', items: { type: 'object', properties: { tutar: { type: 'number' } } } },
+    } as never];
+    component.properties = { items: '${faturalar}', itemVariable: 'fatura' };
+    expect(component.showManualFields).toBe(false);
+  });
+
   it('expressionSuggestions includes schema field paths', () => {
     component.variables = [{
       name: 'fatura', type: 'object',

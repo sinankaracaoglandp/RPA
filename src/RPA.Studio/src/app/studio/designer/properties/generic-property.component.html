@@ -289,6 +289,47 @@
       @if (variableError) {
         <p class="generic-property__error" role="alert">{{ variableError }}</p>
       }
+
+      @if (isForEach) {
+        <div class="generic-property__foreach" data-testid="foreach-item-editor">
+          @if (itemVariableError) {
+            <p class="generic-property__error" role="alert" data-testid="foreach-item-variable-error">
+              {{ itemVariableError }}
+            </p>
+          }
+          @if (showManualFields) {
+            <div class="generic-property__manual-fields" data-testid="foreach-manual-fields">
+              <p class="generic-property__desc">{{ 'foreach.manualFieldsHint' | translate }}</p>
+              @for (f of itemFields; track $index) {
+                <div class="generic-property__manual-field-row">
+                  <input
+                    type="text"
+                    [value]="f.name"
+                    (input)="updateItemField($index, { name: $any($event.target).value })"
+                    [placeholder]="'foreach.fieldName' | translate"
+                  />
+                  <select [value]="f.type" (change)="updateItemField($index, { type: $any($event.target).value })">
+                    <option value="string">string</option>
+                    <option value="int">int</option>
+                    <option value="number">number</option>
+                    <option value="bool">bool</option>
+                    <option value="datetime">datetime</option>
+                    <option value="object">object</option>
+                  </select>
+                  <button type="button" (click)="removeItemField($index)">✕</button>
+                </div>
+              }
+              <button type="button" (click)="addItemField()" data-testid="foreach-add-field">
+                + {{ 'foreach.addField' | translate }}
+              </button>
+            </div>
+          } @else {
+            <p class="generic-property__desc" data-testid="foreach-auto-hint">
+              {{ 'foreach.autoSchemaHint' | translate }}
+            </p>
+          }
+        </div>
+      }
     }
   }
 

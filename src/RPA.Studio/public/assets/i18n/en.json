@@ -79,6 +79,14 @@
     "offsetX": "Offset X (px)",
     "offsetY": "Offset Y (px)"
   },
+  "foreach": {
+    "itemVariable": "Item variable",
+    "manualFieldsHint": "Source list has no schema; define fields manually.",
+    "fieldName": "Field name",
+    "addField": "Add field",
+    "autoSchemaHint": "Fields auto-derived from the source list.",
+    "exitUnconnected": "No flow after the loop (exit port is empty)."
+  },
   "seq": {
     "empty": "No steps yet. Add steps in order for nested menus.",
     "addStep": "Add step",
