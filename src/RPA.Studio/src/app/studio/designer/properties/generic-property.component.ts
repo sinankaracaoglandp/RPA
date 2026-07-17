@@ -383,6 +383,16 @@ export class GenericPropertyComponent {
     this.properties = next;
     this.clearVariableError();
     this.propertiesChange.emit(next);
+    // projectId değişince e-fatura profil listesi otomatik tazelensin (kullanıcı
+    // "Profilleri getir"e basmak zorunda kalmasın; yeni kaydedilen profil hemen gelsin).
+    if (port.name === 'projectId'
+      && (this.metadata?.activityId === 'EInvoice.ReadProfile' || this.metadata?.activityId === 'EInvoice.ReadProfileBatch')) {
+      if (String(next['projectId'] ?? '').trim()) {
+        this.loadEInvoiceProfiles();
+      } else {
+        this.einvoiceProfileOptions = [];
+      }
+    }
   }
 
   // Paket F: image picker sonuclarinin onizlemesi (port.name -> base64 PNG).
@@ -519,6 +529,9 @@ export class GenericPropertyComponent {
         this.loading = false;
         if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
           this.loadEInvoiceVersionInfo();
+          if (String(this.properties['projectId'] ?? '').trim()) {
+            this.loadEInvoiceProfiles();
+          }
         }
         this.cdr.markForCheck();
       },

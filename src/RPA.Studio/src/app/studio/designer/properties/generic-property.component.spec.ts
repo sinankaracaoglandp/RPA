@@ -212,9 +212,7 @@ describe('GenericPropertyComponent', () => {
         { name: 'outputVariable', type: 'string', required: false },
       ],
     });
-    fixture.detectChanges();
-
-    (fixture.nativeElement.querySelector('[data-testid="load-einvoice-profiles"]') as HTMLButtonElement).click();
+    // projectId zaten dolu olduğundan profil listesi panel açılınca otomatik yüklenir.
     http.expectOne('/api/projects/project-1/einvoice-profiles').flush([
       {
         id: 'profile-1',
@@ -247,6 +245,31 @@ describe('GenericPropertyComponent', () => {
     });
   });
 
+  it('projectId girilince e-fatura profil listesi otomatik yüklenir (buton gerekmez)', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { outputVariable: 'fatura' };
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'projectId', type: 'string', required: true },
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+      ],
+    });
+    fixture.detectChanges();
+    // projectId boş olduğundan panel açılışında liste çekilmez.
+    http.expectNone('/api/projects/project-9/einvoice-profiles');
+
+    component.onValueChange({ name: 'projectId', type: 'string' }, 'project-9');
+    http.expectOne('/api/projects/project-9/einvoice-profiles').flush([
+      { id: 'profile-9', projectId: 'project-9', name: 'Yeni Profil', draftDefinitionJson: '{"fields":[],"collections":[]}', createdAt: '2026-07-17T00:00:00Z' },
+    ]);
+    fixture.detectChanges();
+
+    expect(component.einvoiceProfileOptions.map(profile => profile.name)).toContain('Yeni Profil');
+  });
+
   it('node eski profil sürümündeyse yeni sürüm uyarısı gösterir', () => {
     component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
     component.activityType = 'EInvoice.ReadProfile';
@@ -263,6 +286,8 @@ describe('GenericPropertyComponent', () => {
       { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-16T00:00:00Z' },
       { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-15T00:00:00Z' },
     ]);
+    // projectId dolu → profil listesi de otomatik yüklenir.
+    http.expectOne('/api/projects/proj-1/einvoice-profiles').flush([]);
     fixture.detectChanges();
 
     expect(component.einvoiceNewerVersion).toBe(2);
