@@ -118,10 +118,22 @@ to the new host as a shortcut: the DPAPI blob is machine-bound and will not decr
 1. Studio → `/orchestrator/agents` → **create agent** (state `PendingActivation`, consumes no seat).
 2. **Generate activation code** (`POST /api/agents/{id}/activation-code`). The code is shown **once**,
    lives 15 minutes, is single-use, and is stored only as a hash.
-3. On the agent host, submit the code to `POST /api/agent-auth/activate` with the installation ID and
-   machine fingerprint. WebAPI validates license + capacity, transitions the identity to `Activated`,
-   consumes the code, and returns the long-lived agent credential **once**. The agent protects it
-   with DPAPI machine scope (`IAgentCredentialStore`).
+3. On the agent host, configure `Agent:AgentId` (shown when the agent is created in Studio) and
+   `Agent:InstallationId` (shown on the licensing screen), then run the agent **once** in activation
+   mode:
+
+   ```powershell
+   dotnet run --project src/RPA.Agent -- --activate <ACTIVATION-CODE>
+   # deployed: RPA.Agent.exe --activate <ACTIVATION-CODE>
+   ```
+
+   This posts the code to `POST /api/agent-auth/activate` with the installation ID and machine
+   fingerprint, then **exits** — it does not start the service loop. WebAPI validates license +
+   capacity, transitions the identity to `Activated`, consumes the code, and returns the long-lived
+   agent credential **once**. The agent protects it with DPAPI machine scope
+   (`IAgentCredentialStore`) and never logs it. Afterwards start the agent normally (no flag).
+
+   The code is single-use: a failed attempt needs a fresh code from Studio.
 4. The agent exchanges the credential at `POST /api/agent-auth/token` for a ~10-minute JWT
    (`sub=agent:{id}`, `agent_id`, `installation_id`, `client_type=agent`, `token_use=access`) and
    uses it for `/hubs/robot` and `/hubs/studio` via the shared token provider.

@@ -2,7 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using RPA.Agent;
+using RPA.Agent.Authentication;
+using RPA.Agent.Configuration;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Queues;
 using RPA.Infrastructure.Robots;
@@ -57,6 +60,26 @@ try
     builder.Services.AddAgentCore(builder.Configuration);
 
     var host = builder.Build();
+
+    // Aktivasyon modu: kodu tuket, credential'i korumali depoya yaz, cik. Ajan dongusu baslamaz —
+    // aktivasyon operatorun bir kereye mahsus yaptigi kurulum adimidir, servis calismasi degil.
+    string? activationCode = null;
+    try
+    {
+        if (AgentCommandLine.TryGetActivationCode(args, out var code)) activationCode = code;
+    }
+    catch (ArgumentException ex)
+    {
+        // Operator hatasi — "beklenmeyen hata" degil: yigin izi basmadan kullanim yaz.
+        Log.Error("{Message}", ex.Message);
+        return 1;
+    }
+
+    if (activationCode is not null)
+    {
+        return await ActivateAgentAsync(host, activationCode);
+    }
+
     await host.RunAsync();
     return 0;
 }
@@ -68,4 +91,40 @@ catch (Exception ex)
 finally
 {
     await Log.CloseAndFlushAsync();
+}
+
+/// <summary>
+/// Aktivasyon kodunu Orchestrator'a sunar; donen credential DPAPI korumali dosyaya yazilir
+/// (AgentEnrollmentClient). Kod tek kullanimliktir — basarisiz denemede Studio'dan yeni kod alinir.
+/// GUVENLIK: kod ve credential hicbir log yoluna yazilmaz; yalnizca sunucunun stabil hata kodu.
+/// </summary>
+static async Task<int> ActivateAgentAsync(IHost host, string activationCode)
+{
+    var options = host.Services.GetRequiredService<IOptions<AgentOptions>>().Value;
+
+    // Aktivasyon istegi AgentId + InstallationId tasir: ikisi de Studio'dan gelir ve
+    // yapilandirmada bulunmak ZORUNDADIR — aksi halde sunucuya bos kimlikle gidilirdi.
+    if (options.AgentId == Guid.Empty || string.IsNullOrWhiteSpace(options.InstallationId))
+    {
+        Log.Error(
+            "Aktivasyon icin Agent:AgentId ve Agent:InstallationId yapilandirilmalidir. " +
+            "AgentId Studio'da agent olusturulunca, InstallationId lisans ekraninda gorunur.");
+        return 1;
+    }
+
+    try
+    {
+        var enrollment = host.Services.GetRequiredService<AgentEnrollmentClient>();
+        await enrollment.ActivateAsync(activationCode);
+        Log.Information(
+            "Agent {AgentId} aktive edildi ({MachineName}). Credential korumali depoya yazildi; " +
+            "ajan bundan sonra normal baslatilabilir.",
+            options.AgentId, options.EffectiveMachineName);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Log.Error("Agent aktivasyonu basarisiz: {Reason}", ex.Message);
+        return 1;
+    }
 }
