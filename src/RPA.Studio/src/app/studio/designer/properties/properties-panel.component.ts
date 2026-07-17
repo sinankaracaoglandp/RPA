@@ -21,6 +21,7 @@ export class PropertiesPanelComponent {
   @Input() activityType?: string;
   @Input() properties: Record<string, unknown> = {};
   @Input() variables: WorkflowVariable[] = [];
+  @Input() projectId: string | null = null;
   @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
 
   panelWidth = 360;

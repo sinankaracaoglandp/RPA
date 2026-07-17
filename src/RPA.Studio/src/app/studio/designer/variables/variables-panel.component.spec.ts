@@ -119,4 +119,51 @@ describe('VariablesPanelComponent', () => {
     expect(component.variablePathsFor('fatura')).toContain('fatura.faturaNo');
     expect(component.variablePathsFor('fatura')).toContain('fatura.satirlar');
   });
+
+  it('lists schema field names with their types and expands nested list items on click', () => {
+    fixture.componentRef.setInput('variables', [
+      {
+        name: 'fatura',
+        type: 'object',
+        scope: 'global',
+        schema: {
+          type: 'object',
+          properties: {
+            faturaNo: { type: 'string' },
+            satirlar: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  sira: { type: 'integer' },
+                  aciklama: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+    fixture.detectChanges();
+
+    const rows = component.schemaFieldRows(component.variables[0]);
+    expect(rows).toEqual([
+      { path: 'fatura.faturaNo', type: 'string', nested: false },
+      { path: 'fatura.satirlar', type: 'liste<object>', nested: false },
+      { path: 'satir.sira', type: 'integer', nested: true },
+      { path: 'satir.aciklama', type: 'string', nested: true },
+    ]);
+
+    // Alanlar başta gizli; tıklayınca açılır.
+    expect(fixture.nativeElement.querySelector('[data-testid="variable-fields-0"]')).toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="variable-schema-toggle-0"]').click();
+    fixture.detectChanges();
+
+    const fields = fixture.nativeElement.querySelector('[data-testid="variable-fields-0"]');
+    expect(fields).toBeTruthy();
+    expect(fields.textContent).toContain('fatura.faturaNo');
+    expect(fields.textContent).toContain('string');
+    expect(fields.textContent).toContain('satir.sira');
+    expect(fields.textContent).toContain('integer');
+  });
 });

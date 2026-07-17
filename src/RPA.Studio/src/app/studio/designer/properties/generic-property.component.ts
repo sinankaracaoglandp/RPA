@@ -72,6 +72,8 @@ export class GenericPropertyComponent {
 
   @Input() properties: Record<string, unknown> = {};
   @Input() variables: WorkflowVariable[] = [];
+  /** Designer projeden açıldıysa taşınan proje kimliği; e-fatura profil seçicisini otomatik doldurur. */
+  @Input() projectId: string | null = null;
   @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
 
   get inputs(): ActivityPort[] {
@@ -200,6 +202,22 @@ export class GenericPropertyComponent {
   /** projectId alanı bu aktivitede GUID yerine proje-adı açılır listesiyle gösterilir. */
   isEInvoiceProjectPicker(port: ActivityPort): boolean {
     return port.name === 'projectId' && this.isEInvoiceReadActivity();
+  }
+
+  /**
+   * Node'da projectId henüz boşsa ve designer bir proje bağlamından açıldıysa
+   * (`projectId` input'u), o projeyi otomatik seçili yapar — kullanıcı GUID bilmek
+   * ya da listeden elle seçmek zorunda kalmaz.
+   */
+  private adoptContextProjectId(): void {
+    const current = String(this.properties['projectId'] ?? '').trim();
+    const context = (this.projectId ?? '').trim();
+    if (current || !context) {
+      return;
+    }
+    const next = { ...this.properties, projectId: context };
+    this.properties = next;
+    this.propertiesChange.emit(next);
   }
 
   loadProjectOptions(): void {
@@ -550,6 +568,7 @@ export class GenericPropertyComponent {
         this.loading = false;
         if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
           this.loadProjectOptions();
+          this.adoptContextProjectId();
           this.loadEInvoiceVersionInfo();
           if (String(this.properties['projectId'] ?? '').trim()) {
             this.loadEInvoiceProfiles();

@@ -69,6 +69,9 @@ export class DesignerComponent implements OnDestroy {
   private readonly router = inject(Router);
   private runStatusPolling?: Subscription;
 
+  /** Projeden açıldıysa (query param) taşınan proje kimliği — e-fatura profil seçici gibi
+   *  proje-kapsamlı alanları otomatik doldurmak için. */
+  readonly projectId = signal<string | null>(null);
   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
   readonly selectedNodeId = signal<string | null>(null);
   readonly selectedActivityType = signal<string | undefined>(undefined);
@@ -96,6 +99,7 @@ export class DesignerComponent implements OnDestroy {
   readonly debugCurrentNodeId = this.debug.currentNodeId;
 
   constructor() {
+    this.projectId.set(this.route.snapshot.queryParamMap?.get('projectId') ?? null);
     const routedId = this.route.snapshot.paramMap.get('workflowId');
     if (routedId) {
       this.workflowId.set(routedId);

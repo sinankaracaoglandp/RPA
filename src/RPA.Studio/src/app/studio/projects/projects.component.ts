@@ -82,7 +82,10 @@ export class ProjectsComponent implements OnInit {
   }
 
   openWorkflow(workflowId: string): void {
-    void this.router.navigate(['/designer', workflowId]);
+    // Projeyi query param olarak taşı — designer, e-fatura profil seçici gibi
+    // proje-kapsamlı alanları elle GUID girmeden otomatik doldurabilsin.
+    const projectId = this.selectedProjectId();
+    void this.router.navigate(['/designer', workflowId], projectId ? { queryParams: { projectId } } : {});
   }
 
   openEInvoiceProfiles(): void {

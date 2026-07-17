@@ -18,6 +18,57 @@ export class VariablesPanelComponent {
 
   readonly variableTypes = VARIABLE_TYPES;
 
+  /** Şeması açık gösterilen değişken adları (tıklayınca genişler). */
+  private readonly expanded = new Set<string>();
+
+  /** Bu değişkenin bir şeması (object/list) var mı — alan listesi gösterilebilir mi? */
+  hasSchema(variable: WorkflowVariable): boolean {
+    return !!variable.schema && this.schemaFieldRows(variable).length > 0;
+  }
+
+  isSchemaExpanded(variable: WorkflowVariable): boolean {
+    return this.expanded.has(variable.name);
+  }
+
+  toggleSchema(variable: WorkflowVariable): void {
+    if (this.expanded.has(variable.name)) {
+      this.expanded.delete(variable.name);
+    } else {
+      this.expanded.add(variable.name);
+    }
+  }
+
+  /**
+   * Değişken şemasındaki alanları ad + tip ile döndürür. Object kök için `deg.alan`,
+   * list<object> kök için `satir.alan`. Bir alan kendisi liste ise item alanları
+   * bir seviye içerlek (`nested`) olarak eklenir (fatura → satır kalemleri gibi).
+   */
+  schemaFieldRows(variable: WorkflowVariable): SchemaFieldRow[] {
+    const schema = variable.schema as JsonSchemaLike | undefined;
+    if (!schema || typeof schema !== 'object') {
+      return [];
+    }
+    const root = schema.type === 'array' ? schema.items : schema;
+    const rootPrefix = schema.type === 'array' ? 'satir' : variable.name;
+    const rows: SchemaFieldRow[] = [];
+    for (const [name, def] of Object.entries(root?.properties ?? {})) {
+      rows.push({ path: `${rootPrefix}.${name}`, type: this.displayType(def), nested: false });
+      if (def.type === 'array' && def.items?.properties) {
+        for (const [childName, childDef] of Object.entries(def.items.properties)) {
+          rows.push({ path: `satir.${childName}`, type: this.displayType(childDef), nested: true });
+        }
+      }
+    }
+    return rows;
+  }
+
+  private displayType(def: JsonSchemaLike): string {
+    if (def.type === 'array') {
+      return `liste<${def.items?.type ?? 'object'}>`;
+    }
+    return def.type ?? 'string';
+  }
+
   addVariable(): void {
     this.emit([
       ...this.variables,
@@ -181,4 +232,10 @@ interface JsonSchemaLike {
   type?: string;
   properties?: Record<string, JsonSchemaLike>;
   items?: JsonSchemaLike;
+}
+
+export interface SchemaFieldRow {
+  path: string;
+  type: string;
+  nested: boolean;
 }

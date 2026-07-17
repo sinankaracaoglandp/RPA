@@ -272,6 +272,34 @@ describe('GenericPropertyComponent', () => {
     expect(component.einvoiceProfileOptions.map(profile => profile.name)).toContain('Yeni Profil');
   });
 
+  it('designer bir proje bağlamından açıldıysa projectId otomatik dolar ve profiller yüklenir', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { outputVariable: 'fatura' };
+    component.projectId = 'ctx-proj';
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe(value => (emitted = value));
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'projectId', type: 'string', required: true },
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+      ],
+    });
+    fixture.detectChanges();
+
+    http.expectOne('/api/projects').flush([{ id: 'ctx-proj', name: 'Bağlam', workflowCount: 1 }]);
+    // projectId otomatik dolduğundan profil listesi elle seçim olmadan yüklenir.
+    http.expectOne('/api/projects/ctx-proj/einvoice-profiles').flush([
+      { id: 'profile-x', projectId: 'ctx-proj', name: 'Bağlam Profili', draftDefinitionJson: '{"fields":[],"collections":[]}', createdAt: '2026-07-17T00:00:00Z' },
+    ]);
+    fixture.detectChanges();
+
+    expect(emitted?.['projectId']).toBe('ctx-proj');
+    expect(component.einvoiceProfileOptions.map(p => p.name)).toContain('Bağlam Profili');
+  });
+
   it('node eski profil sürümündeyse yeni sürüm uyarısı gösterir', () => {
     component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
     component.activityType = 'EInvoice.ReadProfile';
