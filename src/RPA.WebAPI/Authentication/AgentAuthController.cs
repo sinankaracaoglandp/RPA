@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using RPA.Domain.Exceptions;
+using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Authentication;
 using RPA.Infrastructure.Persistence;
 using RPA.Infrastructure.Persistence.Repositories;
@@ -17,12 +18,14 @@ public sealed class AgentAuthController : ControllerBase
     private readonly RpaDbContext _db;
     private readonly EfAgentIdentityRepository _agents;
     private readonly AgentTokenService _tokens;
+    private readonly ILicenseService _licenses;
 
-    public AgentAuthController(RpaDbContext db, EfAgentIdentityRepository agents, AgentTokenService tokens)
+    public AgentAuthController(RpaDbContext db, EfAgentIdentityRepository agents, AgentTokenService tokens, ILicenseService licenses)
     {
         _db = db;
         _agents = agents;
         _tokens = tokens;
+        _licenses = licenses;
     }
 
     [AllowAnonymous]
@@ -73,6 +76,23 @@ public sealed class AgentAuthController : ControllerBase
                 Convert.FromHexString(SecretHasher.Hash(request.Credential))))
         {
             return Unauthorized(new { error = "AGENT_CREDENTIAL_INVALID" });
+        }
+
+        // Lisans, kimlik dogrulama yolunda da zorlanir. Aksi halde sona erme yalnizca import ve
+        // aktivasyon aninda kontrol edilir; suresi dolmus lisansta zaten aktive edilmis ajanlar
+        // 10 dakikalik tokeni sonsuza dek yenileyerek calismaya devam ederdi.
+        var status = await _licenses.GetStatusAsync(cancellationToken);
+        if (!status.IsValid)
+        {
+            return Unauthorized(new { error = status.ErrorCode ?? "LICENSE_INVALID" });
+        }
+
+        // Agent, lisansli BU kuruluma ait olmalidir — baska bir kurulumdan tasinmis kayitlar
+        // (kopyalanmis veritabani) bu kurulumun koltuklarini kullanamaz.
+        var installation = await _licenses.GetCurrentInstallationAsync(cancellationToken);
+        if (installation is null || agent.LicenseInstallationId != installation.Id)
+        {
+            return Unauthorized(new { error = "LICENSE_INSTALLATION_MISMATCH" });
         }
 
         try

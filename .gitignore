@@ -511,3 +511,7 @@ ayar_giris.txt
 
 # Studio kaynak kodu — [Dd]ebug/ kalibi yanlislikla yakaliyordu (derleme ciktisi degil)
 !src/RPA.Studio/src/app/studio/debug/
+
+# Lisans kurulum kimligi ozel anahtari (DPAPI korumali) - ASLA commit edilmez.
+src/RPA.WebAPI/App_Data/Licensing/
+**/App_Data/Licensing/

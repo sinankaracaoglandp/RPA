@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using RPA.Domain.Exceptions;
 using RPA.Domain.Interfaces;
 using RPA.Domain.Licensing;
+using RPA.Infrastructure.Licensing;
 
 [ApiController]
 [Route("api/license")]
@@ -19,9 +20,20 @@ public sealed class LicenseController : ControllerBase
     [HttpPost("import")]
     public async Task<IActionResult> Import([FromBody] JsonElement document, CancellationToken cancellationToken)
     {
+        SignedLicenseDocument signed;
         try
         {
-            return Ok(await _licenses.ImportAsync(ReadSignedLicense(document), cancellationToken));
+            signed = LicenseDocumentJson.Read(document);
+        }
+        catch (JsonException)
+        {
+            // Yanlis dosya secildi / belge bozuk: bu bir istemci hatasidir. Icerigi yankilamayiz.
+            return BadRequest(new { error = "LICENSE_DOCUMENT_INVALID" });
+        }
+
+        try
+        {
+            return Ok(await _licenses.ImportAsync(signed, cancellationToken));
         }
         catch (BusinessException ex)
         {
@@ -38,42 +50,4 @@ public sealed class LicenseController : ControllerBase
     [HttpGet("status")]
     public async Task<ActionResult<LicenseStatus>> Status(CancellationToken cancellationToken) =>
         Ok(await _licenses.GetStatusAsync(cancellationToken));
-
-    private static SignedLicenseDocument ReadSignedLicense(JsonElement document)
-    {
-        var payload = GetProperty(document, "Payload");
-        var features = GetProperty(payload, "Features").EnumerateArray()
-            .Select(x => x.GetString()!)
-            .ToArray();
-
-        return new SignedLicenseDocument(
-            new OfflineLicensePayload(
-                GetProperty(payload, "SchemaVersion").GetInt32(),
-                GetProperty(payload, "LicenseId").GetString()!,
-                GetProperty(payload, "Revision").GetInt32(),
-                GetProperty(payload, "CustomerId").GetString()!,
-                GetProperty(payload, "CustomerName").GetString()!,
-                GetProperty(payload, "Edition").GetString()!,
-                GetProperty(payload, "InstallationId").GetString()!,
-                GetProperty(payload, "InstallationPublicKeyFingerprint").GetString()!,
-                GetProperty(payload, "MaxActivatedAgents").GetInt32(),
-                GetProperty(payload, "IssuedAt").GetDateTimeOffset(),
-                GetProperty(payload, "ExpiresAt").GetDateTimeOffset(),
-                features),
-            GetProperty(document, "Signature").GetString()!,
-            GetProperty(document, "Algorithm").GetString()!);
-    }
-
-    private static JsonElement GetProperty(JsonElement element, string name)
-    {
-        foreach (var property in element.EnumerateObject())
-        {
-            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
-            {
-                return property.Value;
-            }
-        }
-
-        throw new JsonException($"Missing required property '{name}'.");
-    }
 }

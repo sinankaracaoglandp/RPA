@@ -93,11 +93,20 @@ public sealed class EfAgentIdentityRepository : IAgentIdentityRepository
     public Task DeactivateAsync(Guid id, DateTimeOffset deactivatedAt, CancellationToken cancellationToken = default) => ChangeStatusAsync(id, AgentIdentityStatus.Deactivated, deactivatedAt, cancellationToken);
     private async Task ChangeStatusAsync(Guid id, AgentIdentityStatus status, DateTimeOffset at, CancellationToken ct)
     {
-        var agent = await _db.AgentIdentities.SingleAsync(x => x.Id == id, ct); agent.Status = status;
+        var agent = await RequireAsync(id, ct); agent.Status = status;
         if (status == AgentIdentityStatus.Disabled) agent.DisabledAt = at;
         else { agent.DeactivatedAt = at; agent.CredentialHash = null; }
         await _db.SaveChangesAsync(ct);
     }
     public async Task RotateCredentialAsync(Guid id, string credentialHash, CancellationToken cancellationToken = default)
-    { var agent = await _db.AgentIdentities.SingleAsync(x => x.Id == id, cancellationToken); agent.CredentialHash = credentialHash; await _db.SaveChangesAsync(cancellationToken); }
+    { var agent = await RequireAsync(id, cancellationToken); agent.CredentialHash = credentialHash; await _db.SaveChangesAsync(cancellationToken); }
+
+    /// <summary>
+    /// Agent'i getirir; yoksa AGENT_NOT_FOUND (BusinessException) atar. Silinmis kayitlar da
+    /// yok sayilir — aksi halde GetByIdAsync (!IsDeleted) null derken mutasyon yollari ayni
+    /// satiri gunceller, ve eksik kayitta ham InvalidOperationException 500'e donusurdu.
+    /// </summary>
+    private async Task<AgentIdentity> RequireAsync(Guid id, CancellationToken ct) =>
+        await _db.AgentIdentities.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)
+            ?? throw new BusinessException("AGENT_NOT_FOUND");
 }

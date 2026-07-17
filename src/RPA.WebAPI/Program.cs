@@ -118,11 +118,14 @@ builder.Services.AddScoped<RPA.Domain.Interfaces.ILicenseService>(sp =>
         sp.GetRequiredService<IVendorLicenseVerifier>(),
         builder.Configuration["Licensing:ProductId"] ?? "RPA.Platform",
         builder.Configuration["Licensing:CustomerReference"]));
-builder.Services.AddScoped<IInstallationIdentityService>(sp =>
+// SINGLETON: kurulum kimligi sureç boyunca sabittir ve InstallationIdentityService icindeki
+// semafor ancak TEK bir ornek paylasildiginda anlam tasir — scoped kayitta her istek kendi
+// semaforunu alir, hicbir sey serilestirilmez ve ilk aciliste her istek 3072-bit RSA uretir.
+builder.Services.AddSingleton<IInstallationIdentityService>(sp =>
     new InstallationIdentityService(
         sp.GetRequiredService<IInstallationKeyStore>(),
         builder.Configuration["Licensing:ProductId"] ?? "RPA.Platform"));
-builder.Services.AddScoped<IInstallationKeyStore>(_ =>
+builder.Services.AddSingleton<IInstallationKeyStore>(_ =>
     new DpapiInstallationKeyStore(
         builder.Configuration["Licensing:KeyDirectory"]
         ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Licensing")));
@@ -149,7 +152,9 @@ if (string.IsNullOrWhiteSpace(vendorPublicKeyPem))
         "lisansları kabul eder. Production'da uygulama bu ayar olmadan başlamaz.");
 }
 
-builder.Services.AddScoped<IVendorLicenseVerifier>(_ => new VendorLicenseVerifier(vendorPublicKeyPem));
+// SINGLETON: dogrulayici durumsuzdur; scoped kayit her istekte PEM'i yeniden ayristirip yeni bir
+// RSA nesnesi acardi (guven kokune her istek icin gereksiz kurulum maliyeti).
+builder.Services.AddSingleton<IVendorLicenseVerifier>(_ => new VendorLicenseVerifier(vendorPublicKeyPem));
 builder.Services.AddScoped<RPA.Domain.Interfaces.IAgentIdentityRepository, EfAgentIdentityRepository>();
 builder.Services.AddScoped<EfAgentIdentityRepository>();
 builder.Services.AddScoped<IAgentActivationCodeStore, EfAgentActivationCodeStore>();
@@ -170,8 +175,9 @@ if (string.IsNullOrEmpty(jwt.Secret))
         "Secret must be at least 32 bytes (characters).");
 }
 
-// HIGH FIX: Derive signing key using PBKDF2 to ensure strength against low-entropy secrets
-var derivedKey = DeriveKeyFromSecret(jwt.Secret);
+// Imza anahtari tek kaynaktan turetilir (JwtSigningKey) — uretim ve dogrulama ayni parametreleri
+// kullanmak ZORUNDADIR; ayri kopyalar sessizce ayrisip tum token'lari gecersiz kilardi.
+var derivedKey = JwtSigningKey.Derive(jwt.Secret);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -252,22 +258,6 @@ app.MapHub<StudioHub>("/hubs/studio");
 
 app.Run();
 
-// Helper method to derive a cryptographically strong key from JWT secret using PBKDF2.
-static byte[] DeriveKeyFromSecret(string secret)
-{
-    // Use PBKDF2 to derive a 32-byte key from the secret.
-    // This strengthens the key against low-entropy input and provides proper key derivation.
-    var secretBytes = Encoding.UTF8.GetBytes(secret);
-    var saltBytes = Encoding.UTF8.GetBytes("RPA.JwtTokenService.v1"); // Fixed salt for consistency
-
-    // Use static Pbkdf2 method (not deprecated constructor)
-    return Rfc2898DeriveBytes.Pbkdf2(
-        secretBytes,
-        saltBytes,
-        iterations: 10000,
-        HashAlgorithmName.SHA256,
-        outputLength: 32);
-}
 
 // Integration test (WebApplicationFactory) için erişilebilir Program sınıfı.
 public partial class Program { }

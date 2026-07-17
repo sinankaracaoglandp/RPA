@@ -28,6 +28,14 @@ public interface IRobotService
     Task<Robot?> RecordHeartbeatAsync(Guid robotId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sahiplik doğrulamalı heartbeat: <paramref name="agentIdentityId"/> verilirse robotun o
+    /// ajana ait olduğu doğrulanır, değilse BusinessException("ROBOT_NOT_OWNED") atılır.
+    /// Uzaktan (SignalR) gelen her heartbeat bu aşırı yüklemeyi kullanır — robotId istemciden
+    /// geldiği için sahiplik sunucuda doğrulanmak zorundadır.
+    /// </summary>
+    Task<Robot?> RecordHeartbeatAsync(Guid robotId, Guid? agentIdentityId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Son heartbeat'i verilen zaman aşımından daha eski olan robotları Offline işaretler.
     /// Offline'a çekilen robot sayısını döner (Spec Bölüm 9 — heartbeat timeout = 5 dk).
     /// </summary>
@@ -42,4 +50,11 @@ public sealed class RobotRegistrationRequest
     public string Tags { get; set; } = "";
     public string? AgentVersion { get; set; }
     public int Capacity { get; set; } = 1;
+
+    /// <summary>
+    /// Kaydi yapan lisansli ajan kimligi. Uzaktan (SignalR) kayitlarda ajanin JWT'sindeki
+    /// agent_id'den doldurulur — istemci govdesinden ASLA okunmaz. Null yalnizca sunucu-ici
+    /// cagrilarda (or. testler) kabul edilir ve sahiplik kontrolu uygulanmaz.
+    /// </summary>
+    public Guid? AgentIdentityId { get; set; }
 }

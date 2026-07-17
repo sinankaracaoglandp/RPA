@@ -64,14 +64,35 @@ public sealed class LicenseService : ILicenseService
         return await GetStatusAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Bu kurulumun (bu makinenin ozel anahtarinin) LicenseInstallation satirini dondurur.
+    /// Kimlige gore secilir — "tek satir olmali" varsayimi YAPILMAZ: anahtar yenilenmesi/geri
+    /// yukleme ikinci bir satir birakabilir ve o durumda eski satira dusmek, kopyalanmis bir
+    /// veritabanindaki lisansi bu makinede gecerli gostermek demektir.
+    /// </summary>
+    public async Task<LicenseInstallation?> GetCurrentInstallationAsync(CancellationToken cancellationToken = default)
+    {
+        var identity = await _identityService.GetOrCreateAsync(cancellationToken);
+        return await _db.LicenseInstallations.SingleOrDefaultAsync(
+            x => x.InstallationId == identity.InstallationId && !x.IsDeleted, cancellationToken);
+    }
+
     public async Task<LicenseStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(x => !x.IsDeleted, cancellationToken);
+        var identity = await _identityService.GetOrCreateAsync(cancellationToken);
+        var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(
+            x => x.InstallationId == identity.InstallationId && !x.IsDeleted, cancellationToken);
         if (installation?.SignedLicenseDocument is null)
             return new(false, false, null, null, null, null, null, null, 0, 0, [], "LICENSE_MISSING");
         var document = LicenseDocumentJson.Deserialize(installation.SignedLicenseDocument);
         if (document is null || !_verifier.Verify(document))
             return new(true, false, null, installation.InstalledLicenseRevision, null, null, null, null, 0, 0, [], "LICENSE_SIGNATURE_INVALID");
+        // Imza gecerli olsa bile lisans BU kuruluma ait olmalidir. Import sirasinda dogrulanan bag
+        // her okumada yeniden dogrulanir: aksi halde imzali belgeyi tasiyan bir veritabani kopyasi,
+        // baska bir makinede sinirsizca gecerli lisans olarak calisirdi.
+        if (!string.Equals(document.Payload.InstallationId, identity.InstallationId, StringComparison.Ordinal) ||
+            !string.Equals(document.Payload.InstallationPublicKeyFingerprint, identity.PublicKeyFingerprint, StringComparison.Ordinal))
+            return new(true, false, document.Payload.LicenseId, installation.InstalledLicenseRevision, null, null, null, null, 0, 0, [], "LICENSE_INSTALLATION_MISMATCH");
         var used = await _db.AgentIdentities.CountAsync(x => x.LicenseInstallationId == installation.Id && !x.IsDeleted &&
             (x.Status == AgentIdentityStatus.Activated || x.Status == AgentIdentityStatus.Disabled), cancellationToken);
         var valid = document.Payload.ExpiresAt > DateTimeOffset.UtcNow;

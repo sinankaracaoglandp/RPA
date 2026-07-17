@@ -136,6 +136,10 @@ public class RpaDbContext : DbContext
             entity.Property(r => r.Mode).HasConversion<string>().HasMaxLength(32);
             entity.Property(r => r.Status).HasConversion<string>().HasMaxLength(32);
             entity.HasIndex(r => r.MachineName);
+            // Sahiplik bagi: robot kaydini hangi lisansli ajan olusturdu. FK YOK — AgentIdentity
+            // lisanslama sinirinda yasar ve robot kaydi ondan bagimsiz silinebilir/varolabilir
+            // (ajansiz kayitlar icin null). Sorgu yolu: "bu ajanin robotlari".
+            entity.HasIndex(r => r.AgentIdentityId);
             // QueueItems navigasyonu QueueItem tarafında Ignore edildi (tam şema WP-1.2/3.2).
             entity.Ignore(r => r.QueueItems);
         });

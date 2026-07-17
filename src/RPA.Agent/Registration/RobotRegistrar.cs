@@ -38,6 +38,9 @@ public sealed class RobotRegistrar : IRobotRegistrar
         var request = new RobotRegistrationRequest
         {
             MachineName = machineName,
+            // Robot kaydi, bu ajanin lisansli kimligine baglanir: robot != ajan, ama her robot
+            // kaydinin bir sahibi vardir ve sahiplik kayit aninda kurulur.
+            AgentIdentityId = _options.AgentId == Guid.Empty ? null : _options.AgentId,
             Mode = _options.Mode,
             Tags = _options.Tags,
             Capacity = _options.Capacity,

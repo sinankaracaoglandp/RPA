@@ -3,6 +3,7 @@ namespace RPA.Infrastructure.Robots;
 using Microsoft.Extensions.Logging;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
+using RPA.Domain.Exceptions;
 using RPA.Domain.Interfaces;
 
 /// <summary>
@@ -29,6 +30,11 @@ public sealed class RobotService : IRobotService
         var existing = await _repository.FindByMachineNameAsync(request.MachineName, cancellationToken);
         if (existing is not null)
         {
+            // Makine adi idempotent anahtardir: ayni ad ile yeniden kayit mevcut robotu gunceller.
+            // Bu yuzden sahiplik BURADA korunmalidir — aksi halde baska bir ajan, kurbanin makine
+            // adiyla kaydolup onun robot kaydini (ve dolayisiyla is akisini) devralabilirdi.
+            EnsureOwnership(existing, request.AgentIdentityId);
+            existing.AgentIdentityId = request.AgentIdentityId ?? existing.AgentIdentityId;
             existing.Mode = request.Mode;
             existing.Tags = request.Tags;
             existing.AgentVersion = request.AgentVersion;
@@ -43,6 +49,7 @@ public sealed class RobotService : IRobotService
         var robot = new Robot
         {
             MachineName = request.MachineName,
+            AgentIdentityId = request.AgentIdentityId,
             Mode = request.Mode,
             Tags = request.Tags,
             AgentVersion = request.AgentVersion,
@@ -56,6 +63,28 @@ public sealed class RobotService : IRobotService
         return robot;
     }
 
+    /// <summary>
+    /// Caginin (ajanin) bu robotun sahibi oldugunu dogrular; degilse BusinessException atar.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="callerAgentIdentityId"/> null ise kontrol UYGULANMAZ: bu, sunucu-ici
+    /// cagri demektir (ajan kimligi tasimayan yollar). Ajan uzerinden gelen her cagri kimligini
+    /// JWT'den tasir, dolayisiyla istemci bu kontrolu null gondererek atlayamaz.
+    /// Sahipsiz (AgentIdentityId = null) robotlar ilk sahiplenen ajana baglanir.
+    /// </remarks>
+    private static void EnsureOwnership(Robot robot, Guid? callerAgentIdentityId)
+    {
+        if (callerAgentIdentityId is null || robot.AgentIdentityId is null)
+        {
+            return;
+        }
+
+        if (robot.AgentIdentityId != callerAgentIdentityId)
+        {
+            throw new BusinessException("ROBOT_NOT_OWNED");
+        }
+    }
+
     public Task<Robot?> GetAsync(Guid id, CancellationToken cancellationToken = default)
         => _repository.FindByIdAsync(id, cancellationToken);
 
@@ -63,6 +92,9 @@ public sealed class RobotService : IRobotService
         => _repository.ListAllAsync(cancellationToken);
 
     public async Task<Robot?> RecordHeartbeatAsync(Guid robotId, CancellationToken cancellationToken = default)
+        => await RecordHeartbeatAsync(robotId, agentIdentityId: null, cancellationToken);
+
+    public async Task<Robot?> RecordHeartbeatAsync(Guid robotId, Guid? agentIdentityId, CancellationToken cancellationToken = default)
     {
         var robot = await _repository.FindByIdAsync(robotId, cancellationToken);
         if (robot is null)
@@ -70,6 +102,9 @@ public sealed class RobotService : IRobotService
             _logger.LogWarning("Heartbeat: bilinmeyen robot {RobotId}.", robotId);
             return null;
         }
+
+        // robotId istemciden gelir: caginin gercekten bu robot oldugu dogrulanmalidir.
+        EnsureOwnership(robot, agentIdentityId);
 
         robot.LastHeartbeat = DateTime.UtcNow;
         robot.Status = RobotStatus.Online;

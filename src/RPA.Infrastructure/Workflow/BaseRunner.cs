@@ -511,6 +511,13 @@ public sealed class BaseRunner : IWorkflowRunner
         {
             throw;
         }
+        catch (RPA.Domain.Exceptions.ExecutionSuspendedException)
+        {
+            // Kira dolmasi bir iş hatası DEĞİLDİR: iş akışının yakalayıp "telafi" edebileceği bir
+            // durum değil, kontrollü bir kesintidir. Yakalanırsa devam noktası (NextNodeId) kaybolur
+            // ve lisans kaynaklı askıya alma, tasarımcının yazdığı catch dalına sızardı.
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning("Node {NodeId} try bloğu istisnayı yakaladı: {Message}", node.Id, ex.Message);

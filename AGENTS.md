@@ -788,4 +788,56 @@ Tüm belgeler `docs/` klasöründe tutulur. Plan uygulanırken spec/plan bölüm
 
 ---
 
+## Kontrat Değişikliği — 2026-07-17 (Robot ↔ Agent sahiplik bağı; lisanslama review düzeltmeleri)
+
+Offline lisanslamanın **Final Review Gates** adımında (high-effort code review + security review)
+bulunan açıkların düzeltmesi. Üç güvenlik bulgusundan ikisi mevcut yapı içinde kapandı; üçüncüsü
+(**IDOR**) şema değişikliği gerektirdiği için bu kayda konu.
+
+**1) `Robot.AgentIdentityId` (Guid?) eklendi** — migration `AddRobotAgentOwnership`, index
+`IX_Robots_AgentIdentityId`. **FK YOK** (bilinçli): `AgentIdentity` lisanslama sınırında yaşar,
+robot kaydı ondan bağımsız var olabilir/silinebilir; `null` = ajansız/sunucu-içi kayıt.
+- **`RobotRegistrationRequest.AgentIdentityId`** eklendi — uzak (SignalR) kayıtlarda **yalnız**
+  ajanın JWT'sindeki `agent_id` claim'inden doldurulur, istemci gövdesinden **asla** okunmaz.
+- **Yeni:** `IRobotService.RecordHeartbeatAsync(robotId, agentIdentityId, ct)` aşırı yüklemesi —
+  sahiplik doğrular. Mevcut tek-parametreli imza **korundu** (sunucu-içi çağrılar; sahiplik
+  kontrolü uygulanmaz). `RobotService.EnsureOwnership`: çağıran kimliği null **veya** robot
+  sahipsizse kontrol atlanır (ilk sahiplenen ajana bağlanır), aksi halde uyuşmazlıkta
+  `BusinessException("ROBOT_NOT_OWNED")`.
+- **`RobotHub.Register/Heartbeat`**: sahiplik `Context.User`'daki `agent_id`'den okunur; claim
+  yok/bozuksa `HubException("AGENT_IDENTITY_MISSING")`, sahiplik ihlalinde
+  `HubException("ROBOT_NOT_OWNED")`. **Gerekçe:** `[Authorize(Policy="AgentClient")]` yalnız
+  *kimlik* doğruluyordu; `robotId`/`MachineName` istemciden geldiği için aktive edilmiş herhangi
+  bir ajan başka robotun grubuna kaydolup **ona atanan işleri alabiliyordu** (nesne düzeyinde
+  yetkilendirme eksikti). Not: `AgentIdentity.MachineFingerprint` ile `Robot.MachineName` zaten
+  aynı değeri (`AgentOptions.EffectiveMachineName`) taşıyordu — bağ örtük vardı, hiç doğrulanmıyordu.
+
+**2) `ILicenseService.GetCurrentInstallationAsync()` eklendi.** `GetStatusAsync` artık kurulum
+satırını **kimliğe göre** seçer ve imzalı yükteki `installationId`/parmak izini bu makinenin
+kimliğiyle **her okumada** karşılaştırır (`LICENSE_INSTALLATION_MISMATCH`). **Gerekçe:** bağ yalnız
+`ImportAsync`'te doğrulanıyordu → veritabanı kopyalanan ikinci sunucuda lisans geçerli kalıyordu.
+Aynı değişiklik `SingleOrDefaultAsync(!IsDeleted)` kaynaklı "ikinci kurulum satırında 500" hatasını
+da kapatır. `AgentsController` artık kurulum satırını kendi sorgulamaz.
+
+**3) `POST /api/agent-auth/token` lisans doğrular.** Geçerlilik (`LICENSE_EXPIRED`) + ajanın bu
+kuruluma aitliği (`LICENSE_INSTALLATION_MISMATCH`) kontrol edilir. **Gerekçe:** sona erme yalnız
+import/aktivasyon yollarında zorlanıyordu; süresi dolmuş lisansta ajanlar 10 dk'lık token'ı
+sonsuza dek yeniliyordu. **Test etkisi:** lisanssız ajanın token alması artık geçerli senaryo
+değildir → token yolunu süren testler gerçek lisans seed etmelidir (`LicensedTestApp`).
+
+**Diğer (kontrat dışı):** `LicenseDocumentJson` `public` + `Read(JsonElement)` — belge ayrıştırması
+tek kaynak (`LicenseController.ReadSignedLicense` kopyası silindi), bozuk belge `JsonException` →
+400 `LICENSE_DOCUMENT_INVALID`. Yeni `JwtSigningKey.Derive` — PBKDF2'nin üç kopyası (JwtTokenService,
+AgentTokenService, Program.cs) tek kaynağa indi (önbellekli). `IInstallationIdentityService` +
+`IVendorLicenseVerifier` **Singleton** (scoped kayıtta içteki semafor işlevsizdi). `BaseRunner`
+tryCatch artık `ExecutionSuspendedException`'ı yutmuyor. `EfAgentIdentityRepository` mutasyon
+yolları `AGENT_NOT_FOUND` atıyor → bilinmeyen id'de 404 (önceden 500).
+
+**Etkilenen paketler:** Robot kayıt/heartbeat tüketicileri (Agent `RobotRegistrar` — `AgentOptions.AgentId`
+ile sahiplik gönderir), lisanslama (WebAPI + Infrastructure), `IRobotService` implementasyonları.
+**Doğrulama:** Domain 20, Application 6, Agent 142, LicenseGenerator 11, Infrastructure 708,
+WebAPI 129, Studio 374 — tümü yeşil; Debug + Release derleme 0 hata.
+
+---
+
 **Versiyonlu:** 2026-07-04 — Kontrat Paketi sabit, TDD/review kuralları kesin.
