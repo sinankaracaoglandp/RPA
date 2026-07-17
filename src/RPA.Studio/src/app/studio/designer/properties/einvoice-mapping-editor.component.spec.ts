@@ -592,4 +592,43 @@ describe('EInvoiceMappingEditorComponent', () => {
     });
     expect(component.collections[0].fields[0].valueXPath).toBe('./cbc:InvoicedQuantity');
   });
+
+  it('liste sihirbazı: keşfedilen listeden seçili kolonlarla koleksiyon oluşturur', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    const lists = component.discoveredLists();
+    expect(lists.some(list => list.localName === 'InvoiceLine')).toBe(true);
+
+    component.selectDiscoveredList(lists.find(list => list.localName === 'InvoiceLine')!);
+    expect(component.wizardColumns.length).toBeGreaterThan(0);
+
+    component.wizardListName = 'kalemler';
+    component.wizardColumns = component.wizardColumns.map(column =>
+      column.relativePath === 'cac:Item/cbc:Name' ? { ...column, selected: true, name: 'aciklama' } : { ...column, selected: false });
+    component.createListFromWizard();
+
+    expect(component.activeWizardList).toBeNull();
+    const collection = component.collections.find(item => item.name === 'kalemler');
+    expect(collection).toBeTruthy();
+    expect(collection!.fields).toEqual([
+      { name: 'aciklama', source: 'XPath', valueXPath: './cac:Item/cbc:Name', type: 'string', required: false, multiple: false },
+    ]);
+  });
+
+  it('liste sihirbazı: "Böl" işaretli kolon değer + birim iki alan üretir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+    component.wizardListName = 'kalemler';
+    component.wizardColumns = component.wizardColumns.map(column =>
+      column.relativePath === 'cac:Item/cbc:Name'
+        ? { ...column, selected: true, name: 'miktar', split: true }
+        : { ...column, selected: false });
+    component.createListFromWizard();
+
+    const fields = component.collections.find(item => item.name === 'kalemler')!.fields;
+    expect(fields.map(field => field.name)).toEqual(['miktar', 'miktarBirim']);
+    expect(fields[0]).toMatchObject({ group: 'value', type: 'decimal' });
+    expect(fields[1]).toMatchObject({ group: 'unit', type: 'string' });
+  });
 });

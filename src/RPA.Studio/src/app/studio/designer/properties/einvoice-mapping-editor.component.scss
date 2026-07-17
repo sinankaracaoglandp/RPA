@@ -179,3 +179,49 @@
 
   em { color: #667085; font-weight: 400; font-size: 0.7rem; }
 }
+
+/* --- Liste sihirbazı --------------------------------------------------------------------- */
+/* Bulunan listeler: seçmelik butonlar. Panel değil — her liste tek tıkla açılan bir buton. */
+.einvoice-wizard__discovered {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  margin: 0 0 0.85rem; padding: 0.6rem 0.7rem;
+  border: 1px solid #d7dde5; border-left: 3px solid #1565c0; background: #f7f9fc;
+}
+.einvoice-wizard__discovered-label {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #5a6b82;
+}
+.einvoice-wizard__list-button {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.35rem 0.7rem; border: 1px solid #1565c0; border-radius: 999px;
+  background: #fff; color: #0f4c96; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+}
+.einvoice-wizard__list-button:hover { background: #e8f0fb; }
+.einvoice-wizard__list-button:focus-visible { outline: 2px solid #0f4c96; outline-offset: 2px; }
+.einvoice-wizard__list-button--defined { border-color: #2e7d32; color: #2e7d32; background: #f0f8f1; }
+.einvoice-wizard__list-count {
+  padding: 0.05rem 0.45rem; border-radius: 999px; background: #1565c0; color: #fff;
+  font-size: 0.72rem; font-weight: 700;
+}
+.einvoice-wizard__list-button--defined .einvoice-wizard__list-count { background: #2e7d32; }
+.einvoice-wizard__list-check { font-weight: 700; }
+
+.einvoice-wizard__dialog { max-width: 46rem; width: 92vw; }
+.einvoice-wizard__table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.85rem; }
+.einvoice-wizard__table th, .einvoice-wizard__table td {
+  padding: 0.3rem 0.5rem; border-bottom: 1px solid #eef1f5; text-align: left; vertical-align: middle;
+}
+.einvoice-wizard__table th {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #5a6b82;
+}
+.einvoice-wizard__table code { font-size: 0.78rem; color: #334155; }
+.einvoice-wizard__row--off { opacity: 0.45; }
+.einvoice-wizard__sample { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1565c0; }
+.einvoice-wizard__name-input { width: 8rem !important; margin: 0 !important; padding: 0.2rem 0.35rem; }
+.einvoice-wizard__table select { width: auto !important; margin: 0 !important; padding: 0.2rem 0.35rem; }
+.einvoice-wizard__split {
+  padding: 0.15rem 0.4rem; border: 1px solid #d7dee8; border-radius: 0.3rem;
+  background: #fff; cursor: pointer; font-size: 0.9rem; line-height: 1;
+}
+.einvoice-wizard__split--on { border-color: #e65100; background: #fff3e0; }
+.einvoice-wizard__split:focus-visible { outline: 2px solid #0f4c96; outline-offset: 2px; }
