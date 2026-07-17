@@ -29,6 +29,24 @@
                 (valueChange)="onValueChange(port, $event)"
               ></app-einvoice-mapping-editor>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            } @else if (isEInvoiceProjectPicker(port)) {
+              <label class="generic-property__label" [attr.for]="'prop-' + port.name">
+                {{ port.description || 'Proje' }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <select
+                [id]="'prop-' + port.name"
+                class="generic-property__input"
+                [attr.data-testid]="'prop-' + port.name"
+                [value]="value(port)"
+                (change)="onValueChange(port, $any($event.target).value)"
+              >
+                <option value="">Proje seç</option>
+                @for (project of projectOptions; track project.id) {
+                  <option [value]="project.id">{{ project.name }}</option>
+                }
+              </select>
+              <span class="generic-property__hint">Profilin kayıtlı olduğu projeyi seç — profiller buna göre gelir.</span>
             } @else if (isEInvoiceProfile(port)) {
               <label class="generic-property__label" [attr.for]="'prop-' + port.name">
                 {{ port.description || 'E-Fatura profili' }}

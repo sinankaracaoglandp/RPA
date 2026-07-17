@@ -212,7 +212,8 @@ describe('GenericPropertyComponent', () => {
         { name: 'outputVariable', type: 'string', required: false },
       ],
     });
-    // projectId zaten dolu olduğundan profil listesi panel açılınca otomatik yüklenir.
+    // Proje açılır listesi + (projectId dolu) profil listesi otomatik yüklenir.
+    http.expectOne('/api/projects').flush([{ id: 'project-1', name: 'Pilot', workflowCount: 1 }]);
     http.expectOne('/api/projects/project-1/einvoice-profiles').flush([
       {
         id: 'profile-1',
@@ -258,7 +259,8 @@ describe('GenericPropertyComponent', () => {
       ],
     });
     fixture.detectChanges();
-    // projectId boş olduğundan panel açılışında liste çekilmez.
+    // Proje açılır listesi yüklenir; projectId boş olduğundan profil listesi çekilmez.
+    http.expectOne('/api/projects').flush([{ id: 'project-9', name: 'Yeni', workflowCount: 0 }]);
     http.expectNone('/api/projects/project-9/einvoice-profiles');
 
     component.onValueChange({ name: 'projectId', type: 'string' }, 'project-9');
@@ -286,7 +288,8 @@ describe('GenericPropertyComponent', () => {
       { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-16T00:00:00Z' },
       { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-15T00:00:00Z' },
     ]);
-    // projectId dolu → profil listesi de otomatik yüklenir.
+    // Proje açılır listesi + profil listesi de otomatik yüklenir.
+    http.expectOne('/api/projects').flush([{ id: 'proj-1', name: 'Pilot', workflowCount: 1 }]);
     http.expectOne('/api/projects/proj-1/einvoice-profiles').flush([]);
     fixture.detectChanges();
 

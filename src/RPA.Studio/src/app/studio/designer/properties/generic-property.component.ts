@@ -11,6 +11,7 @@ import { TextOffsetEditorComponent } from './text-offset-editor.component';
 import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.component';
 import { EInvoiceProfile, EInvoiceProfileVersion } from '../../../shared/models/einvoice-profile.model';
 import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
+import { ProjectService, ProjectSummary } from '../../../shared/services/project.service';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -36,6 +37,7 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 export class GenericPropertyComponent {
   private readonly catalog = inject(ActivityCatalogService);
   private readonly einvoiceProfiles = inject(EInvoiceProfileService);
+  private readonly projects = inject(ProjectService);
   private readonly cdr = inject(ChangeDetectorRef);
 
   private _activityType?: string;
@@ -51,6 +53,7 @@ export class GenericPropertyComponent {
   einvoiceProfileVersions: EInvoiceProfileVersion[] = [];
   einvoiceProfileError = '';
   einvoiceNewerVersion: number | null = null;
+  projectOptions: ProjectSummary[] = [];
 
   /** Alan başına giriş kipi: Değer (literal) / Değişken / İfade. Kullanıcı elle değiştirdiğinde saklanır. */
   private readonly modeOverrides: Record<string, FieldMode> = {};
@@ -186,6 +189,24 @@ export class GenericPropertyComponent {
 
   isEInvoiceProfile(port: ActivityPort): boolean {
     return port.pickerKind === 'einvoice-profile';
+  }
+
+  /** Bu aktivite proje-kapsamlı e-fatura profili okuyan aktivitelerden mi? */
+  private isEInvoiceReadActivity(): boolean {
+    return this.metadata?.activityId === 'EInvoice.ReadProfile'
+      || this.metadata?.activityId === 'EInvoice.ReadProfileBatch';
+  }
+
+  /** projectId alanı bu aktivitede GUID yerine proje-adı açılır listesiyle gösterilir. */
+  isEInvoiceProjectPicker(port: ActivityPort): boolean {
+    return port.name === 'projectId' && this.isEInvoiceReadActivity();
+  }
+
+  loadProjectOptions(): void {
+    this.projects.getProjects().subscribe({
+      next: projects => { this.projectOptions = projects; this.cdr.markForCheck(); },
+      error: () => { this.projectOptions = []; this.cdr.markForCheck(); },
+    });
   }
 
   loadEInvoiceProfiles(): void {
@@ -528,6 +549,7 @@ export class GenericPropertyComponent {
         this.metadata = meta;
         this.loading = false;
         if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
+          this.loadProjectOptions();
           this.loadEInvoiceVersionInfo();
           if (String(this.properties['projectId'] ?? '').trim()) {
             this.loadEInvoiceProfiles();
