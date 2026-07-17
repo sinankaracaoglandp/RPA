@@ -32,6 +32,8 @@ export class EInvoiceProfilesComponent implements OnInit {
   readonly newName = signal('');
   readonly newDescription = signal('');
   readonly error = signal<string | null>(null);
+  readonly savedNotice = signal<string | null>(null);
+  private savedTimer: ReturnType<typeof setTimeout> | null = null;
 
   get selectedProfile(): EInvoiceProfile | undefined {
     return this.profiles().find((profile) => profile.id === this.selectedProfileId());
@@ -112,7 +114,10 @@ export class EInvoiceProfilesComponent implements OnInit {
       return;
     }
     this.profilesApi.saveDraft(projectId, profileId, this.draftJson()).subscribe({
-      next: (profile) => this.profiles.update((profiles) => profiles.map((item) => item.id === profile.id ? profile : item)),
+      next: (profile) => {
+        this.profiles.update((profiles) => profiles.map((item) => item.id === profile.id ? profile : item));
+        this.flashSaved('Taslak kaydedildi.');
+      },
       error: (error) => this.error.set(this.toUserError(error, 'Taslak kaydedilemedi.')),
     });
   }
@@ -124,7 +129,10 @@ export class EInvoiceProfilesComponent implements OnInit {
       return;
     }
     this.profilesApi.publish(projectId, profileId).subscribe({
-      next: () => this.loadVersions(profileId),
+      next: () => {
+        this.loadVersions(profileId);
+        this.flashSaved('Profil yayınlandı.');
+      },
       error: (error) => this.error.set(this.toUserError(error, 'Profil yayınlanamadı.')),
     });
   }
@@ -151,6 +159,15 @@ export class EInvoiceProfilesComponent implements OnInit {
       next: (projects) => this.projects.set(projects),
       error: (error) => this.error.set(this.toUserError(error, 'Projeler yüklenemedi.')),
     });
+  }
+
+  private flashSaved(message: string): void {
+    this.error.set(null);
+    this.savedNotice.set(message);
+    if (this.savedTimer) {
+      clearTimeout(this.savedTimer);
+    }
+    this.savedTimer = setTimeout(() => this.savedNotice.set(null), 3000);
   }
 
   private toUserError(error: unknown, fallback: string): string {

@@ -64,6 +64,18 @@
   font-weight: 750;
 }
 
+.einvoice-profiles__saved {
+  margin: 0 0 0.9rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #1e7d34;
+  border-left-width: 3px;
+  border-radius: 0.3rem;
+  background: #eaf6ec;
+  color: #1e7d34;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
 .einvoice-profiles__project-picker {
   display: grid;
   grid-template-columns: auto minmax(14rem, 22rem) minmax(0, 1fr);

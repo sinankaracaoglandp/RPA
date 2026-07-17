@@ -125,6 +125,40 @@ describe('EInvoiceProfilesComponent', () => {
     expect(versions).toContain('v1');
   });
 
+  it('taslak kaydedilince kullanıcıya "kaydedildi" bildirimi gösterir', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/projects/p1/einvoice-profiles').flush([
+      {
+        id: 'profile-1',
+        projectId: 'p1',
+        name: 'Satis',
+        draftDefinitionJson: '{"fields":[],"collections":[]}',
+        createdAt: '2026-07-16T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    fixture.componentInstance.openDraft('profile-1');
+    http.expectOne('/api/projects/p1/einvoice-profiles/profile-1/versions').flush([]);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="save-draft"]').click();
+    const save = http.expectOne('/api/projects/p1/einvoice-profiles/profile-1/draft');
+    expect(save.request.method).toBe('PUT');
+    save.flush({
+      id: 'profile-1',
+      projectId: 'p1',
+      name: 'Satis',
+      draftDefinitionJson: '{"fields":[],"collections":[]}',
+      createdAt: '2026-07-16T00:00:00Z',
+    });
+    fixture.detectChanges();
+
+    const notice = fixture.nativeElement.querySelector('[data-testid="einvoice-profile-saved"]');
+    expect(notice).toBeTruthy();
+    expect(notice.textContent).toContain('kaydedildi');
+  });
+
   it('requires a project selection on the standalone addressing route before creating profiles', async () => {
     TestBed.resetTestingModule();
     await configure({});

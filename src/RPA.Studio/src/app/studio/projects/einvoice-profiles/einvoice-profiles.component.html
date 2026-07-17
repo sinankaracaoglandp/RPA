@@ -12,6 +12,10 @@
     <p class="einvoice-profiles__error" data-testid="einvoice-profile-error">{{ error() }}</p>
   }
 
+  @if (savedNotice()) {
+    <p class="einvoice-profiles__saved" role="status" data-testid="einvoice-profile-saved">✓ {{ savedNotice() }}</p>
+  }
+
   @if (projects().length > 0) {
     <section class="einvoice-profiles__project-picker">
       <label for="addressing-project-select">Adresleme yapılacak projeyi seç</label>
@@ -101,7 +105,7 @@
           <p>{{ selectedProfile?.name || 'Profil seç' }}</p>
         </div>
         @if (selectedProfileId()) {
-          <button type="button" (click)="saveDraft()">Kaydet</button>
+          <button type="button" data-testid="save-draft" (click)="saveDraft()">Kaydet</button>
         }
       </div>
 
