@@ -20,6 +20,7 @@ import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 import { LogConsoleComponent } from './log-console/log-console.component';
 import { ExecutionLogService } from '../../shared/services/execution-log.service';
 import { RunLogService } from '../../shared/services/run-log.service';
+import { injectedLoopVariables } from './loop-item-schema';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -79,6 +80,21 @@ export class DesignerComponent implements OnDestroy {
   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
   readonly variables = signal<WorkflowVariable[]>([]);
   readonly debugMode = signal(false);
+
+  /**
+   * Properties paneline geçen değişkenler: temel workflow değişkenleri + seçili node'u
+   * saran ForEach döngülerinin türetilmiş `item` değişkenleri. Enjekte edilenler kalıcı
+   * workflow'a yazılmaz; yalnız autocomplete/alan gösterimi içindir.
+   */
+  readonly panelVariables = computed<WorkflowVariable[]>(() => {
+    const base = this.variables();
+    const graph = this.currentGraph() ?? this.workflow();
+    const nodeId = this.selectedNodeId();
+    if (!graph) {
+      return base;
+    }
+    return [...base, ...injectedLoopVariables(nodeId, graph, base)];
+  });
 
   readonly workflowId = signal<string | null>(null);
   readonly dirty = signal(false);

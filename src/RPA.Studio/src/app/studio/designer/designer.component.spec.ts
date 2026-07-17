@@ -435,3 +435,54 @@ describe('draft persistence (Paket B)', () => {
     expect(component.lastRunStatus()).toBe('Successful');
   });
 });
+
+describe('DesignerComponent — ForEach item variable injection', () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    await TestBed.configureTestingModule({
+      imports: [DesignerComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
+      ],
+    }).compileComponents();
+  });
+
+  it('injects the loop item variable into panelVariables for a body node', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const cmp = fixture.componentInstance;
+    cmp.variables.set([{
+      name: 'faturalar', type: 'list<object>',
+      schema: { type: 'array', items: { type: 'object', properties: { tutar: { type: 'number' } } } },
+    }]);
+    cmp.currentGraph.set({
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [
+        { id: 'fe', type: 'forEach', items: '${faturalar}', itemVariable: 'fatura' },
+        { id: 'a', type: 'activity' },
+      ],
+      connections: [
+        { from: 'fe', to: 'a', fromPort: 'body' },
+        { from: 'a', to: 'fe', toPort: 'loop-back' },
+      ],
+    });
+
+    cmp.selectedNodeId.set('a');
+
+    expect(cmp.panelVariables().map((v) => v.name).sort()).toEqual(['fatura', 'faturalar']);
+  });
+
+  it('does not inject item variables for a node outside any loop', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const cmp = fixture.componentInstance;
+    cmp.variables.set([]);
+    cmp.currentGraph.set({
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [{ id: 'x', type: 'activity' }], connections: [],
+    });
+    cmp.selectedNodeId.set('x');
+    expect(cmp.panelVariables()).toEqual([]);
+  });
+});
