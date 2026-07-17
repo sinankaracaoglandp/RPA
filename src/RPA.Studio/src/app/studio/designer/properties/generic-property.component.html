@@ -38,12 +38,11 @@
                 [id]="'prop-' + port.name"
                 class="generic-property__input"
                 [attr.data-testid]="'prop-' + port.name"
-                [value]="value(port)"
                 (change)="onValueChange(port, $any($event.target).value)"
               >
-                <option value="">Proje seç</option>
+                <option value="" [selected]="!value(port)">Proje seç</option>
                 @for (project of projectOptions; track project.id) {
-                  <option [value]="project.id">{{ project.name }}</option>
+                  <option [value]="project.id" [selected]="project.id === value(port)">{{ project.name }}</option>
                 }
               </select>
               <span class="generic-property__hint">Profilin kayıtlı olduğu projeyi seç — profiller buna göre gelir.</span>
