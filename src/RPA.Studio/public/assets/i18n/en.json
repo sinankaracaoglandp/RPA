@@ -349,6 +349,7 @@
   },
   "agents": {
     "title": "Orchestrator — Agents",
+    "id": "Agent id",
     "refresh": "Refresh",
     "loading": "Loading…",
     "seats": "Seats (used / max)",
@@ -365,6 +366,8 @@
     "activationCode": "Activation code",
     "activationCodeOnce": "This activation code is shown only once. Copy it now.",
     "activationCodeExpires": "Expires at",
+    "activationAgentId": "Agent id — set it as Agent:AgentId in the agent's appsettings.json:",
+    "activationCommand": "Run once on the agent host (paste the code here, NOT into appsettings):",
     "close": "Close",
     "disable": "Disable",
     "deactivate": "Deactivate",

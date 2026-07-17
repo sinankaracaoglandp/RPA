@@ -75,6 +75,18 @@ describe('AgentLicensePageComponent', () => {
     expect(el('agent-seats').textContent).toContain('2 / 3');
   });
 
+  // AgentId ajanin appsettings'ine yazilir ve SIR DEGILDIR. Yalnizca tek-kullanimlik aktivasyon
+  // kodu modalinda gosterilirse, kutuyu kapatan operator GUID'i geri almak icin bosuna yeni kod
+  // uretmek zorunda kalir. Bu yuzden listede her zaman gorunur.
+  it('always lists the agent id without needing an activation code', () => {
+    load();
+
+    const ids = all('agent-id');
+    expect(ids.length).toBe(4);
+    expect(ids[0].textContent).toContain('a1');
+    expect(ids[1].textContent).toContain('a2');
+  });
+
   it('creates a pending agent and refreshes list and seats', () => {
     load();
 
@@ -105,6 +117,11 @@ describe('AgentLicensePageComponent', () => {
     fixture.detectChanges();
 
     expect(el('activation-code-value').textContent).toContain('PLAINTEXT-CODE');
+
+    // Aktivasyon AgentId de ister (ajanin appsettings'ine yazilir); kolaylik olsun diye
+    // koda bitisik gosterilir. Kalici kaynak listedeki ID sutunudur (asagidaki test).
+    expect(el('activation-agent-id').textContent).toContain('a2');
+    expect(el('activation-command').textContent).toContain('--activate PLAINTEXT-CODE');
 
     el('activation-code-close').click();
     fixture.detectChanges();

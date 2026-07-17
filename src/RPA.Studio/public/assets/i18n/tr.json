@@ -349,6 +349,7 @@
   },
   "agents": {
     "title": "Orchestrator — Agentlar",
+    "id": "Agent kimliği",
     "refresh": "Yenile",
     "loading": "Yükleniyor…",
     "seats": "Koltuk (etkin / azami)",
@@ -365,6 +366,8 @@
     "activationCode": "Aktivasyon kodu",
     "activationCodeOnce": "Bu aktivasyon kodu yalnızca bir kez gösterilir. Şimdi kopyalayın.",
     "activationCodeExpires": "Son geçerlilik",
+    "activationAgentId": "Agent kimliği — ajanın appsettings.json dosyasında Agent:AgentId alanına yazın:",
+    "activationCommand": "Ajan makinesinde bir kez çalıştırın (kodu buraya yapıştırın, appsettings'e DEĞİL):",
     "close": "Kapat",
     "disable": "Devre dışı bırak",
     "deactivate": "Aktivasyonu geri al",
