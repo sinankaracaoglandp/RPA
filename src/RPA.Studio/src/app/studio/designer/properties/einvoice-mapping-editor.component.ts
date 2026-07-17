@@ -11,11 +11,15 @@ import {
   parseSampleXml,
   previewProfileDefinition,
   previewRule,
+  relativizeXPath,
 } from './einvoice-mapping.model';
+import { RegexWizardComponent } from './regex-wizard.component';
+import { collectTextScopes, TextScope } from './regex-wizard.model';
 
 @Component({
   selector: 'app-einvoice-mapping-editor',
   standalone: true,
+  imports: [RegexWizardComponent],
   templateUrl: './einvoice-mapping-editor.component.html',
   styleUrls: ['./einvoice-mapping-editor.component.scss'],
 })
@@ -42,8 +46,25 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   };
 
   @Input() set value(value: string | EInvoiceMappingRule[] | null | undefined) {
-    if (!value) this.rules = [];
-    else this.rules = (typeof value === 'string' ? JSON.parse(value) : value).map((rule: EInvoiceMappingRule) => ({ ...rule }));
+    if (!value) {
+      this.rules = [];
+      this.collections = [];
+      return;
+    }
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (Array.isArray(parsed)) {
+      this.rules = parsed.map((rule: EInvoiceMappingRule) => ({ ...rule }));
+      this.collections = [];
+      return;
+    }
+    const definition = parsed as Partial<EInvoiceProfileDefinition>;
+    this.rules = (definition.fields ?? []).map((rule: EInvoiceMappingRule) => ({ ...rule }));
+    this.collections = (definition.collections ?? []).map((collection: EInvoiceCollectionDefinition) => ({
+      name: collection.name,
+      scopeXPath: collection.scopeXPath,
+      fields: collection.fields.map(field => ({ ...field })),
+    }));
+    this.cdr?.markForCheck();
   }
   @Output() readonly valueChange = new EventEmitter<string>();
   @Output() readonly profileDefinitionChange = new EventEmitter<string>();
@@ -56,6 +77,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.tree = parsed.tree;
     this.expanded.clear();
     this.allTree().filter(item => item.node.children.length > 0).forEach(item => this.expanded.add(item.node));
+    if (this.tree.length) this.activeStep = 2;
     this.cdr?.markForCheck();
   }
 
@@ -119,6 +141,24 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
 
   selectNode(node: XmlTreeNode): void {
     this.draft = { ...this.draft, valueXPath: this.buildXPath(node) };
+    const isBranch = node.children.length > 0 || this.repeatedCount(node) > 1;
+    if (isBranch) this.collectionScopeXPath = this.buildXPath(node);
+
+    if (this.repickPath) {
+      // Diyalogdaki "Ağaçtan seç" ile gelindi: formu bozmadan yeni yolla geri dön.
+      this.repickPath = false;
+      this.fieldDialogOpen = true;
+      return;
+    }
+    if (isBranch) return; // dallı/tekrar eden öğe → satır dizisi adayı, form açma
+    // Yaprak öğe → doğrudan alan ekleme formunu aç (tıkla-ekle akışı).
+    if (!this.fieldDialogOpen) {
+      this.editingIndex = null;
+      this.editingCollection = null;
+      this.editingFieldName = null;
+      this.draft = { ...this.draft, name: '', source: 'XPath', type: 'string', required: false, multiple: false };
+      this.fieldDialogOpen = true;
+    }
   }
 
   updateDraft(field: keyof EInvoiceMappingRule, value: unknown): void {
@@ -138,7 +178,14 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.draft = { ...this.draft, name: '' };
   }
 
-  editRule(index: number): void { this.editingIndex = index; this.draft = { ...this.rules[index] }; }
+  editRule(index: number): void {
+    this.editingIndex = index;
+    this.editingCollection = null;
+    this.editingFieldName = null;
+    this.draftTarget = 'root';
+    this.draft = { ...this.rules[index] };
+    this.fieldDialogOpen = true;
+  }
   saveDraftRule(): void {
     if (!this.isDraftValid()) return;
     if (this.editingIndex === null) { this.addDraftRule(); return; }
@@ -165,6 +212,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     if (!this.isIdentifier(normalized) || !scope || this.collections.some(item => item.name.toLowerCase() === normalized.toLowerCase())) return;
     this.collections = [...this.collections, { name: normalized, scopeXPath: scope, fields: [] }];
     this.selectedCollectionName = normalized;
+    this.emitProfileDefinition();
   }
 
   addCollectionFromDraft(): void {
@@ -177,8 +225,10 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.collections = this.collections.map(collection => {
       if (collection.name !== collectionName || !this.isIdentifier(field.name)) return collection;
       if (collection.fields.some(item => item.name.toLowerCase() === field.name.toLowerCase())) return collection;
-      return { ...collection, fields: [...collection.fields, { ...field }] };
+      const valueXPath = field.valueXPath ? relativizeXPath(field.valueXPath, collection.scopeXPath) : field.valueXPath;
+      return { ...collection, fields: [...collection.fields, { ...field, valueXPath }] };
     });
+    this.emitProfileDefinition();
   }
 
   addDraftAsCollectionField(): void {
@@ -195,6 +245,171 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
         fields: collection.fields.map(field => ({ ...field })),
       })),
     };
+  }
+
+  activeStep: 1 | 2 | 3 = 1;
+  draftTarget = 'root';
+  newCollectionOpen = false;
+  fieldDialogOpen = false;
+  /** Diyalog "Ağaçtan seç" için geçici kapandı; sonraki ağaç tıklaması formu geri açar. */
+  repickPath = false;
+  private editingCollection: string | null = null;
+  private editingFieldName: string | null = null;
+
+  /** Diyalogdan ağaca dön: form korunur, tıklanan öğenin yolu forma yazılır. */
+  pickPathFromTree(): void {
+    this.repickPath = true;
+    this.fieldDialogOpen = false;
+    this.activeStep = 2;
+    this.cdr?.markForCheck();
+  }
+
+  /** Sağ paneldeki "+ Alan ekle": boş formla diyaloğu açar. */
+  openFieldDialog(): void {
+    this.editingIndex = null;
+    this.editingCollection = null;
+    this.editingFieldName = null;
+    this.draft = { name: '', source: 'XPath', valueXPath: this.draft.valueXPath ?? '', type: 'string', required: false, multiple: false };
+    this.fieldDialogOpen = true;
+    this.cdr?.markForCheck();
+  }
+
+  closeFieldDialog(): void {
+    this.fieldDialogOpen = false;
+    this.editingIndex = null;
+    this.editingCollection = null;
+    this.editingFieldName = null;
+    this.wizardTarget = null;
+    this.cdr?.markForCheck();
+  }
+
+  editCollectionField(collectionName: string, fieldName: string): void {
+    const field = this.collections.find(item => item.name === collectionName)?.fields.find(item => item.name === fieldName);
+    if (!field) return;
+    this.draft = { ...field };
+    this.editingCollection = collectionName;
+    this.editingFieldName = fieldName;
+    this.editingIndex = null;
+    this.draftTarget = collectionName;
+    this.fieldDialogOpen = true;
+    this.cdr?.markForCheck();
+  }
+
+  removeCollectionField(collectionName: string, fieldName: string): void {
+    this.collections = this.collections.map(collection => collection.name !== collectionName
+      ? collection
+      : { ...collection, fields: collection.fields.filter(field => field.name !== fieldName) });
+    this.emitProfileDefinition();
+  }
+
+  /** Diyalogdaki tek kaydet düğmesi: yeni alan / kök alan güncelleme / satır alanı güncelleme. */
+  saveField(): void {
+    if (!this.isDraftValid()) return;
+    if (this.editingCollection && this.editingFieldName) {
+      const target = this.editingCollection;
+      const original = this.editingFieldName;
+      this.collections = this.collections.map(collection => collection.name !== target ? collection : {
+        ...collection,
+        fields: collection.fields.map(field => field.name !== original ? field : {
+          ...this.draft,
+          valueXPath: this.draft.valueXPath ? relativizeXPath(this.draft.valueXPath, collection.scopeXPath) : this.draft.valueXPath,
+        }),
+      });
+      this.emitProfileDefinition();
+    } else if (this.editingIndex !== null) {
+      this.saveDraftRule();
+    } else {
+      this.addDraft();
+    }
+    this.closeFieldDialog();
+  }
+
+  /** Diyalog başlığı ve kaydet düğmesi metni için. */
+  get isEditingField(): boolean {
+    return this.editingIndex !== null || this.editingCollection !== null;
+  }
+
+  setStep(step: 1 | 2 | 3): void {
+    this.activeStep = step;
+    this.cdr?.markForCheck();
+  }
+
+  /** Alan kartındaki tek "Alanı ekle" butonu: hedefe göre kök kurala veya koleksiyona yazar. */
+  addDraft(): void {
+    if (this.draftTarget === 'root') {
+      this.addDraftRule();
+      return;
+    }
+    this.selectedCollectionName = this.draftTarget;
+    this.addDraftAsCollectionField();
+    this.draft = { ...this.draft, name: '' };
+  }
+
+  wizardTarget: 'regex' | 'fallbackRegex' | null = null;
+
+  openRegexWizard(target: 'regex' | 'fallbackRegex'): void {
+    this.wizardTarget = this.wizardTarget === target ? null : target;
+  }
+
+  applyWizardPattern(result: { pattern: string; group: string }): void {
+    if (this.wizardTarget === 'regex') {
+      this.draft = { ...this.draft, regex: result.pattern, group: result.group };
+    } else if (this.wizardTarget === 'fallbackRegex') {
+      this.draft = { ...this.draft, fallbackRegex: result.pattern, fallbackGroup: result.group };
+    }
+    this.wizardTarget = null;
+    this.cancelRegexPreview();
+  }
+
+  /** Sihirbazın içinde arama yapacağı (XML yolu, metin) çiftleri. */
+  wizardScopes(): TextScope[] {
+    return this.sampleDocument ? collectTextScopes(this.sampleDocument) : [];
+  }
+
+  /** Sihirbazda "Bu XML yolunu kullan": değeri taşıyan öğenin yolunu forma yazar. */
+  applyWizardPath(path: string): void {
+    this.draft = { ...this.draft, source: 'XPath', valueXPath: path };
+    this.wizardTarget = null;
+    this.cancelRegexPreview();
+  }
+
+  /** Eklenen alan listesinde gösterilecek "bulunan değer" (doğru öğeyi seçtiğini görmek için). */
+  fieldValueText(rule: EInvoiceMappingRule): string {
+    if (!this.sampleDocument) return '';
+    return this.previewText(previewRule(rule, this.sampleDocument));
+  }
+
+  /** Satır alanları için: koleksiyon kapsamındaki ilk satırın değeri. */
+  collectionFieldValueText(collection: EInvoiceCollectionDefinition, field: EInvoiceMappingRule): string {
+    const rows = this.collectionPreviewRows(collection);
+    if (!rows.length) return '';
+    const value = rows[0][field.name];
+    if (value === null || value === undefined) return '—';
+    return Array.isArray(value) ? value.map(String).join(', ') : String(value);
+  }
+
+  savedRulePreviews(): Array<{ rule: EInvoiceMappingRule; preview: RulePreview }> {
+    if (!this.sampleDocument) {
+      return this.rules.map(rule => ({ rule, preview: { raw: null, converted: null, error: 'Örnek XML yüklenmedi.' } }));
+    }
+    return this.rules.map(rule => ({ rule, preview: previewRule(rule, this.sampleDocument!) }));
+  }
+
+  collectionPreviewRows(collection: EInvoiceCollectionDefinition): Array<Record<string, unknown>> {
+    if (!this.sampleDocument) return [];
+    const preview = previewProfileDefinition({ fields: [], collections: [collection] }, this.sampleDocument);
+    const rows = preview[collection.name];
+    return Array.isArray(rows) ? rows.slice(0, 5) : [];
+  }
+
+  collectionColumns(collection: EInvoiceCollectionDefinition): string[] {
+    return collection.fields.map(field => field.name);
+  }
+
+  previewText(preview: RulePreview): string {
+    if (preview.error) return preview.error;
+    if (preview.converted === null || preview.converted === undefined) return '—';
+    return Array.isArray(preview.converted) ? preview.converted.map(String).join(', ') : String(preview.converted);
   }
 
   previewDefinition(): Record<string, any> {
@@ -245,6 +460,9 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   ngOnDestroy(): void { this.cancelRegexPreview(); }
   addRule(rule: EInvoiceMappingRule): void { this.rules = [...this.rules, { ...rule }]; this.emit(); }
   serializedValue(): EInvoiceMappingRule[] { return this.rules.map(rule => ({ ...rule })); }
-  private emit(): void { this.valueChange.emit(JSON.stringify(this.serializedValue())); }
+  private emit(): void {
+    this.valueChange.emit(JSON.stringify(this.serializedValue()));
+    this.emitProfileDefinition();
+  }
   private isIdentifier(value: string): boolean { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value); }
 }

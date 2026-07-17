@@ -402,3 +402,9 @@
 
   &:hover { background: #e0edff; border-color: #93c5fd; color: #1d4ed8; }
 }
+
+.generic-property__warning {
+  background: #fff8e1; border-left: 3px solid #f9a825;
+  padding: 0.4rem 0.6rem; font-size: 0.8rem;
+  button { margin-left: 0.5rem; }
+}

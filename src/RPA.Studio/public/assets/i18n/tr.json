@@ -11,6 +11,8 @@
     "sectionOrchestratorDesc": "Robotları, işleri ve kuyrukları yönetin",
     "designerTitle": "Tasarımcı",
     "designerDesc": "Sürükle-bırak ile iş akışı oluşturun",
+    "einvoiceAddressingTitle": "E-Fatura Adresleme",
+    "einvoiceAddressingDesc": "XML alanlarını profil değişkenlerine bağlayın",
     "componentLibraryTitle": "Bileşen Kütüphanesi",
     "componentLibraryDesc": "Yeniden kullanılabilir bileşenleri yayınlayın ve onaylayın",
     "templatesTitle": "Şablon Galerisi",

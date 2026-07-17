@@ -9,6 +9,8 @@ import { SelectorPickerButtonComponent } from './selector-picker-button.componen
 import { VisionSequenceEditorComponent } from './vision-sequence-editor.component';
 import { TextOffsetEditorComponent } from './text-offset-editor.component';
 import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.component';
+import { EInvoiceProfile, EInvoiceProfileVersion } from '../../../shared/models/einvoice-profile.model';
+import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -33,6 +35,7 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 })
 export class GenericPropertyComponent {
   private readonly catalog = inject(ActivityCatalogService);
+  private readonly einvoiceProfiles = inject(EInvoiceProfileService);
   private readonly cdr = inject(ChangeDetectorRef);
 
   private _activityType?: string;
@@ -44,6 +47,10 @@ export class GenericPropertyComponent {
   variablePickerPort?: ActivityPort;
   editorVariablePickerOpen = false;
   variableError = '';
+  einvoiceProfileOptions: EInvoiceProfile[] = [];
+  einvoiceProfileVersions: EInvoiceProfileVersion[] = [];
+  einvoiceProfileError = '';
+  einvoiceNewerVersion: number | null = null;
 
   /** Alan başına giriş kipi: Değer (literal) / Değişken / İfade. Kullanıcı elle değiştirdiğinde saklanır. */
   private readonly modeOverrides: Record<string, FieldMode> = {};
@@ -177,6 +184,95 @@ export class GenericPropertyComponent {
     return port.pickerKind === 'einvoice-mapping';
   }
 
+  isEInvoiceProfile(port: ActivityPort): boolean {
+    return port.pickerKind === 'einvoice-profile';
+  }
+
+  loadEInvoiceProfiles(): void {
+    const projectId = String(this.properties['projectId'] ?? '').trim();
+    if (!projectId) {
+      this.einvoiceProfileError = 'Profil listesi icin once projectId girin';
+      return;
+    }
+    this.einvoiceProfileError = '';
+    this.einvoiceProfiles.list(projectId).subscribe({
+      next: profiles => {
+        this.einvoiceProfileOptions = profiles;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.einvoiceProfileOptions = [];
+        this.einvoiceProfileError = 'E-fatura profilleri yuklenemedi';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  selectEInvoiceProfile(profileId: string): void {
+    if (!profileId) {
+      this.onValueChange({ name: 'profileId', type: 'string' }, '');
+      return;
+    }
+    const projectId = String(this.properties['projectId'] ?? '').trim();
+    const selected = { ...this.properties, profileId };
+    this.properties = selected;
+    this.propertiesChange.emit(selected);
+    this.einvoiceProfiles.versions(projectId, profileId).subscribe({
+      next: versions => {
+        this.einvoiceProfileVersions = versions;
+        const latest = [...versions].sort((a, b) => b.version - a.version)[0];
+        if (!latest) {
+          return;
+        }
+        const withSchema = {
+          ...this.properties,
+          profileId,
+          profileVersion: latest.version,
+          outputSchemaJson: latest.outputSchemaJson,
+        };
+        this.properties = withSchema;
+        this.propertiesChange.emit(withSchema);
+        this.refreshEInvoiceVersionWarning();
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.einvoiceProfileError = 'E-fatura profil surumleri yuklenemedi';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  /** Node var olan profileId ile açıldığında sürüm listesini çekip yeni sürüm kontrolü yapar. */
+  private loadEInvoiceVersionInfo(): void {
+    const projectId = String(this.properties['projectId'] ?? '').trim();
+    const profileId = String(this.properties['profileId'] ?? '').trim();
+    if (!projectId || !profileId) return;
+    this.einvoiceProfiles.versions(projectId, profileId).subscribe({
+      next: versions => {
+        this.einvoiceProfileVersions = versions;
+        this.refreshEInvoiceVersionWarning();
+        this.cdr.markForCheck();
+      },
+      error: () => { /* uyarı üretilemedi; node çalışmaya devam eder */ },
+    });
+  }
+
+  private refreshEInvoiceVersionWarning(): void {
+    const latest = [...this.einvoiceProfileVersions].sort((a, b) => b.version - a.version)[0];
+    const current = Number(this.properties['profileVersion'] ?? 0);
+    this.einvoiceNewerVersion = latest && current > 0 && latest.version > current ? latest.version : null;
+  }
+
+  /** Kullanıcı onayıyla node'u en son yayınlanmış sürüme taşır (spec 8.6: otomatik geçiş yok). */
+  applyLatestEInvoiceVersion(): void {
+    const latest = [...this.einvoiceProfileVersions].sort((a, b) => b.version - a.version)[0];
+    if (!latest) return;
+    const next = { ...this.properties, profileVersion: latest.version, outputSchemaJson: latest.outputSchemaJson };
+    this.properties = next;
+    this.propertiesChange.emit(next);
+    this.refreshEInvoiceVersionWarning();
+  }
+
   /** Vision.ClickTextOffset gibi çapa+ofset editörü gerektiren alan mı? */
   isTextOffsetField(port: ActivityPort): boolean {
     return port.pickerKind === 'text-offset';
@@ -190,7 +286,7 @@ export class GenericPropertyComponent {
 
   /** selector-picker-button'a geçilecek spy türü ('image-sequence'/'text-offset' spy türü değil, editör ipucu → null). */
   spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | null {
-    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset'
+    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset' || port.pickerKind === 'einvoice-profile'
       ? null
       : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | undefined) ?? null;
   }
@@ -421,6 +517,9 @@ export class GenericPropertyComponent {
       next: (meta) => {
         this.metadata = meta;
         this.loading = false;
+        if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
+          this.loadEInvoiceVersionInfo();
+        }
         this.cdr.markForCheck();
       },
       error: () => {

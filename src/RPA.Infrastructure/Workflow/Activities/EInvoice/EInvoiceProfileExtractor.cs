@@ -35,12 +35,35 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var field in fields)
         {
-            var values = Values(scope, document, field, namespaces).Select(value => ApplyRegex(value, field))
-                .Where(value => value is not null).Select(value => Convert(value!, field)).ToList();
+            var raw = Values(scope, document, field, namespaces).Select(value => ApplyRegex(value, field))
+                .Where(value => value is not null).Select(value => value!).ToList();
+            if (raw.Count == 0 && !string.IsNullOrWhiteSpace(field.FallbackRegex))
+                raw = ApplyFallbackRegex(ScopeText(scope), field);
+            var values = raw.Select(value => Convert(value, field)).ToList();
             if (values.Count == 0 && field.Required) throw new InvoiceParseException($"Zorunlu profil alanı bulunamadı: {field.Name}");
             result[field.Name] = field.Multiple ? values : values.FirstOrDefault();
         }
         return result;
+    }
+
+    private static string ScopeText(XPathNavigator scope) =>
+        string.Join("\n", scope.SelectDescendants(XPathNodeType.Text, false).Cast<XPathNavigator>()
+            .Select(navigator => navigator.Value.Trim()).Where(value => value.Length > 0));
+
+    private List<string> ApplyFallbackRegex(string text, EInvoiceFieldDefinition field)
+    {
+        try
+        {
+            var regex = new Regex(field.FallbackRegex!, RegexOptions.CultureInvariant, _options.EffectiveRegexTimeout);
+            if (!string.IsNullOrWhiteSpace(field.FallbackGroup) && !regex.GetGroupNames().Contains(field.FallbackGroup, StringComparer.Ordinal))
+                throw new InvoiceParseException($"Geçersiz fallback regex grubu: {field.Name}");
+            var matches = regex.Matches(text)
+                .Select(match => string.IsNullOrWhiteSpace(field.FallbackGroup) ? match.Value : match.Groups[field.FallbackGroup].Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim());
+            return (field.Multiple ? matches : matches.Take(1)).ToList();
+        }
+        catch (RegexMatchTimeoutException) { throw new InvoiceParseException($"Profil fallback regex zaman aşımı: {field.Name}"); }
+        catch (ArgumentException) { throw new InvoiceParseException($"Geçersiz profil fallback regex'i: {field.Name}"); }
     }
 
     private static IEnumerable<string> Values(XPathNavigator scope, XDocument document, EInvoiceFieldDefinition field, XmlNamespaceManager namespaces)
@@ -87,8 +110,8 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
     {
         "string" => value,
         "integer" => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer) ? integer : throw Conversion(field.Name),
-        "decimal" => decimal.TryParse(value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : throw Conversion(field.Name),
-        "date" => DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : throw Conversion(field.Name),
+        "decimal" => ParseDecimal(value, field.Name),
+        "date" => ParseDate(value, field.Name),
         "boolean" => bool.TryParse(value, out var boolean) ? boolean : value switch { "1" => true, "0" => false, _ => throw Conversion(field.Name) },
         _ => throw Conversion(field.Name)
     };
@@ -127,6 +150,30 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
         "unitprice" or "line.unitprice" => "cac:Price/cbc:PriceAmount",
         _ => field
     };
+
+    private static decimal ParseDecimal(string value, string name)
+    {
+        var normalized = value.Trim();
+        if (normalized.Contains(',') && normalized.Contains('.'))
+        {
+            // Son gelen ayraç ondalık ayracıdır: "1.234,56" → TR, "1,234.56" → EN.
+            normalized = normalized.LastIndexOf(',') > normalized.LastIndexOf('.')
+                ? normalized.Replace(".", string.Empty).Replace(',', '.')
+                : normalized.Replace(",", string.Empty);
+        }
+        else
+        {
+            normalized = normalized.Replace(',', '.');
+        }
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
+            ? number : throw Conversion(name);
+    }
+
+    private static readonly string[] DateFormats = ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy"];
+
+    private static DateOnly ParseDate(string value, string name) =>
+        DateOnly.TryParseExact(value.Trim(), DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? date : throw Conversion(name);
 
     private static InvoiceParseException Conversion(string name) => new($"Profil alan tür dönüşümü başarısız: {name}");
 }

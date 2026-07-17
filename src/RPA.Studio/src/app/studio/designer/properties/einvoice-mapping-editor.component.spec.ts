@@ -7,6 +7,14 @@ const MAPPING = { name: 'invoiceId', source: 'XPath' as const, valueXPath: '/Inv
 const SCOPED_UBL = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:Note>first</cbc:Note></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:Note>second</cbc:Note></cac:InvoiceLine></Invoice>`;
 const UBL_WITH_TWO_LINES = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cac:InvoiceLine><cac:Item><cbc:ID>M-1</cbc:ID><cbc:Name>Kalem 1</cbc:Name></cac:Item></cac:InvoiceLine><cac:InvoiceLine><cac:Item><cbc:ID>M-2</cbc:ID><cbc:Name>Kalem 2</cbc:Name></cac:Item></cac:InvoiceLine></Invoice>`;
 const DEEP_UBL = `<Invoice><Lines><Line><Details><Code>ABC</Code></Details></Line><Line><Details><Code>DEF</Code></Details></Line></Lines></Invoice>`;
+const PREVIEW_SAMPLE = `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+  xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+  xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+  <cbc:ID>FTR2026001</cbc:ID>
+  <cbc:Note>IBAN: TR120001200012345678901234</cbc:Note>
+  <cac:InvoiceLine><cbc:ID>1</cbc:ID><cbc:InvoicedQuantity>2</cbc:InvoicedQuantity></cac:InvoiceLine>
+  <cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:InvoicedQuantity>5</cbc:InvoicedQuantity></cac:InvoiceLine>
+</Invoice>`;
 let workerHangs = false;
 const workers: FakeWorker[] = [];
 class FakeWorker {
@@ -36,11 +44,15 @@ describe('EInvoiceMappingEditorComponent', () => {
 
   it('renders accessible tree rule and preview panels with an XML-only file picker', () => {
     const root = fixture.nativeElement as HTMLElement;
-    expect(root.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="einvoice-rule-panel"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="einvoice-preview-panel"]')).toBeTruthy();
     const picker = root.querySelector('input[type="file"]') as HTMLInputElement;
     expect(picker.accept).toBe('.xml,text/xml,application/xml');
+
+    fixture.componentInstance.setStep(2); fixture.detectChanges();
+    expect(root.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="einvoice-fields-panel"]')).toBeTruthy();
+
+    fixture.componentInstance.setStep(3); fixture.detectChanges();
+    expect(root.querySelector('[data-testid="einvoice-preview-panel"]')).toBeTruthy();
   });
 
   it('reads the sample with File.text without emitting the file or XML', async () => {
@@ -72,6 +84,9 @@ describe('EInvoiceMappingEditorComponent', () => {
 
   it('offers every rule field and editable kur and IBAN presets', () => {
     const root = fixture.nativeElement as HTMLElement;
+    fixture.componentInstance.setStep(2);
+    fixture.componentInstance.openFieldDialog();
+    fixture.detectChanges();
     for (const id of ['source', 'scope', 'xpath', 'regex', 'group', 'type'])
       expect(root.querySelector(`#einvoice-rule-${id}`)).toBeTruthy();
     (root.querySelector('[data-testid="einvoice-preset-iban"]') as HTMLButtonElement).click();
@@ -84,6 +99,7 @@ describe('EInvoiceMappingEditorComponent', () => {
     fixture.componentInstance.loadSampleXml(SAMPLE_UBL);
     expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
     fixture.componentInstance.draft = ibanPreset();
+    fixture.componentInstance.setStep(3);
     fixture.detectChanges();
     expect(fixture.componentInstance.preview(ibanPreset()).converted).toBe('TR330006100519786457841326');
     const preview = fixture.nativeElement.querySelector('[data-testid="einvoice-draft-preview"]') as HTMLElement;
@@ -94,6 +110,9 @@ describe('EInvoiceMappingEditorComponent', () => {
   });
 
   it('provides an editable common invoice-note starter preset', () => {
+    fixture.componentInstance.setStep(2);
+    fixture.componentInstance.openFieldDialog();
+    fixture.detectChanges();
     const button = fixture.nativeElement.querySelector('[data-testid="einvoice-preset-note"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     expect(fixture.componentInstance.draft.source).toBe('InvoiceNotes');
@@ -262,6 +281,59 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.profileDefinition().collections[0].fields[0].name).toBe('MalzemeKodu');
   });
 
+  it('loads an existing profile definition with root and collection fields into the editor', () => {
+    const component = fixture.componentInstance;
+    component.value = JSON.stringify({
+      fields: [{ ...MAPPING, name: 'faturaNo' }],
+      collections: [
+        {
+          name: 'satirlar',
+          scopeXPath: '/Invoice/cac:InvoiceLine',
+          fields: [{ ...MAPPING, name: 'MalzemeKodu', valueXPath: './cac:Item/cbc:ID' }],
+        },
+      ],
+    });
+    component.setStep(2);
+    fixture.detectChanges();
+
+    expect(component.rules.map(rule => rule.name)).toEqual(['faturaNo']);
+    expect(component.collections[0].name).toBe('satirlar');
+    expect(component.collections[0].fields[0].name).toBe('MalzemeKodu');
+    expect(fixture.nativeElement.textContent).toContain('satirlar.MalzemeKodu');
+  });
+
+  it('lets the user add a visible invoice-line collection field from the selected XML node', () => {
+    const component = fixture.componentInstance;
+    const emitted: string[] = [];
+    component.profileDefinitionChange.subscribe(value => emitted.push(value));
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('[data-node-name="cac:InvoiceLine"]') as HTMLButtonElement).click();
+    component.newCollectionOpen = true;
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="collection-name"]') as HTMLInputElement).value = 'satirlar';
+    (fixture.nativeElement.querySelector('[data-testid="collection-name"]') as HTMLInputElement)
+      .dispatchEvent(new Event('input'));
+    (fixture.nativeElement.querySelector('[data-testid="add-collection"]') as HTMLButtonElement).click();
+
+    component.draft = {
+      name: 'MalzemeKodu',
+      source: 'XPath',
+      valueXPath: './cac:Item/cbc:ID',
+      type: 'string',
+      required: true,
+      multiple: false,
+    };
+    component.draftTarget = 'satirlar';
+    component.fieldDialogOpen = true;
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="einvoice-add-rule"]') as HTMLButtonElement).click();
+
+    expect(component.collections[0].fields[0].name).toBe('MalzemeKodu');
+    expect(JSON.parse(emitted.at(-1)!).collections[0].fields[0].name).toBe('MalzemeKodu');
+  });
+
   it('never emits sample XML while saving a profile draft definition', () => {
     const component = fixture.componentInstance;
     const emitted: string[] = [];
@@ -271,9 +343,9 @@ describe('EInvoiceMappingEditorComponent', () => {
     component.addCollectionField('satirlar', { ...MAPPING, name: 'MalzemeKodu', valueXPath: './cac:Item/cbc:ID' });
     component.emitProfileDefinition();
 
-    expect(emitted.length).toBe(1);
+    expect(emitted.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(emitted)).not.toContain('<Invoice');
-    expect(JSON.parse(emitted[0]).collections[0].name).toBe('satirlar');
+    expect(JSON.parse(emitted.at(-1)!).collections[0].name).toBe('satirlar');
   });
 
   it.each(['missing', '9'])('reports missing regex group %s instead of converting an empty value', group => {
@@ -299,4 +371,225 @@ describe('EInvoiceMappingEditorComponent', () => {
       expect(preview.error).toContain('date');
     },
   );
+
+  it("koleksiyona eklenen alanın mutlak XPath yolu scope'a göre göreceli kaydedilir", () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '/Invoice/cac:InvoiceLine');
+    component.addCollectionField('satirlar', {
+      name: 'MalzemeKodu',
+      source: 'XPath',
+      valueXPath: '/Invoice/cac:InvoiceLine/cac:Item/cbc:SellersItemIdentification/cbc:ID',
+      type: 'string',
+      required: false,
+      multiple: false,
+    });
+    expect(component.collections[0].fields[0].valueXPath)
+      .toBe('./cac:Item/cbc:SellersItemIdentification/cbc:ID');
+  });
+
+  it('"Ağaçtan seç" formu koruyarak ağaca döner ve seçilen yolla geri açılır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.openFieldDialog();
+    component.draft = { name: 'faturaNo', source: 'XPath', valueXPath: '', type: 'date', required: true, multiple: false };
+
+    component.pickPathFromTree();
+    expect(component.fieldDialogOpen).toBe(false);
+    expect(component.repickPath).toBe(true);
+
+    component.selectNode(component.findFirst('cbc:ID')!);
+
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.repickPath).toBe(false);
+    expect(component.draft.valueXPath).toBe('/Invoice/cbc:ID');
+    // Form korunmalı: yeniden seçim ad/tip bilgisini sıfırlamaz.
+    expect(component.draft.name).toBe('faturaNo');
+    expect(component.draft.type).toBe('date');
+  });
+
+  it('"Ağaçtan seç" modunda dallı öğe seçilebilir ve form geri açılır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.openFieldDialog();
+    component.pickPathFromTree();
+
+    component.selectNode(component.findFirst('cac:InvoiceLine')!);
+
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.draft.valueXPath).toBe('/Invoice/cac:InvoiceLine');
+  });
+
+  it('yaprak öğeye tıklayınca alan ekleme diyaloğu açılır ve yol dolar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    const node = component.findFirst('cbc:ID')!;
+
+    component.selectNode(node);
+
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.draft.valueXPath).toBe('/Invoice/cbc:ID');
+  });
+
+  it('tekrar eden öğeye tıklayınca diyalog açılmaz, scope dolar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    const line = component.findFirst('cac:InvoiceLine')!;
+
+    component.selectNode(line);
+
+    expect(component.fieldDialogOpen).toBe(false);
+    expect(component.collectionScopeXPath).toBe('/Invoice/cac:InvoiceLine');
+  });
+
+  it('saveField alanı ekler ve diyaloğu kapatır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openFieldDialog();
+    component.draft = { name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false };
+
+    component.saveField();
+
+    expect(component.rules[0].name).toBe('faturaNo');
+    expect(component.fieldDialogOpen).toBe(false);
+  });
+
+  it('satır alanı düzenlenip güncellenebilir ve silinebilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+
+    component.editCollectionField('satirlar', 'Miktar');
+    expect(component.fieldDialogOpen).toBe(true);
+    expect(component.draftTarget).toBe('satirlar');
+    component.draft = { ...component.draft, type: 'decimal' };
+    component.saveField();
+    expect(component.collections[0].fields[0].type).toBe('decimal');
+    expect(component.collections[0].fields.length).toBe(1);
+
+    component.removeCollectionField('satirlar', 'Miktar');
+    expect(component.collections[0].fields.length).toBe(0);
+  });
+
+  it('örnek XML yüklenince otomatik 2. adıma geçer', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    expect(component.activeStep).toBe(1);
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    expect(component.activeStep).toBe(2);
+  });
+
+  it('hedef fatura alanı iken addDraft kök kurala ekler', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.draftTarget = 'root';
+    component.draft = { name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false };
+    component.addDraft();
+    expect(component.rules.length).toBe(1);
+    expect(component.rules[0].name).toBe('faturaNo');
+  });
+
+  it('hedef satır dizisi iken addDraft alanı koleksiyona ekler', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.draftTarget = 'satirlar';
+    component.draft = { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false };
+    component.addDraft();
+    expect(component.collections[0].fields.length).toBe(1);
+    expect(component.collections[0].fields[0].name).toBe('Miktar');
+    expect(component.rules.length).toBe(0);
+  });
+
+  it('eklenen alanın yanında örnek XML\'den bulunan değer gösterilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addRule({ name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false });
+
+    expect(component.fieldValueText(component.rules[0])).toBe('FTR2026001');
+  });
+
+  it('satır alanının yanında ilk satırın değeri gösterilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+
+    expect(component.collectionFieldValueText(component.collections[0], component.collections[0].fields[0])).toBe('2');
+  });
+
+  it('sihirbaz kapsamları örnek XML yollarını içerir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+
+    expect(component.wizardScopes().some(scope => scope.path === '/Invoice/cbc:ID')).toBe(true);
+  });
+
+  it('sihirbazdan gelen XML yolu forma yazılır ve kaynak XPath olur', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openFieldDialog();
+    component.openRegexWizard('fallbackRegex');
+
+    component.applyWizardPath('/Invoice/cbc:IssueDate');
+
+    expect(component.draft.valueXPath).toBe('/Invoice/cbc:IssueDate');
+    expect(component.draft.source).toBe('XPath');
+    expect(component.wizardTarget).toBeNull();
+  });
+
+  it('regex sihirbazı hedef alana desen ve grubu yazar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openRegexWizard('fallbackRegex');
+    expect(component.wizardTarget).toBe('fallbackRegex');
+    component.applyWizardPattern({ pattern: 'TR\\d{24}', group: 'deger' });
+    expect(component.draft.fallbackRegex).toBe('TR\\d{24}');
+    expect(component.draft.fallbackGroup).toBe('deger');
+    expect(component.wizardTarget).toBeNull();
+  });
+
+  it('regex sihirbazı regex hedefinde regex/group alanlarına yazar', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.openRegexWizard('regex');
+    component.applyWizardPattern({ pattern: 'IBAN[: ]+(?<deger>TR\\d{24})', group: 'deger' });
+    expect(component.draft.regex).toBe('IBAN[: ]+(?<deger>TR\\d{24})');
+    expect(component.draft.group).toBe('deger');
+  });
+
+  it('kaydedilmiş kural önizlemesi bulunan değeri ve eşleşme kaynağını döner', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addRule({ name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false });
+    component.addRule({ name: 'iban', source: 'XPath', valueXPath: '/Invoice/cbc:Yok', fallbackRegex: 'TR\\d{24}', type: 'string', required: false, multiple: false });
+
+    const previews = component.savedRulePreviews();
+
+    expect(previews[0].preview.converted).toBe('FTR2026001');
+    expect(previews[0].preview.matchedBy).toBe('xpath');
+    expect(previews[1].preview.converted).toBe('TR120001200012345678901234');
+    expect(previews[1].preview.matchedBy).toBe('fallback');
+  });
+
+  it('koleksiyon önizlemesi ilk satırları tablo verisi olarak döner', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+
+    const rows = component.collectionPreviewRows(component.collections[0]);
+
+    expect(rows.length).toBe(2);
+    expect(rows[0]['Miktar']).toBe(2);
+    expect(component.collectionColumns(component.collections[0])).toEqual(['Miktar']);
+  });
+
+  it('örnek XML yokken kural önizlemesi açıklayıcı hata taşır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addRule({ name: 'faturaNo', source: 'XPath', valueXPath: '/Invoice/cbc:ID', type: 'string', required: false, multiple: false });
+    expect(component.savedRulePreviews()[0].preview.error).toBe('Örnek XML yüklenmedi.');
+  });
+
+  it('koleksiyona eklenen zaten göreceli yol değişmez', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', {
+      name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity',
+      type: 'decimal', required: false, multiple: false,
+    });
+    expect(component.collections[0].fields[0].valueXPath).toBe('./cbc:InvoicedQuantity');
+  });
 });

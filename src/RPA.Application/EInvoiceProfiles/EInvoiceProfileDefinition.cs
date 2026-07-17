@@ -20,6 +20,8 @@ public sealed class EInvoiceFieldDefinition
     public string? ValueXPath { get; init; }
     public string? Regex { get; init; }
     public string? Group { get; init; }
+    public string? FallbackRegex { get; init; }
+    public string? FallbackGroup { get; init; }
     public string Type { get; init; } = "string";
     public bool Required { get; init; }
     public bool Multiple { get; init; }

@@ -1,7 +1,7 @@
 <section class="einvoice-profiles">
   <header class="einvoice-profiles__header">
     <div>
-      <p class="einvoice-profiles__eyebrow">E-Fatura Profilleri</p>
+      <p class="einvoice-profiles__eyebrow">E-Fatura Adresleme</p>
       <h1>Profil adresleme alanı</h1>
       <p>XML alanlarını proje içinde sürümleyip workflow değişkenlerine hazırla.</p>
     </div>
@@ -10,6 +10,24 @@
 
   @if (error()) {
     <p class="einvoice-profiles__error" data-testid="einvoice-profile-error">{{ error() }}</p>
+  }
+
+  @if (projects().length > 0) {
+    <section class="einvoice-profiles__project-picker">
+      <label for="addressing-project-select">Adresleme yapılacak projeyi seç</label>
+      <select
+        id="addressing-project-select"
+        data-testid="addressing-project-select"
+        [ngModel]="projectId()"
+        (ngModelChange)="selectProject($event)"
+      >
+        <option value="">Proje seç</option>
+        @for (project of projects(); track project.id) {
+          <option [value]="project.id">{{ project.name }}</option>
+        }
+      </select>
+      <p>Profil bu proje altında saklanır; Designer’da aynı projede otomatik seçilebilir.</p>
+    </section>
   }
 
   <div class="einvoice-profiles__layout">
@@ -48,11 +66,17 @@
               [class.einvoice-profiles__row--active]="selectedProfileId() === profile.id"
               data-testid="einvoice-profile-row"
             >
-              <div class="einvoice-profiles__row-main">
+              <button
+                type="button"
+                class="einvoice-profiles__row-main"
+                data-testid="select-profile"
+                [attr.aria-pressed]="selectedProfileId() === profile.id"
+                (click)="openDraft(profile.id)"
+              >
                 <h3>{{ profile.name }}</h3>
                 <p>{{ profile.description || 'Açıklama yok.' }}</p>
                 <div class="einvoice-profiles__schema-strip" aria-hidden="true"></div>
-              </div>
+              </button>
               <div class="einvoice-profiles__row-actions">
                 <span class="einvoice-profiles__version">
                   @if (latestVersion(profile.id)) {
@@ -83,15 +107,19 @@
 
       @if (selectedProfileId()) {
         <app-einvoice-mapping-editor
+          [value]="draftJson()"
           (profileDefinitionChange)="draftJson.set($event)"
         />
-        <textarea
-          class="einvoice-profiles__draft"
-          data-testid="profile-draft"
-          [ngModel]="draftJson()"
-          (ngModelChange)="draftJson.set($event)"
-          spellcheck="false"
-        ></textarea>
+        <details class="einvoice-profiles__json-details">
+          <summary>Teknik JSON (gelişmiş)</summary>
+          <textarea
+            class="einvoice-profiles__draft"
+            data-testid="profile-draft"
+            [ngModel]="draftJson()"
+            (ngModelChange)="draftJson.set($event)"
+            spellcheck="false"
+          ></textarea>
+        </details>
         <div class="einvoice-profiles__versions" data-testid="profile-versions">
           @if (versions().length === 0) {
             <span>Yayınlanmış sürüm yok.</span>

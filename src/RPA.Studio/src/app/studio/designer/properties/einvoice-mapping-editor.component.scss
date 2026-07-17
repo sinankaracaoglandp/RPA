@@ -1,14 +1,181 @@
 :host { display: block; }
+/* Adımlar dikey akar; sütun bölmesini yalnız __workbench yapar. (Eski 3-sütunlu
+   grid, adım panellerini yan yana sıkıştırıp ağaç ile alan listesini iç içe
+   geçiriyordu.) */
 .einvoice-mapping {
-  display: grid;
-  grid-template-columns: 30% 38% 32%;
+  display: flex;
+  flex-direction: column;
   width: 100%;
 }
 .einvoice-mapping__panel { min-width: 0; padding: 0.75rem; border: 1px solid #d7dde5; }
 .einvoice-mapping__panel input:not([type='checkbox']),
 .einvoice-mapping__panel select { box-sizing: border-box; display: block; margin: 0.25rem 0 0.75rem; width: 100%; }
-.einvoice-mapping__tree { display: flex; flex-direction: column; align-items: stretch; margin-top: 0.75rem; }
-.einvoice-mapping__tree button { text-align: left; }
+/* Uzun XML değerleri sütunu genişletip alan listesinin üstüne taşıyordu:
+   ağaç kendi içinde kaydırılır, düğüm metni tek satırda kırpılır. */
+.einvoice-mapping__tree {
+  display: flex; flex-direction: column; align-items: stretch;
+  margin-top: 0.75rem;
+  max-height: 26rem;
+  overflow: auto;
+}
+.einvoice-mapping__tree li { display: flex; align-items: center; gap: 0.2rem; min-width: 0; }
+.einvoice-mapping__tree button {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.einvoice-mapping__tree button span {
+  opacity: 0.6;
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+}
 .einvoice-mapping__tree-child { padding-left: 1.5rem; }
 .einvoice-mapping__panel pre { overflow: auto; white-space: pre-wrap; }
-@media (max-width: 760px) { .einvoice-mapping { grid-template-columns: 1fr; } }
+
+.einvoice-mapping__validation { list-style: none; margin: 0; padding: 0; }
+.einvoice-mapping__validation-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.25rem 0.5rem; border-left: 3px solid transparent;
+}
+.einvoice-mapping__validation-row--ok { border-left-color: #2e7d32; }
+.einvoice-mapping__validation-row--fail { border-left-color: #c62828; }
+.einvoice-mapping__validation-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.einvoice-mapping__badge {
+  font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 0.5rem;
+  background: #e3f2fd; color: #1565c0;
+}
+.einvoice-mapping__badge--fallback { background: #fff3e0; color: #e65100; }
+.einvoice-mapping__table { border-collapse: collapse; font-size: 0.8rem;
+  th, td { border: 1px solid #ddd; padding: 0.2rem 0.5rem; } }
+.einvoice-mapping__json summary { cursor: pointer; font-size: 0.8rem; }
+.einvoice-mapping__empty { font-size: 0.85rem; opacity: 0.7; }
+
+.einvoice-mapping__steps {
+  display: flex; gap: 0.25rem; margin-bottom: 0.75rem;
+  border-bottom: 1px solid #ddd;
+}
+.einvoice-mapping__step {
+  border: none; background: none; padding: 0.5rem 0.9rem; cursor: pointer;
+  border-bottom: 2px solid transparent; font-weight: 500; opacity: 0.65;
+}
+.einvoice-mapping__step--active { border-bottom-color: #1565c0; opacity: 1; }
+.einvoice-mapping__workbench {
+  display: grid; grid-template-columns: minmax(240px, 1fr) minmax(320px, 1.2fr); gap: 1rem;
+  @media (max-width: 900px) { grid-template-columns: 1fr; }
+}
+.einvoice-mapping__advanced {
+  margin: 0.5rem 0;
+  summary { cursor: pointer; font-size: 0.85rem; opacity: 0.8; }
+  > div, > label, > input, > select { margin-top: 0.3rem; }
+}
+.einvoice-mapping__subform {
+  border: 1px dashed #bbb; border-radius: 0.4rem; padding: 0.5rem; margin: 0.4rem 0;
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.einvoice-mapping__link { background: none; border: none; color: #1565c0; cursor: pointer; padding: 0.2rem 0; text-align: left; }
+.einvoice-mapping__primary { font-weight: 600; padding: 0.4rem 0.9rem; }
+.einvoice-mapping__hint { font-size: 0.8rem; opacity: 0.75; }
+.einvoice-mapping__collection-title { margin: 0.4rem 0 0.1rem; font-size: 0.85rem;
+  span { opacity: 0.6; margin-left: 0.4rem; font-family: monospace; font-size: 0.75rem; } }
+
+/* --- Adım 2: solda ağaç, sağda eklenen alanlar --- */
+.einvoice-mapping__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.einvoice-mapping__group-title {
+  margin: 0.8rem 0 0.3rem; font-size: 0.85rem;
+  .einvoice-mapping__scope { opacity: 0.6; margin-left: 0.4rem; font-family: monospace; font-size: 0.72rem; font-weight: 400; }
+}
+.einvoice-mapping__field-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.einvoice-mapping__field-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.5rem; border: 1px solid #d7dee8; background: #fff;
+}
+.einvoice-mapping__field-main { flex: 1; min-width: 0; display: flex; flex-direction: column;
+  code { font-size: 0.72rem; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+.einvoice-mapping__field-type {
+  font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 0.5rem;
+  background: #eef3ff; color: #1f6feb;
+}
+
+/* --- Alan tanımı diyaloğu --- */
+.einvoice-mapping__overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: rgba(16, 24, 40, 0.45);
+}
+.einvoice-mapping__dialog {
+  display: flex; flex-direction: column;
+  width: min(38rem, 100%); max-height: 90vh;
+  border: 1px solid #c7d1df; border-radius: 0.4rem; background: #fff;
+}
+.einvoice-mapping__dialog-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.7rem 0.9rem; border-bottom: 1px solid #e1e7ef;
+  h4 { margin: 0; font-size: 0.95rem; }
+}
+.einvoice-mapping__dialog-body {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  padding: 0.9rem; overflow-y: auto;
+  label { font-size: 0.8rem; font-weight: 600; margin-top: 0.35rem; }
+}
+.einvoice-mapping__checks { display: flex; gap: 1rem; margin: 0.4rem 0;
+  label { display: flex; align-items: center; gap: 0.3rem; margin: 0; font-weight: 400; } }
+.einvoice-mapping__fallback {
+  margin: 0.7rem 0 0; padding: 0.6rem; border: 1px solid #f9a825; border-radius: 0.35rem; background: #fffdf5;
+  legend { padding: 0 0.35rem; font-size: 0.82rem; font-weight: 700; color: #8a6100; }
+}
+.einvoice-mapping__presets { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.3rem; }
+.einvoice-mapping__dialog-actions {
+  display: flex; justify-content: flex-end; gap: 0.5rem;
+  padding: 0.7rem 0.9rem; border-top: 1px solid #e1e7ef;
+}
+
+/* --- Dosya seçici gerçek bir butona dönüşür ---
+   Özgüllük notu: `.einvoice-mapping__panel input:not([type='checkbox'])` (0,2,1)
+   kuralını yenmek için element+iki sınıf kullanılıyor. */
+.einvoice-mapping__panel input.einvoice-mapping__file-input {
+  position: absolute;
+  width: 1px; height: 1px; margin: -1px; padding: 0;
+  border: 0; overflow: hidden; white-space: nowrap;
+  clip-path: inset(50%);
+}
+.einvoice-mapping__file-button {
+  display: inline-block; margin-top: 0.5rem;
+  padding: 0.45rem 0.9rem; border: 1px solid #1565c0; border-radius: 0.3rem;
+  background: #1565c0; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+}
+.einvoice-mapping__file-button:hover { background: #0f4c96; }
+.einvoice-mapping__file-input:focus-visible + .einvoice-mapping__file-button {
+  outline: 2px solid #0f4c96; outline-offset: 2px;
+}
+.einvoice-mapping__loaded { color: #2e7d32; font-size: 0.85rem; font-weight: 600; }
+
+/* --- Diyalogdaki XML yolu satırı --- */
+.einvoice-mapping__path-row {
+  display: flex; gap: 0.4rem; align-items: center;
+  input { flex: 1; min-width: 0; }
+  button { white-space: nowrap; }
+}
+.einvoice-mapping__path-row input { margin: 0.25rem 0 0; }
+
+/* --- Ağaçta yol yeniden seçme modu --- */
+.einvoice-mapping__repick {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  margin: 0.3rem 0; padding: 0.4rem 0.6rem;
+  border: 1px solid #1565c0; border-radius: 0.3rem; background: #e3f2fd;
+  color: #0f4c96; font-size: 0.82rem; font-weight: 600;
+}
+
+/* Eklenen alanın yanında örnek XML'den bulunan gerçek değer:
+   kullanıcı doğru öğeyi işaretlediğini buradan görür. */
+.einvoice-mapping__field-value {
+  color: #2e7d32;
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  em { color: #667085; font-weight: 400; font-size: 0.7rem; }
+}

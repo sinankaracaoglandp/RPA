@@ -93,6 +93,14 @@ public sealed class EInvoiceProfileDefinitionValidator
         if (!JsonTypes.ContainsKey(field.Type)) throw new BusinessException($"Desteklenmeyen alan tipi: {field.Name}");
         if (field.Source == "XPath" && string.IsNullOrWhiteSpace(field.ValueXPath))
             throw new BusinessException($"XPath alanında valueXPath zorunludur: {field.Name}");
+        if (string.IsNullOrWhiteSpace(field.FallbackRegex) && !string.IsNullOrWhiteSpace(field.FallbackGroup))
+            throw new BusinessException($"fallbackGroup için fallbackRegex zorunludur: {field.Name}");
+        if (!string.IsNullOrWhiteSpace(field.FallbackRegex))
+        {
+            try { _ = new Regex(field.FallbackRegex, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)); }
+            catch (ArgumentException exception)
+            { throw new BusinessException($"Geçersiz fallback regex deseni: {field.Name}", exception); }
+        }
     }
 
     private static void ValidateName(string name, string kind)

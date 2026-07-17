@@ -489,6 +489,24 @@ kullanılabilir hale getirmek; profil şemasını nesne tabanlı RPA değişkenl
 
 ---
 
+## Kontrat Değişikliği — 2026-07-16 (E-Fatura profil alanı fallback regex)
+
+`EInvoiceFieldDefinition`'a iki opsiyonel alan eklendi: `FallbackRegex` (string?) ve
+`FallbackGroup` (string?). Anlamı: alanın birincil kaynağı (XPath/Standard/Notes + mevcut
+`Regex` filtresi) hiçbir değer üretmezse, extractor scope'un düz metni (text node'lar
+"\n" ile birleştirilmiş) üzerinde `FallbackRegex`'i koşar; `Multiple=true` tüm eşleşmeleri,
+`false` ilk eşleşmeyi alır. Mevcut `Regex` alanının anlamı DEĞİŞMEDİ (XPath sonucu üzerine
+filtre). Validator: `fallbackGroup` verilmişse `fallbackRegex` zorunlu; desen derlenemezse
+BusinessException. Timeout `InvoiceParseOptions.EffectiveRegexTimeout` ile aynıdır.
+
+Etkilenen paketler: EInvoice profil editörü (Studio `einvoice-mapping.model.ts` +
+`einvoice-mapping-editor`), `EInvoiceProfileDefinitionValidator`, `EInvoiceProfileExtractor`.
+`OutputSchemaJson` üretimi etkilenmez (fallback yalnız değer bulma stratejisidir, tip aynı).
+Gerekçe: "önce XPath ile ara, bulamazsan regex ile ham metinde ara" kullanıcı akışı mevcut
+modelde ifade edilemiyordu.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

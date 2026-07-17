@@ -34,4 +34,30 @@ public sealed class EInvoiceProfileDefinitionValidatorTests
 
         Assert.Throws<BusinessException>(() => new EInvoiceProfileDefinitionValidator().ValidateAndBuildSchema(json));
     }
+
+    [Fact]
+    public void ParseAndValidate_FallbackGroupWithoutFallbackRegex_Throws()
+    {
+        var json = """{"fields":[{"name":"iban","source":"XPath","valueXPath":"//cbc:ID","fallbackGroup":"deger","type":"string"}],"collections":[]}""";
+        var validator = new EInvoiceProfileDefinitionValidator();
+        var exception = Assert.Throws<BusinessException>(() => validator.ParseAndValidate(json));
+        Assert.Contains("fallbackRegex", exception.Message);
+    }
+
+    [Fact]
+    public void ParseAndValidate_InvalidFallbackRegexPattern_Throws()
+    {
+        var json = """{"fields":[{"name":"iban","source":"XPath","valueXPath":"//cbc:ID","fallbackRegex":"[","type":"string"}],"collections":[]}""";
+        var validator = new EInvoiceProfileDefinitionValidator();
+        var exception = Assert.Throws<BusinessException>(() => validator.ParseAndValidate(json));
+        Assert.Contains("fallback regex", exception.Message);
+    }
+
+    [Fact]
+    public void ParseAndValidate_ValidFallbackRegex_RoundTrips()
+    {
+        var json = """{"fields":[{"name":"iban","source":"XPath","valueXPath":"//cbc:ID","fallbackRegex":"TR\\d{24}","fallbackGroup":null,"type":"string"}],"collections":[]}""";
+        var definition = new EInvoiceProfileDefinitionValidator().ParseAndValidate(json);
+        Assert.Equal("TR\\d{24}", definition.Fields[0].FallbackRegex);
+    }
 }

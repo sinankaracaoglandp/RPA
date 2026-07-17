@@ -179,7 +179,7 @@ describe('GenericPropertyComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('app-einvoice-mapping-editor')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-tree-panel"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-step-2"]')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('[data-testid="prop-mappings"]')).toBeFalsy();
   });
 
@@ -193,6 +193,96 @@ describe('GenericPropertyComponent', () => {
     fixture.detectChanges();
     component.onValueChange(component.inputs[0], JSON.stringify([{ name: 'id', source: 'XPath', valueXPath: '/Invoice/ID', type: 'string', required: false, multiple: false }]));
     expect(emitted.at(-1)?.['mappings']).not.toContain('<Invoice');
+  });
+
+  it('selects a published e-invoice profile and emits schema properties for designer variables', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { projectId: 'project-1', outputVariable: 'fatura' };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe(value => emitted.push(value));
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'projectId', type: 'string', required: true },
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+        { name: 'profileVersion', type: 'int', required: true },
+        { name: 'outputSchemaJson', type: 'JSON', required: false },
+        { name: 'outputVariable', type: 'string', required: false },
+      ],
+    });
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('[data-testid="load-einvoice-profiles"]') as HTMLButtonElement).click();
+    http.expectOne('/api/projects/project-1/einvoice-profiles').flush([
+      {
+        id: 'profile-1',
+        projectId: 'project-1',
+        name: 'Micro Alis',
+        draftDefinitionJson: '{"fields":[],"collections":[]}',
+        createdAt: '2026-07-16T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="prop-profileId"]') as HTMLSelectElement).value = 'profile-1';
+    (fixture.nativeElement.querySelector('[data-testid="prop-profileId"]') as HTMLSelectElement)
+      .dispatchEvent(new Event('change'));
+    http.expectOne('/api/projects/project-1/einvoice-profiles/profile-1/versions').flush([
+      {
+        id: 'v2',
+        profileId: 'profile-1',
+        version: 2,
+        definitionJson: '{}',
+        outputSchemaJson: '{"fields":{"faturaNo":{"type":"string"}},"collections":{"satirlar":{"fields":{"MalzemeKodu":{"type":"string"}}}}}',
+        publishedAt: '2026-07-16T00:00:00Z',
+      },
+    ]);
+
+    expect(emitted.at(-1)).toMatchObject({
+      projectId: 'project-1',
+      profileId: 'profile-1',
+      profileVersion: 2,
+      outputSchemaJson: '{"fields":{"faturaNo":{"type":"string"}},"collections":{"satirlar":{"fields":{"MalzemeKodu":{"type":"string"}}}}}',
+    });
+  });
+
+  it('node eski profil sürümündeyse yeni sürüm uyarısı gösterir', () => {
+    component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
+    component.activityType = 'EInvoice.ReadProfile';
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profil Oku',
+      inputs: [
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+        { name: 'profileVersion', type: 'int', required: true },
+      ],
+    });
+    http.expectOne('/api/projects/proj-1/einvoice-profiles/prof-1/versions').flush([
+      { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-16T00:00:00Z' },
+      { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-15T00:00:00Z' },
+    ]);
+    fixture.detectChanges();
+
+    expect(component.einvoiceNewerVersion).toBe(2);
+    expect(fixture.nativeElement.querySelector('[data-testid="einvoice-newer-version"]')).toBeTruthy();
+  });
+
+  it('son sürüme geç butonu sürümü ve şemayı günceller', () => {
+    component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
+    component.einvoiceProfileVersions = [
+      { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"v":2}', publishedAt: '2026-07-16T00:00:00Z' },
+      { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"v":1}', publishedAt: '2026-07-15T00:00:00Z' },
+    ];
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe(properties => emitted.push(properties));
+
+    component.applyLatestEInvoiceVersion();
+
+    expect(emitted[0]['profileVersion']).toBe(2);
+    expect(emitted[0]['outputSchemaJson']).toBe('{"v":2}');
+    expect(component.einvoiceNewerVersion).toBeNull();
   });
 
   it('shows condition expression examples for Logic.If', () => {
