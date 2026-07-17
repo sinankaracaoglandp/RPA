@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { WorkflowVariable } from '../../../shared/models/workflow.model';
+import { variableFieldPaths } from '../variable-schema.util';
 
 const VARIABLE_TYPES = ['string', 'int', 'decimal', 'bool', 'DateTime', 'JSON'] as const;
 
@@ -44,29 +45,7 @@ export class VariablesPanelComponent {
    * bir seviye içerlek (`nested`) olarak eklenir (fatura → satır kalemleri gibi).
    */
   schemaFieldRows(variable: WorkflowVariable): SchemaFieldRow[] {
-    const schema = variable.schema as JsonSchemaLike | undefined;
-    if (!schema || typeof schema !== 'object') {
-      return [];
-    }
-    const root = schema.type === 'array' ? schema.items : schema;
-    const rootPrefix = schema.type === 'array' ? 'satir' : variable.name;
-    const rows: SchemaFieldRow[] = [];
-    for (const [name, def] of Object.entries(root?.properties ?? {})) {
-      rows.push({ path: `${rootPrefix}.${name}`, type: this.displayType(def), nested: false });
-      if (def.type === 'array' && def.items?.properties) {
-        for (const [childName, childDef] of Object.entries(def.items.properties)) {
-          rows.push({ path: `satir.${childName}`, type: this.displayType(childDef), nested: true });
-        }
-      }
-    }
-    return rows;
-  }
-
-  private displayType(def: JsonSchemaLike): string {
-    if (def.type === 'array') {
-      return `liste<${def.items?.type ?? 'object'}>`;
-    }
-    return def.type ?? 'string';
+    return variableFieldPaths(variable).map((r) => ({ path: r.path, type: r.type, nested: r.nested }));
   }
 
   addVariable(): void {
