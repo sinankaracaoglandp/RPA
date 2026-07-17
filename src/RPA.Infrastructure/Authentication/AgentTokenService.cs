@@ -2,8 +2,6 @@ namespace RPA.Infrastructure.Authentication;
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using RPA.Domain.Entities;
@@ -29,7 +27,7 @@ public sealed class AgentTokenService
 
         var now = DateTime.UtcNow;
         var credentials = new SigningCredentials(
-            new SymmetricSecurityKey(DeriveSigningKey(_options.Secret)),
+            new SymmetricSecurityKey(JwtSigningKey.Derive(_options.Secret)),
             SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
@@ -47,20 +45,5 @@ public sealed class AgentTokenService
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    private static byte[] DeriveSigningKey(string? secret)
-    {
-        if (string.IsNullOrWhiteSpace(secret) || Encoding.UTF8.GetByteCount(secret) < 32)
-        {
-            throw new InvalidOperationException("JWT secret yapılandırılmamış veya 32 byte'tan kısa.");
-        }
-
-        return Rfc2898DeriveBytes.Pbkdf2(
-            Encoding.UTF8.GetBytes(secret),
-            Encoding.UTF8.GetBytes("RPA.JwtTokenService.v1"),
-            iterations: 10000,
-            HashAlgorithmName.SHA256,
-            outputLength: 32);
     }
 }

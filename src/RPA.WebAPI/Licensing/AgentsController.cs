@@ -3,9 +3,9 @@ namespace RPA.WebAPI.Licensing;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using RPA.Domain.Entities;
 using RPA.Domain.Enums;
+using RPA.Domain.Exceptions;
 using RPA.Domain.Interfaces;
 using RPA.Infrastructure.Persistence;
 
@@ -14,13 +14,13 @@ using RPA.Infrastructure.Persistence;
 [Authorize(Policy = "LicenseAdministrator")]
 public sealed class AgentsController : ControllerBase
 {
-    private readonly RpaDbContext _db;
+    private readonly ILicenseService _licenses;
     private readonly IAgentIdentityRepository _agents;
     private readonly IAgentActivationCodeStore _activationCodes;
 
-    public AgentsController(RpaDbContext db, IAgentIdentityRepository agents, IAgentActivationCodeStore activationCodes)
+    public AgentsController(ILicenseService licenses, IAgentIdentityRepository agents, IAgentActivationCodeStore activationCodes)
     {
-        _db = db;
+        _licenses = licenses;
         _agents = agents;
         _activationCodes = activationCodes;
     }
@@ -28,7 +28,7 @@ public sealed class AgentsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<AgentDto>>> List(CancellationToken cancellationToken)
     {
-        var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(x => !x.IsDeleted, cancellationToken);
+        var installation = await _licenses.GetCurrentInstallationAsync(cancellationToken);
         if (installation is null) return Ok(Array.Empty<AgentDto>());
         var agents = await _agents.ListAsync(installation.Id, cancellationToken);
         return Ok(agents.Select(AgentDto.From).ToList());
@@ -42,7 +42,7 @@ public sealed class AgentsController : ControllerBase
             return BadRequest(new { error = "Agent adı zorunludur." });
         }
 
-        var installation = await _db.LicenseInstallations.SingleOrDefaultAsync(x => !x.IsDeleted, cancellationToken);
+        var installation = await _licenses.GetCurrentInstallationAsync(cancellationToken);
         if (installation is null)
         {
             return BadRequest(new { error = "LICENSE_MISSING" });
@@ -104,14 +104,22 @@ public sealed class AgentsController : ControllerBase
     [HttpPost("{id:guid}/disable")]
     public async Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken)
     {
-        await _agents.DisableAsync(id, DateTimeOffset.UtcNow, cancellationToken);
+        try
+        {
+            await _agents.DisableAsync(id, DateTimeOffset.UtcNow, cancellationToken);
+        }
+        catch (BusinessException) { return NotFound(); }
         return NoContent();
     }
 
     [HttpPost("{id:guid}/deactivate")]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken cancellationToken)
     {
-        await _agents.DeactivateAsync(id, DateTimeOffset.UtcNow, cancellationToken);
+        try
+        {
+            await _agents.DeactivateAsync(id, DateTimeOffset.UtcNow, cancellationToken);
+        }
+        catch (BusinessException) { return NotFound(); }
         return NoContent();
     }
 }

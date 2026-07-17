@@ -138,34 +138,5 @@ public class JwtTokenService : ITokenService
             RoleClaimType = ClaimTypes.Role,
         };
 
-    private byte[] DeriveSigningKey()
-    {
-        if (string.IsNullOrWhiteSpace(_options.Secret) ||
-            Encoding.UTF8.GetByteCount(_options.Secret) < 32)
-        {
-            throw new InvalidOperationException(
-                "JWT secret yapılandırılmamış veya 32 byte'tan kısa.");
-        }
-
-        return DeriveKeyFromSecret(_options.Secret);
-    }
-
-    /// <summary>
-    /// Derives a cryptographically strong 32-byte key from the secret using PBKDF2.
-    /// </summary>
-    private static byte[] DeriveKeyFromSecret(string secret)
-    {
-        // Use PBKDF2 to derive a 32-byte key from the secret.
-        // This strengthens the key against low-entropy input and provides proper key derivation.
-        var secretBytes = Encoding.UTF8.GetBytes(secret);
-        var saltBytes = Encoding.UTF8.GetBytes("RPA.JwtTokenService.v1"); // Fixed salt for consistency
-
-        // Use static Pbkdf2 method (not deprecated constructor)
-        return Rfc2898DeriveBytes.Pbkdf2(
-            secretBytes,
-            saltBytes,
-            iterations: 10000,
-            HashAlgorithmName.SHA256,
-            outputLength: 32);
-    }
+    private byte[] DeriveSigningKey() => JwtSigningKey.Derive(_options.Secret);
 }

@@ -51,12 +51,17 @@ public class AgentCredentialRotationTests
         Assert.Equal(SecretHasher.Hash(credential!), stored.CredentialHash);
     }
 
+    /// <summary>
+    /// Token degisim yolunu surdugu icin GERCEK lisansli uygulama kullanir: agent token'i artik
+    /// lisansin gecerli oldugunu ve agent'in bu kuruluma ait oldugunu da dogruluyor.
+    /// </summary>
     [Fact]
     public async Task Rotate_InvalidatesPreviousCredentialImmediately()
     {
         var agentId = Guid.NewGuid();
-        await using var app = CreateApp(agentId, AgentIdentityStatus.Activated);
-        var client = AdminClient(app);
+        await using var licensed = await LicensedTestApp.CreateAsync();
+        await licensed.AddAgentAsync(agentId, AgentIdentityStatus.Activated, SecretHasher.Hash(OldCredential));
+        var client = licensed.AdminClient();
 
         // Rotasyondan ONCE eski credential calisiyor.
         var before = await client.PostAsJsonAsync("/api/agent-auth/token", new AgentTokenRequest(agentId, OldCredential));
