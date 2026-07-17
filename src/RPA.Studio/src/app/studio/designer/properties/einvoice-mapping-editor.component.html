@@ -204,6 +204,19 @@
             [value]="wizardListName" (input)="wizardListName = $any($event.target).value" placeholder="kalemler" />
           <p class="einvoice-mapping__hint">İşaretlediğin alanlar bu listenin her satırında bir sütun olur. Ad ve tip önerilerini değiştirebilirsin.</p>
 
+          <div class="einvoice-wizard__toolbar">
+            <button type="button" data-testid="einvoice-wizard-select-all"
+              (click)="setAllWizardColumns(true)" [disabled]="allWizardColumnsSelected()">Tümünü seç</button>
+            <button type="button" data-testid="einvoice-wizard-deselect-all"
+              (click)="setAllWizardColumns(false)">Tümünü bırak</button>
+          </div>
+
+          @if (duplicateWizardNames().size > 0) {
+            <p class="einvoice-wizard__warning" role="alert" data-testid="einvoice-wizard-duplicate-warning">
+              Aynı ad birden fazla alanda kullanılıyor. Devam etmeden önce çakışan adları değiştir.
+            </p>
+          }
+
           <table class="einvoice-wizard__table" data-testid="einvoice-wizard-columns">
             <thead>
               <tr><th>Ekle</th><th>Alan yolu</th><th>Örnek değer</th><th>Ad</th><th>Tip</th><th>Böl</th></tr>
@@ -220,6 +233,8 @@
                   <td class="einvoice-wizard__sample">{{ column.sampleValue || '—' }}</td>
                   <td>
                     <input class="einvoice-wizard__name-input" [value]="column.name"
+                      [class.einvoice-wizard__name-input--dup]="column.selected && isWizardColumnDuplicate(column.name)"
+                      [attr.aria-invalid]="column.selected && isWizardColumnDuplicate(column.name)"
                       [attr.aria-label]="column.relativePath + ' için ad'"
                       (input)="updateWizardColumn($index, { name: $any($event.target).value })" />
                   </td>
@@ -246,7 +261,8 @@
 
         <footer class="einvoice-mapping__dialog-actions">
           <button type="button" data-testid="einvoice-wizard-cancel" (click)="closeWizard()">Vazgeç</button>
-          <button type="button" class="einvoice-mapping__primary" data-testid="einvoice-wizard-create" (click)="createListFromWizard()">Listeyi oluştur</button>
+          <button type="button" class="einvoice-mapping__primary" data-testid="einvoice-wizard-create"
+            [disabled]="wizardBlocked()" (click)="createListFromWizard()">Listeyi oluştur</button>
         </footer>
       </section>
     </div>

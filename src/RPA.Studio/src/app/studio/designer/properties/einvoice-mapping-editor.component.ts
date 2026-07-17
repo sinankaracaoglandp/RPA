@@ -482,6 +482,38 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.wizardColumns = this.wizardColumns.map((column, current) => current === index ? { ...column, selected } : column);
   }
 
+  /** Üstteki "Tümünü seç / Tümünü bırak". */
+  setAllWizardColumns(selected: boolean): void {
+    this.wizardColumns = this.wizardColumns.map(column => ({ ...column, selected }));
+    this.cdr?.markForCheck();
+  }
+
+  allWizardColumnsSelected(): boolean {
+    return this.wizardColumns.length > 0 && this.wizardColumns.every(column => column.selected);
+  }
+
+  /** Seçili kolonlar arasında birden fazla kez geçen (çakışan) adlar. */
+  duplicateWizardNames(): Set<string> {
+    const counts = new Map<string, number>();
+    for (const column of this.wizardColumns) {
+      if (!column.selected) continue;
+      const key = column.name.trim().toLowerCase();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return new Set([...counts].filter(([, count]) => count > 1).map(([key]) => key));
+  }
+
+  isWizardColumnDuplicate(name: string): boolean {
+    return this.duplicateWizardNames().has(name.trim().toLowerCase());
+  }
+
+  /** "Listeyi oluştur" için engel var mı? (çakışan ad veya seçim yok). */
+  wizardBlocked(): boolean {
+    if (this.duplicateWizardNames().size > 0) return true;
+    return !this.wizardColumns.some(column => column.selected && this.isIdentifier(column.name.trim()));
+  }
+
   updateWizardColumn(index: number, patch: Partial<{ name: string; type: EInvoiceMappingRule['type']; split: boolean }>): void {
     this.wizardColumns = this.wizardColumns.map((column, current) => current === index ? { ...column, ...patch } : column);
   }
@@ -490,7 +522,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
   createListFromWizard(): void {
     const name = this.wizardListName.trim();
     const scope = this.wizardScopeXPath.trim();
-    if (!this.isIdentifier(name) || !scope) return;
+    if (!this.isIdentifier(name) || !scope || this.wizardBlocked()) return;
     const fields: EInvoiceMappingRule[] = [];
     const used = new Set<string>();
     for (const column of this.wizardColumns) {

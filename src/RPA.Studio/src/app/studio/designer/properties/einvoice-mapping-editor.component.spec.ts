@@ -631,4 +631,36 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(fields[0]).toMatchObject({ group: 'value', type: 'decimal' });
     expect(fields[1]).toMatchObject({ group: 'unit', type: 'string' });
   });
+
+  it('liste sihirbazı: tümünü seç / tümünü bırak', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+
+    component.setAllWizardColumns(false);
+    expect(component.wizardColumns.every(column => !column.selected)).toBe(true);
+    expect(component.allWizardColumnsSelected()).toBe(false);
+
+    component.setAllWizardColumns(true);
+    expect(component.allWizardColumnsSelected()).toBe(true);
+  });
+
+  it('liste sihirbazı: çakışan ad uyarır ve oluşturmayı engeller', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+    component.wizardListName = 'kalemler';
+    component.wizardColumns = component.wizardColumns.map(column => ({ ...column, selected: true, name: 'ayniAd' }));
+
+    expect(component.duplicateWizardNames().has('ayniad')).toBe(true);
+    expect(component.wizardBlocked()).toBe(true);
+    component.createListFromWizard();
+    expect(component.collections.find(item => item.name === 'kalemler')).toBeUndefined();
+    expect(component.activeWizardList).not.toBeNull();
+
+    component.wizardColumns = component.wizardColumns.map((column, index) => ({ ...column, name: `alan${index}` }));
+    expect(component.wizardBlocked()).toBe(false);
+    component.createListFromWizard();
+    expect(component.collections.find(item => item.name === 'kalemler')).toBeTruthy();
+  });
 });

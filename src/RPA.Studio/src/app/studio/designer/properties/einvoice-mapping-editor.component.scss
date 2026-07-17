@@ -225,3 +225,16 @@
 }
 .einvoice-wizard__split--on { border-color: #e65100; background: #fff3e0; }
 .einvoice-wizard__split:focus-visible { outline: 2px solid #0f4c96; outline-offset: 2px; }
+
+.einvoice-wizard__toolbar { display: flex; gap: 0.5rem; margin: 0.5rem 0 0.25rem; }
+.einvoice-wizard__toolbar button {
+  padding: 0.25rem 0.6rem; border: 1px solid #d7dee8; border-radius: 0.3rem;
+  background: #fff; cursor: pointer; font-size: 0.8rem;
+}
+.einvoice-wizard__toolbar button:disabled { opacity: 0.5; cursor: default; }
+.einvoice-wizard__warning {
+  margin: 0.4rem 0; padding: 0.45rem 0.6rem;
+  border: 1px solid #c62828; border-left-width: 3px; border-radius: 0.3rem;
+  background: #fdecea; color: #b0201b; font-size: 0.82rem; font-weight: 600;
+}
+.einvoice-wizard__name-input--dup { border: 1px solid #c62828 !important; background: #fdecea; }
