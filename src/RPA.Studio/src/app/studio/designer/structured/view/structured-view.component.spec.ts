@@ -35,7 +35,7 @@ describe('StructuredViewComponent', () => {
     expect(el.querySelector('[data-testid="structured-view-fallback"]')).toBeFalsy();
   });
 
-  it('shows the fallback when conversion throws (tryCatch)', () => {
+  it('renders a tryCatch workflow as an editable tree (D2)', () => {
     const wf = treeToWorkflow(
       [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],
       { idGen: ids() },
@@ -43,7 +43,10 @@ describe('StructuredViewComponent', () => {
     const f = TestBed.createComponent(StructuredViewComponent);
     f.componentRef.setInput('workflow', wf);
     f.detectChanges();
-    expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="structured-view-tree"]')).toBeTruthy();
+    expect(el.querySelector('[data-type="tryCatch"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="structured-view-fallback"]')).toBeFalsy();
   });
 
   it('shows the fallback for a non-structural free-graph', () => {
@@ -197,12 +200,16 @@ describe('StructuredViewComponent', () => {
   });
 
   it('does not render edit controls for a fallback workflow', () => {
-    const wf = treeToWorkflow(
-      [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],
-      { idGen: ids() },
-    );
+    const wf = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [n('a'), n('b'), n('c')],
+      connections: [
+        { from: 'a', to: 'b', fromPort: 'out', toPort: 'in' },
+        { from: 'a', to: 'c', fromPort: 'out', toPort: 'in' },
+      ],
+    };
     const f = TestBed.createComponent(StructuredViewComponent);
-    f.componentRef.setInput('workflow', wf);
+    f.componentRef.setInput('workflow', wf as never);
     f.detectChanges();
     expect(f.nativeElement.querySelector('[data-testid="item-delete"]')).toBeFalsy();
     expect(f.nativeElement.querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();

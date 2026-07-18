@@ -34,6 +34,20 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
     return out;
   };
 
+  // Ulaşılabilirlik ardılları: bağlantı hedefleri + tryCatch çocuk-head'leri (özellik-bağlı).
+  const reachSuccessors = (id: string): string[] => {
+    const succ = outEdges(id).map((e) => e.to);
+    const node = byId.get(id);
+    if (node?.type === 'tryCatch') {
+      const rec = node as unknown as Record<string, unknown>;
+      for (const key of ['tryNodeId', 'catchNodeId', 'finallyNodeId']) {
+        const v = rec[key];
+        if (typeof v === 'string') { succ.push(v); }
+      }
+    }
+    return succ;
+  };
+
   // İleri (loop-back hariç) ulaşılabilir küme, opsiyonel durak.
   const forwardReach = (start: string | null, stopAt: string | null): Set<string> => {
     const set = new Set<string>();
@@ -42,7 +56,7 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
       const id = stack.pop()!;
       if (id === stopAt || set.has(id)) { continue; }
       set.add(id);
-      for (const e of outEdges(id)) { stack.push(e.to); }
+      for (const s of reachSuccessors(id)) { stack.push(s); }
     }
     return set;
   };
@@ -54,7 +68,7 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
     const visit = (id: string) => {
       if (perm.has(id) || temp.has(id)) { return; }
       temp.add(id);
-      for (const e of outEdges(id)) { visit(e.to); }
+      for (const s of reachSuccessors(id)) { visit(s); }
       temp.delete(id); perm.add(id); order.push(id);
     };
     for (const nd of workflow.nodes) { visit(nd.id); }
@@ -104,8 +118,22 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
       seen.add(cur);
       const node = byId.get(cur);
       if (!node) { throw new ReducerError(`Bilinmeyen node: '${cur}'`); }
-      if (node.type === 'tryCatch') { throw new ReducerError('tryCatch yapısal göçü sonraki fazda (D2)'); }
-      if (LOOP_TYPES.has(node.type as ContainerType)) {
+      if (node.type === 'tryCatch') {
+        const rec = node as unknown as Record<string, unknown>;
+        const tryId = rec['tryNodeId'] as string | undefined;
+        const catchId = rec['catchNodeId'] as string | undefined;
+        let finallyId = rec['finallyNodeId'] as string | undefined;
+        // Boş finally konvansiyonu: props'suz 'merge' geçişi → finally boş (merge'ü atla).
+        if (finallyId && byId.get(finallyId)?.type === 'merge') {
+          finallyId = outTarget(finallyId, 'out') ?? undefined;
+        }
+        seq.push(container('tryCatch', propsOf(node), {
+          success: tryId ? reduceRegion(tryId, null) : [],
+          failure: catchId ? reduceRegion(catchId, null) : [],
+          out: finallyId ? reduceRegion(finallyId, stop) : [],
+        }));
+        cur = stop; // tryCatch terminal; devam finally'ye katlandı.
+      } else if (LOOP_TYPES.has(node.type as ContainerType)) {
         const bodyHead = outTarget(cur, 'body');
         const body = bodyHead ? reduceRegion(bodyHead, cur) : [];
         seq.push(container(node.type as ContainerType, propsOf(node), { body }));
@@ -135,13 +163,20 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
     return seq;
   };
 
-  // tryCatch çocukları bağlantı değil node-özelliğidir → giriş analizini yanıltır; erken reddet (D2).
-  if (workflow.nodes.some((x) => x.type === 'tryCatch')) {
-    return { ok: false, reason: 'tryCatch yapısal göçü sonraki fazda (D2)' };
+  // tryCatch çocukları bağlantı değil node-özelliğidir → bağımsız giriş sayılmaz.
+  const childHeads = new Set<string>();
+  for (const nd of workflow.nodes) {
+    if (nd.type === 'tryCatch') {
+      const rec = nd as unknown as Record<string, unknown>;
+      for (const key of ['tryNodeId', 'catchNodeId', 'finallyNodeId']) {
+        const v = rec[key];
+        if (typeof v === 'string') { childHeads.add(v); }
+      }
+    }
   }
 
   const hasIncoming = new Set(conns.filter(nonLoop).map((c) => c.to));
-  const entries = workflow.nodes.filter((x) => !hasIncoming.has(x.id));
+  const entries = workflow.nodes.filter((x) => !hasIncoming.has(x.id) && !childHeads.has(x.id));
   if (entries.length !== 1) {
     return { ok: false, reason: entries.length === 0 ? 'Giriş node\'u bulunamadı' : 'Birden fazla giriş node\'u' };
   }

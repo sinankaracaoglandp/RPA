@@ -45,11 +45,44 @@ describe('reduceWorkflow — rejected', () => {
     expect((r as { reason: string }).reason).toContain('giriş');
   });
 
-  it('rejects a tryCatch graph with a clear reason', () => {
-    const wf = treeToWorkflow([container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })], { idGen: seqIds() });
-    const r = reduceWorkflow(wf);
-    expect(r.ok).toBe(false);
-    expect((r as { reason: string }).reason).toContain('tryCatch');
+});
+
+describe('reduceWorkflow — tryCatch (D2)', () => {
+  it('reduces a tryCatch and folds the continuation into finally', () => {
+    const wf = treeToWorkflow([
+      container('tryCatch', { exceptionVariable: 'ex' }, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] }),
+      step(n('after')),
+    ], { idGen: seqIds() });
+    const r = ok(reduceWorkflow(wf));
+    expect(r.tree).toHaveLength(1); // tryCatch terminal
+    const tc = r.tree[0] as { type: string; props: Record<string, unknown>; lanes: { success: { node: WorkflowNode }[]; failure: { node: WorkflowNode }[]; out: { node: WorkflowNode }[] } };
+    expect(tc.type).toBe('tryCatch');
+    expect(tc.props).toEqual({ exceptionVariable: 'ex' });
+    expect(tc.lanes.success.map((i) => i.node.id)).toEqual(['t']);
+    expect(tc.lanes.failure.map((i) => i.node.id)).toEqual(['c']);
+    expect(tc.lanes.out.map((i) => i.node.id)).toEqual(['fin', 'after']); // devam finally'ye katlandı
+  });
+
+  it('reduces a tryCatch with an empty finally (merge stripped)', () => {
+    const wf = treeToWorkflow([container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [] })], { idGen: seqIds() });
+    const r = ok(reduceWorkflow(wf));
+    const tc = r.tree[0] as { type: string; lanes: { out: unknown[] } };
+    expect(tc.type).toBe('tryCatch');
+    expect(tc.lanes.out).toHaveLength(0);
+  });
+
+  it('reduces a tryCatch nested inside an if branch', () => {
+    const wf = treeToWorkflow([
+      container('if', {}, {
+        true: [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('f'))] })],
+        false: [step(n('e'))],
+      }),
+      step(n('after')),
+    ], { idGen: seqIds() });
+    const r = ok(reduceWorkflow(wf));
+    const iff = r.tree[0] as { type: string; lanes: { true: { type: string }[] } };
+    expect(iff.type).toBe('if');
+    expect(iff.lanes.true[0].type).toBe('tryCatch');
   });
 });
 
