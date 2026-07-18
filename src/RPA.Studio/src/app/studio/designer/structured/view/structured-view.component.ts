@@ -233,8 +233,13 @@ export class StructuredViewComponent {
   onPanEnd(): void { this.panning = false; }
 
   private convert(workflow: WorkflowVersion | null): ViewState {
-    if (!workflow || workflow.nodes.length === 0) {
+    if (!workflow) {
       return { kind: 'empty' };
+    }
+    if (workflow.nodes.length === 0) {
+      // Boş (ama var olan) workflow → düzenlenebilir boş ağaç: kök "+ ekle" slotu görünür,
+      // ilk node yapısal görünümde eklenebilir (aksi halde yalnız salt-okunur mesaj çıkardı).
+      return { kind: 'tree', tree: [] };
     }
     const r = reduceWorkflow(workflow);
     if (r.ok) {

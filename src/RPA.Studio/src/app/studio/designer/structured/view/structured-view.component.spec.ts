@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { StructuredViewComponent } from './structured-view.component';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { step, container } from '../structured-model';
@@ -85,6 +85,18 @@ describe('StructuredViewComponent', () => {
     f.componentRef.setInput('workflow', null);
     f.detectChanges();
     expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-empty"]')).toBeTruthy();
+  });
+
+  it('offers an editable root add slot for an empty (node-less) workflow', () => {
+    const wf = { schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0', nodes: [], connections: [] };
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf as never);
+    f.detectChanges();
+    TestBed.inject(HttpTestingController).match('/api/activities').forEach((r) => r.flush([]));
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="structured-view-tree"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="root-add"] [data-testid="add-toggle"]')).toBeTruthy();
   });
 
   it('applies a delete and emits an updated workflow', () => {
@@ -213,5 +225,44 @@ describe('StructuredViewComponent', () => {
     f.detectChanges();
     expect(f.nativeElement.querySelector('[data-testid="item-delete"]')).toBeFalsy();
     expect(f.nativeElement.querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();
+  });
+
+  it('shows an add slot inside an empty lane (editable)', () => {
+    const wf = treeToWorkflow(
+      [container('if', { condition: '{{c}}' }, { true: [step(n('t'))], false: [] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    TestBed.inject(HttpTestingController).match('/api/activities').forEach((r) => r.flush([]));
+    f.detectChanges();
+
+    const falseLane = f.nativeElement.querySelector('[data-testid="lane-false"]') as HTMLElement;
+    expect(falseLane).toBeTruthy();
+    // boş dalda ekleme slotu görünür, salt-okunur "boş" metni değil
+    expect(falseLane.querySelector('[data-testid="add-toggle"]')).toBeTruthy();
+    expect(falseLane.querySelector('[data-testid="lane-empty"]')).toBeFalsy();
+  });
+
+  it('adds a node into a lane when the add control is used (no drag)', () => {
+    const wf = treeToWorkflow(
+      [container('forEach', { items: '${xs}' }, { body: [step(n('b'))] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    TestBed.inject(HttpTestingController).match('/api/activities').forEach((r) => r.flush([]));
+    f.detectChanges();
+
+    const bodyLane = f.nativeElement.querySelector('[data-testid="lane-body"]') as HTMLElement;
+    (bodyLane.querySelector('[data-testid="add-toggle"]') as HTMLButtonElement).click();
+    f.detectChanges();
+    (bodyLane.querySelector('[data-testid="add-type-if"]') as HTMLButtonElement).click();
+    f.detectChanges();
+
+    const bodyItems = (f.componentInstance.tree()[0] as { lanes: { body: unknown[] } }).lanes.body;
+    expect(bodyItems).toHaveLength(2);
   });
 });
