@@ -4,7 +4,13 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { StructuredViewComponent } from './structured-view.component';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { step, container } from '../structured-model';
+import { newStep } from '../edit/tree-ops';
 import { WorkflowNode } from '../../../../shared/models/workflow.model';
+
+function dropEvent(prevData: unknown, contData: unknown, prevIdx: number, curIdx: number, itemData: unknown): never {
+  return { previousContainer: { data: prevData }, container: { data: contData },
+    previousIndex: prevIdx, currentIndex: curIdx, item: { data: itemData } } as never;
+}
 
 const n = (id: string): WorkflowNode => ({ id, type: 'activity', activity: 'X' });
 const ids = () => { let i = 0; return () => `c${++i}`; };
@@ -89,6 +95,31 @@ describe('StructuredViewComponent', () => {
     (items[0] as HTMLButtonElement).click();
     expect(emitted).toBeTruthy();
     expect(emitted!.nodes.length).toBe(1);
+  });
+
+  it('palette drop inserts a new item and emits workflow', () => {
+    const wf = treeToWorkflow([step(n('a'))], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    let emitted: { nodes: unknown[] } | undefined;
+    cmp.graphChanged.subscribe((g) => (emitted = g as unknown as { nodes: unknown[] }));
+    const root = cmp.tree();
+    cmp.onDrop(dropEvent('__palette__', root, 0, 1, { factory: () => newStep('Web.Click') }));
+    expect(cmp.tree()).toHaveLength(2);
+    expect(emitted!.nodes.length).toBe(2);
+  });
+
+  it('reorders within the root sequence on same-list drop', () => {
+    const wf = treeToWorkflow([step(n('a')), step(n('b'))], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    const root = cmp.tree();
+    cmp.onDrop(dropEvent(root, root, 0, 1, root[0]));
+    expect((cmp.tree()[0] as { node: WorkflowNode }).node.id).toBe('b');
   });
 
   it('does not render edit controls for a fallback workflow', () => {

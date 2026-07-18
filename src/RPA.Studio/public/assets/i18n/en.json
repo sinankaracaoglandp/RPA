@@ -96,6 +96,7 @@
     "moveDown": "Down",
     "activity": "Activity",
     "pickActivity": "Pick activity…",
+    "palette": "Palette",
     "fallback": "This workflow is not structured-viewable (free-graph / tryCatch — Phase C/D).",
     "emptyView": "No steps to display.",
     "type": { "forEach": "For Each", "for": "Counter Loop", "while": "While", "if": "If", "tryCatch": "Try-Catch" },

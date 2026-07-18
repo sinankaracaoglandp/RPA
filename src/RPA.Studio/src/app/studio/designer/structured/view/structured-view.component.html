@@ -12,6 +12,9 @@
         <span class="structured-view__zoom">{{ (zoom() * 100) | number:'1.0-0' }}%</span>
         <button type="button" data-testid="structured-zoom-in" (click)="zoomIn()">+</button>
       </div>
+      @if (editable) {
+        <app-structured-palette></app-structured-palette>
+      }
       <div
         #scroll
         class="structured-view__scroll"
@@ -25,11 +28,13 @@
           class="structured-view__canvas"
           data-testid="structured-view-tree"
           [style.transform]="'scale(' + zoom() + ')'"
+          cdkDropListGroup
         >
           <app-structured-sequence
             [items]="tree()"
             [editable]="editable"
             (action)="onAction($event)"
+            (drop)="onDrop($event)"
           ></app-structured-sequence>
           @if (editable) {
             <app-structured-add-menu data-testid="root-add" (pick)="addToRoot($event)"></app-structured-add-menu>

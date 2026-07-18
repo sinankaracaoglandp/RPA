@@ -6,9 +6,11 @@ import { StructuredItem, StructuredSequence } from '../structured-model';
 import { workflowToTree } from '../workflow-to-tree';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { checkStructuralInvariants } from '../structural-invariants';
-import { insertItem, removeItem, moveItem, findPath } from '../edit/tree-ops';
+import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross } from '../edit/tree-ops';
 import { StructuredSequenceComponent } from './structured-sequence.component';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
+import { StructuredPaletteComponent } from './structured-palette.component';
 import { StructuredAction } from './structured-item.component';
 
 interface ViewState {
@@ -20,7 +22,10 @@ interface ViewState {
   selector: 'app-structured-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, TranslatePipe, StructuredSequenceComponent, StructuredAddMenuComponent],
+  imports: [
+    CommonModule, TranslatePipe, StructuredSequenceComponent, StructuredAddMenuComponent,
+    StructuredPaletteComponent, CdkDropListGroup,
+  ],
   templateUrl: './structured-view.component.html',
   styleUrls: ['./structured-view.component.scss'],
 })
@@ -64,6 +69,27 @@ export class StructuredViewComponent {
 
   addToRoot(item: StructuredItem): void {
     this.commit(insertItem(this.tree(), [], this.tree().length, item));
+  }
+
+  // ---- Sürükle-bırak (CDK → tree-ops) ----
+  onDrop(event: CdkDragDrop<StructuredSequence>): void {
+    const t = this.tree();
+    const toSeq = event.container.data;
+    const toSteps = findSeqPath(t, toSeq);
+    if (!toSteps) { return; }
+    const data = event.item.data as unknown as { factory?: () => StructuredItem };
+    let next: StructuredSequence;
+    if (data && typeof data.factory === 'function') {
+      next = insertItem(t, toSteps, event.currentIndex, data.factory());
+    } else if (event.previousContainer === event.container) {
+      next = reorderInSeq(t, toSteps, event.previousIndex, event.currentIndex);
+    } else {
+      const fromSeq = event.previousContainer.data;
+      const fromSteps = findSeqPath(t, fromSeq);
+      if (!fromSteps) { return; }
+      next = moveAcross(t, fromSteps, event.previousIndex, toSteps, event.currentIndex);
+    }
+    this.commit(next);
   }
 
   private commit(next: StructuredSequence): void {
