@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { StructuredSequence } from '../structured-model';
-import { StructuredItemComponent } from './structured-item.component';
+import { StructuredAction, StructuredItemComponent } from './structured-item.component';
 
 @Component({
   selector: 'app-structured-sequence',
@@ -13,4 +13,6 @@ import { StructuredItemComponent } from './structured-item.component';
 })
 export class StructuredSequenceComponent {
   @Input() items: StructuredSequence = [];
+  @Input() editable = false;
+  @Output() readonly action = new EventEmitter<StructuredAction>();
 }

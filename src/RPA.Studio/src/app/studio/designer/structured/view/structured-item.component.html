@@ -3,6 +3,13 @@
     <span class="structured-step__icon" aria-hidden="true">▸</span>
     <span class="structured-step__title">{{ stepTitle() }}</span>
     <span class="structured-step__type">{{ item.node.type }}</span>
+    @if (editable) {
+      <span class="structured-item__controls">
+        <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up')">↑</button>
+        <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down')">↓</button>
+        <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete')">✕</button>
+      </span>
+    }
   </div>
 } @else if (container) {
   <div class="structured-container" data-testid="structured-container" [attr.data-type]="container.type">
@@ -11,16 +18,26 @@
       @if (summary(container)) {
         <code class="structured-container__summary">{{ summary(container) }}</code>
       }
+      @if (editable) {
+        <span class="structured-item__controls">
+          <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up')">↑</button>
+          <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down')">↓</button>
+          <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete')">✕</button>
+        </span>
+      }
     </header>
     <div class="structured-container__lanes">
       @for (lane of lanes(container); track lane) {
         <section class="structured-container__lane" [attr.data-testid]="'lane-' + lane">
           <span class="structured-container__lane-label">{{ 'structured.lane.' + lane | translate }}</span>
           @for (child of laneItems(container, lane); track $index) {
-            <app-structured-item [item]="child"></app-structured-item>
+            <app-structured-item [item]="child" [editable]="editable" (action)="action.emit($event)"></app-structured-item>
           }
           @if (laneItems(container, lane).length === 0) {
             <p class="structured-container__lane-empty" data-testid="lane-empty">{{ 'structured.empty' | translate }}</p>
+          }
+          @if (editable) {
+            <app-structured-add-menu (pick)="onLaneAdd(container, lane, $event)"></app-structured-add-menu>
           }
         </section>
       }

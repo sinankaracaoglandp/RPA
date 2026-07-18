@@ -1,23 +1,32 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { ContainerItem, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
+import { StructuredAddMenuComponent } from './structured-add-menu.component';
+
+/** Yapısal editör düzenleme olayı; öğe referansı taşır (path `findPath` ile host'ta çıkar). */
+export type StructuredAction =
+  | { kind: 'delete' | 'up' | 'down'; target: StructuredItem }
+  | { kind: 'add'; container: ContainerItem; lane: LaneName; item: StructuredItem };
 
 /**
  * Yapısal ağaçtaki tek bir öğeyi (adım kartı ya da lane'li konteyner kutusu) render eder.
  * Konteyner lane'leri KENDİNE özyinelemeyle (`app-structured-item`) render edilir — böylece
- * `StructuredSequenceComponent` ile dairesel import kurulmaz.
+ * `StructuredSequenceComponent` ile dairesel import kurulmaz. `editable` iken düzenleme
+ * denetimleri gösterir ve olayları referansla yukarı yayar.
  */
 @Component({
   selector: 'app-structured-item',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, TranslatePipe],
+  imports: [CommonModule, TranslatePipe, StructuredAddMenuComponent],
   templateUrl: './structured-item.component.html',
   styleUrls: ['./structured-item.component.scss'],
 })
 export class StructuredItemComponent {
   @Input({ required: true }) item!: StructuredItem;
+  @Input() editable = false;
+  @Output() readonly action = new EventEmitter<StructuredAction>();
 
   get container(): ContainerItem | null {
     return this.item.kind === 'container' ? this.item : null;
@@ -47,5 +56,13 @@ export class StructuredItemComponent {
   stepTitle(): string {
     if (this.item.kind !== 'step') { return ''; }
     return this.item.node.activity ?? this.item.node.type;
+  }
+
+  emitAction(kind: 'delete' | 'up' | 'down'): void {
+    this.action.emit({ kind, target: this.item });
+  }
+
+  onLaneAdd(container: ContainerItem, lane: LaneName, item: StructuredItem): void {
+    this.action.emit({ kind: 'add', container, lane, item });
   }
 }

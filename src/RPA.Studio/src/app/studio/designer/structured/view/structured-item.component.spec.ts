@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { StructuredItemComponent } from './structured-item.component';
+import { StructuredItemComponent, StructuredAction } from './structured-item.component';
 import { step, container } from '../structured-model';
 
 describe('StructuredItemComponent', () => {
@@ -24,5 +24,25 @@ describe('StructuredItemComponent', () => {
     expect(el.querySelector('[data-testid="structured-container"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="lane-true"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="lane-false"]')).toBeTruthy();
+  });
+
+  it('emits delete action carrying the item reference when editable', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    const item = step({ id: 's', type: 'activity', activity: 'A' });
+    f.componentRef.setInput('item', item);
+    f.componentRef.setInput('editable', true);
+    f.detectChanges();
+    const events: StructuredAction[] = [];
+    f.componentInstance.action.subscribe((e) => events.push(e));
+    (f.nativeElement.querySelector('[data-testid="item-delete"]') as HTMLButtonElement).click();
+    expect(events[0]).toEqual({ kind: 'delete', target: item });
+  });
+
+  it('does not render edit controls when not editable', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', step({ id: 's', type: 'activity', activity: 'A' }));
+    f.componentRef.setInput('editable', false);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[data-testid="item-delete"]')).toBeFalsy();
   });
 });
