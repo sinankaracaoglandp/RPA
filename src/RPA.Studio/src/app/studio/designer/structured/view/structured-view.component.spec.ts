@@ -122,6 +122,32 @@ describe('StructuredViewComponent', () => {
     expect((cmp.tree()[0] as { node: WorkflowNode }).node.id).toBe('b');
   });
 
+  it('emits nodeSelect with activityType/properties when a step is selected', () => {
+    const wf = treeToWorkflow([step(n('a'))], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    let sel: { activityType?: string; properties: Record<string, unknown> } | null = null;
+    cmp.nodeSelect.subscribe((s) => (sel = s));
+    cmp.onSelect(cmp.tree()[0]);
+    expect(sel!.activityType).toBe('X');
+  });
+
+  it('updateSelectedProps updates the selected item and emits workflow', () => {
+    const wf = treeToWorkflow([container('forEach', { items: '${a}' }, { body: [step(n('b'))] }), step(n('after'))], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    cmp.onSelect(cmp.tree()[0]);
+    let emitted = false;
+    cmp.graphChanged.subscribe(() => (emitted = true));
+    cmp.updateSelectedProps({ items: '${b}', itemVariable: 'x' });
+    expect((cmp.tree()[0] as { props: unknown }).props).toEqual({ items: '${b}', itemVariable: 'x' });
+    expect(emitted).toBe(true);
+  });
+
   it('does not render edit controls for a fallback workflow', () => {
     const wf = treeToWorkflow(
       [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],

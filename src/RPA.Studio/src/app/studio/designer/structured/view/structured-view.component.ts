@@ -2,12 +2,15 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, signal
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { WorkflowVersion } from '../../../../shared/models/workflow.model';
-import { StructuredItem, StructuredSequence } from '../structured-model';
+import { ContainerType, LaneName, StructuredItem, StructuredSequence } from '../structured-model';
 import { workflowToTree } from '../workflow-to-tree';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { checkStructuralInvariants } from '../structural-invariants';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
-import { insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross } from '../edit/tree-ops';
+import {
+  insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross, setItemProps,
+} from '../edit/tree-ops';
+import { CONTROL_ACTIVITY_OF } from '../edit/control-activity-map';
 import { StructuredSequenceComponent } from './structured-sequence.component';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
 import { StructuredPaletteComponent } from './structured-palette.component';
@@ -16,6 +19,11 @@ import { StructuredAction } from './structured-item.component';
 interface ViewState {
   kind: 'empty' | 'tree' | 'fallback';
   tree?: StructuredSequence;
+}
+
+export interface StructuredSelection {
+  activityType?: string;
+  properties: Record<string, unknown>;
 }
 
 @Component({
@@ -71,6 +79,47 @@ export class StructuredViewComponent {
     this.commit(insertItem(this.tree(), [], this.tree().length, item));
   }
 
+  // ---- Seçim + özellik düzenleme ----
+  readonly selected = signal<StructuredItem | null>(null);
+  @Output() readonly nodeSelect = new EventEmitter<StructuredSelection | null>();
+
+  onSelect(item: StructuredItem): void {
+    this.selected.set(item);
+    this.nodeSelect.emit(this.selectionOf(item));
+  }
+
+  clearSelection(): void {
+    this.selected.set(null);
+    this.nodeSelect.emit(null);
+  }
+
+  private selectionOf(item: StructuredItem): StructuredSelection {
+    if (item.kind === 'step') {
+      return {
+        activityType: item.node.activity,
+        properties: (item.node.properties as Record<string, unknown>) ?? {},
+      };
+    }
+    return { activityType: CONTROL_ACTIVITY_OF[item.type as ContainerType], properties: { ...item.props } };
+  }
+
+  updateSelectedProps(props: Record<string, unknown>): void {
+    const sel = this.selected();
+    if (!sel) { return; }
+    const p = findPath(this.tree(), sel);
+    if (!p) { return; }
+    const next = setItemProps(this.tree(), p, props);
+    this.commit(next, { props: true });
+    let seq = next;
+    for (const s of p.steps) {
+      const it = seq[s.index];
+      if (it.kind !== 'container') { return; }
+      seq = it.lanes[s.lane as LaneName] ?? [];
+    }
+    const fresh = seq[p.index];
+    if (fresh) { this.selected.set(fresh); }
+  }
+
   // ---- Sürükle-bırak (CDK → tree-ops) ----
   onDrop(event: CdkDragDrop<StructuredSequence>): void {
     const t = this.tree();
@@ -92,7 +141,8 @@ export class StructuredViewComponent {
     this.commit(next);
   }
 
-  private commit(next: StructuredSequence): void {
+  // Task C3-4 bu gövdeyi geçmiş + koalesleme ile değiştirir; opts şimdilik yok sayılır.
+  private commit(next: StructuredSequence, _opts: { props?: boolean } = {}): void {
     this.tree.set(next);
     this.graphChanged.emit(treeToWorkflow(next));
   }

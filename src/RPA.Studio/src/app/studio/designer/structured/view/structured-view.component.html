@@ -29,12 +29,15 @@
           data-testid="structured-view-tree"
           [style.transform]="'scale(' + zoom() + ')'"
           cdkDropListGroup
+          (click)="clearSelection()"
         >
           <app-structured-sequence
             [items]="tree()"
             [editable]="editable"
+            [selectedRef]="selected()"
             (action)="onAction($event)"
             (drop)="onDrop($event)"
+            (select)="onSelect($event)"
           ></app-structured-sequence>
           @if (editable) {
             <app-structured-add-menu data-testid="root-add" (pick)="addToRoot($event)"></app-structured-add-menu>
