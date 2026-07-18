@@ -28,6 +28,9 @@ export class StructuredItemComponent {
   @Input({ required: true }) item!: StructuredItem;
   @Input() editable = false;
   @Input() selectedRef: StructuredItem | null = null;
+  /** Dizideki konum — akış bağlacı (üst) ve giriş/çıkış portlarının gösterimini belirler. */
+  @Input() first = false;
+  @Input() last = false;
   @Output() readonly action = new EventEmitter<StructuredAction>();
   @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
   @Output() readonly select = new EventEmitter<StructuredItem>();

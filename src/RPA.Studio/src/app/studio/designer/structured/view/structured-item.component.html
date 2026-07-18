@@ -1,6 +1,9 @@
+@if (!first) { <div class="structured-flow-link" data-testid="flow-link" aria-hidden="true"></div> }
 @if (item.kind === 'step') {
   <div class="structured-step" data-testid="structured-step"
        [class.structured-item--selected]="isSelected" (click)="onSelect($event)">
+    @if (!first) { <span class="structured-port structured-port--in" aria-hidden="true"></span> }
+    @if (!last) { <span class="structured-port structured-port--out" aria-hidden="true"></span> }
     <span class="structured-step__icon" aria-hidden="true">▸</span>
     <span class="structured-step__title">{{ stepTitle() }}</span>
     <span class="structured-step__type">{{ item.node.type }}</span>
@@ -15,6 +18,8 @@
 } @else if (container) {
   <div class="structured-container" data-testid="structured-container" [attr.data-type]="container.type"
        [class.structured-item--selected]="isSelected">
+    @if (!first) { <span class="structured-port structured-port--in" aria-hidden="true"></span> }
+    @if (!last) { <span class="structured-port structured-port--out" aria-hidden="true"></span> }
     <header class="structured-container__header" (click)="onSelect($event)">
       <span class="structured-container__label">{{ 'structured.type.' + container.type | translate }}</span>
       @if (summary(container)) {
@@ -44,6 +49,8 @@
               [item]="child"
               [editable]="editable"
               [selectedRef]="selectedRef"
+              [first]="$first"
+              [last]="$last"
               cdkDrag
               [cdkDragData]="child"
               [cdkDragDisabled]="!editable"

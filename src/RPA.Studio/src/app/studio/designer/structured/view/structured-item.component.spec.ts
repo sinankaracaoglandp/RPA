@@ -67,6 +67,47 @@ describe('StructuredItemComponent', () => {
     expect(f.nativeElement.querySelector('.structured-item--selected')).toBeTruthy();
   });
 
+  it('renders an incoming flow connector and entry port when not first', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', step({ id: 's', type: 'activity', activity: 'A' }));
+    f.componentRef.setInput('first', false);
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="flow-link"]')).toBeTruthy();
+    expect(el.querySelector('.structured-port--in')).toBeTruthy();
+  });
+
+  it('omits the incoming connector and entry port for the first item', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', step({ id: 's', type: 'activity', activity: 'A' }));
+    f.componentRef.setInput('first', true);
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="flow-link"]')).toBeFalsy();
+    expect(el.querySelector('.structured-port--in')).toBeFalsy();
+  });
+
+  it('renders an exit port when not last and omits it for the last item', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', step({ id: 's', type: 'activity', activity: 'A' }));
+    f.componentRef.setInput('last', false);
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).querySelector('.structured-port--out')).toBeTruthy();
+
+    const g = TestBed.createComponent(StructuredItemComponent);
+    g.componentRef.setInput('item', step({ id: 's2', type: 'activity', activity: 'A' }));
+    g.componentRef.setInput('last', true);
+    g.detectChanges();
+    expect((g.nativeElement as HTMLElement).querySelector('.structured-port--out')).toBeFalsy();
+  });
+
+  it('exposes the container control type for type-based styling', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', container('forEach', {}, { body: [] }));
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[data-testid="structured-container"][data-type="forEach"]')).toBeTruthy();
+  });
+
   it('renders lanes as cdkDropList and items as cdkDrag when editable', () => {
     const f = TestBed.createComponent(StructuredItemComponent);
     f.componentRef.setInput('item', container('forEach', {}, { body: [step({ id: 'b', type: 'activity', activity: 'A' })] }));
