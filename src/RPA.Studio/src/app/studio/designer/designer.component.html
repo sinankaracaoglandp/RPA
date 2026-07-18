@@ -117,6 +117,7 @@
     @if (structuredView()) {
       <app-structured-view
         [workflow]="currentGraph() ?? workflow()"
+        [variables]="variables()"
         (graphChanged)="onGraphChanged($event)"
         (nodeSelect)="onStructuredSelect($event)"
       ></app-structured-view>

@@ -479,6 +479,16 @@ describe('DesignerComponent — structured view toggle', () => {
     expect(cmp.selectedProperties()).toEqual({ items: '${b}' });
   });
 
+  it('adds enclosing-loop item variables from a structured selection to the panel', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const cmp = fixture.componentInstance;
+    fixture.detectChanges();
+    cmp.toggleStructuredView();
+    cmp.variables.set([{ name: 'faturalar', type: 'list<object>' }]);
+    cmp.onStructuredSelect({ activityType: 'X', properties: {}, variables: [{ name: 'fatura', type: 'object' }] });
+    expect(cmp.panelVariables().map((v) => v.name).sort()).toEqual(['fatura', 'faturalar']);
+  });
+
   it('marks dirty and updates currentGraph when structured view emits graphChanged', () => {
     const fixture = TestBed.createComponent(DesignerComponent);
     const cmp = fixture.componentInstance;

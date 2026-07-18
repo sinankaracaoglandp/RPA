@@ -95,6 +95,10 @@ export class DesignerComponent implements OnDestroy {
    */
   readonly panelVariables = computed<WorkflowVariable[]>(() => {
     const base = this.variables();
+    // Yapısal modda enjeksiyon ağaç-yolundan gelir (structuredVars); serbest-graf'ta graf-tabanlı.
+    if (this.structuredView()) {
+      return [...base, ...this.structuredVars()];
+    }
     const graph = this.currentGraph() ?? this.workflow();
     const nodeId = this.selectedNodeId();
     if (!graph) {
@@ -199,10 +203,14 @@ export class DesignerComponent implements OnDestroy {
     }
   }
 
+  /** Yapısal moddaki seçili node'u saran döngülerin item değişkenleri (panel autocomplete'i için). */
+  readonly structuredVars = signal<WorkflowVariable[]>([]);
+
   /** Yapısal görünümdeki node seçimi mevcut özellik panelini besler. */
-  onStructuredSelect(sel: { activityType?: string; properties: Record<string, unknown> } | null): void {
+  onStructuredSelect(sel: { activityType?: string; properties: Record<string, unknown>; variables?: WorkflowVariable[] } | null): void {
     this.selectedActivityType.set(sel?.activityType);
     this.selectedProperties.set(sel?.properties ?? {});
+    this.structuredVars.set(sel?.variables ?? []);
   }
 
   onPropertiesChange(properties: Record<string, unknown>): void {

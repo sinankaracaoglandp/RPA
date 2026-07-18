@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, Input, Output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
-import { WorkflowVersion } from '../../../../shared/models/workflow.model';
+import { WorkflowVariable, WorkflowVersion } from '../../../../shared/models/workflow.model';
 import { ContainerType, LaneName, StructuredItem, StructuredSequence } from '../structured-model';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
@@ -10,6 +10,7 @@ import {
 } from '../edit/tree-ops';
 import { CONTROL_ACTIVITY_OF } from '../edit/control-activity-map';
 import { reduceWorkflow } from '../edit/structured-reducer';
+import { enclosingLoopItemVars } from '../edit/loop-item-vars';
 import { StructuredSequenceComponent } from './structured-sequence.component';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
 import { StructuredPaletteComponent } from './structured-palette.component';
@@ -23,6 +24,8 @@ interface ViewState {
 export interface StructuredSelection {
   activityType?: string;
   properties: Record<string, unknown>;
+  /** Seçili node'u saran ForEach döngülerinin item değişkenleri (autocomplete için). */
+  variables: WorkflowVariable[];
 }
 
 @Component({
@@ -50,6 +53,9 @@ export class StructuredViewComponent {
     this.mode.set(s.kind);
     this.tree.set(s.tree ?? []);
   }
+
+  /** Workflow değişkenleri (item türetmede items→şema çözümü için). */
+  @Input() variables: WorkflowVariable[] = [];
 
   @Output() readonly graphChanged = new EventEmitter<WorkflowVersion>();
 
@@ -96,13 +102,15 @@ export class StructuredViewComponent {
   }
 
   private selectionOf(item: StructuredItem): StructuredSelection {
+    const variables = enclosingLoopItemVars(this.tree(), item, this.variables);
     if (item.kind === 'step') {
       return {
         activityType: item.node.activity,
         properties: (item.node.properties as Record<string, unknown>) ?? {},
+        variables,
       };
     }
-    return { activityType: CONTROL_ACTIVITY_OF[item.type as ContainerType], properties: { ...item.props } };
+    return { activityType: CONTROL_ACTIVITY_OF[item.type as ContainerType], properties: { ...item.props }, variables };
   }
 
   updateSelectedProps(props: Record<string, unknown>): void {
