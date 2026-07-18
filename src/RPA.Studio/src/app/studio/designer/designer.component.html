@@ -118,6 +118,7 @@
       <app-structured-view
         [workflow]="currentGraph() ?? workflow()"
         (graphChanged)="onGraphChanged($event)"
+        (nodeSelect)="onStructuredSelect($event)"
       ></app-structured-view>
     } @else {
       <app-canvas

@@ -61,6 +61,7 @@ export class DesignerComponent implements OnDestroy {
    * Sinyal, resolve olduğunda bağlamaları reaktif olarak günceller.
    */
   readonly canvas = viewChild(CanvasComponent);
+  readonly structuredViewRef = viewChild(StructuredViewComponent);
 
   private readonly debug = inject(DebugService);
   private readonly modeService = inject(ModeService);
@@ -198,7 +199,18 @@ export class DesignerComponent implements OnDestroy {
     }
   }
 
+  /** Yapısal görünümdeki node seçimi mevcut özellik panelini besler. */
+  onStructuredSelect(sel: { activityType?: string; properties: Record<string, unknown> } | null): void {
+    this.selectedActivityType.set(sel?.activityType);
+    this.selectedProperties.set(sel?.properties ?? {});
+  }
+
   onPropertiesChange(properties: Record<string, unknown>): void {
+    if (this.structuredView()) {
+      this.selectedProperties.set(properties);
+      this.structuredViewRef()?.updateSelectedProps(properties);
+      return;
+    }
     const nodeId = this.selectedNodeId();
     if (nodeId) {
       this.canvas()?.updateNodeProperties(nodeId, properties);

@@ -465,6 +465,20 @@ describe('DesignerComponent — structured view toggle', () => {
     expect(fixture.nativeElement.querySelector('app-canvas')).toBeFalsy();
   });
 
+  it('feeds the properties panel from a structured selection and routes changes back', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const cmp = fixture.componentInstance;
+    fixture.detectChanges();
+    cmp.toggleStructuredView();
+    fixture.detectChanges();
+    cmp.onStructuredSelect({ activityType: 'Logic.ForEach', properties: { items: '${a}' } });
+    expect(cmp.selectedActivityType()).toBe('Logic.ForEach');
+    expect(cmp.selectedProperties()).toEqual({ items: '${a}' });
+
+    cmp.onPropertiesChange({ items: '${b}' });
+    expect(cmp.selectedProperties()).toEqual({ items: '${b}' });
+  });
+
   it('marks dirty and updates currentGraph when structured view emits graphChanged', () => {
     const fixture = TestBed.createComponent(DesignerComponent);
     const cmp = fixture.componentInstance;
