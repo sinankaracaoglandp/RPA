@@ -1,6 +1,6 @@
 import {
   insertItem, removeItem, moveItem, findPath, newStep, newContainer,
-  findSeqPath, reorderInSeq, moveAcross,
+  findSeqPath, reorderInSeq, moveAcross, updateItemAt, setItemProps,
 } from './tree-ops';
 import { step, container, StructuredSequence } from '../structured-model';
 import { WorkflowNode } from '../../../../shared/models/workflow.model';
@@ -101,5 +101,27 @@ describe('tree-ops — drag-drop helpers', () => {
     const c = out[0] as { type: string; lanes: { true: { node: WorkflowNode }[] } };
     expect(c.type).toBe('if');
     expect(c.lanes.true.map((i) => i.node.id)).toEqual(['a']);
+  });
+});
+
+describe('tree-ops — props editing', () => {
+  it('setItemProps replaces a step node properties (immutable)', () => {
+    const tree: StructuredSequence = [step(n('a'))];
+    const out = setItemProps(tree, { steps: [], index: 0 }, { message: 'hi' });
+    expect((out[0] as { node: { properties: unknown } }).node.properties).toEqual({ message: 'hi' });
+    expect((tree[0] as { node: { properties?: unknown } }).node.properties).toBeUndefined();
+  });
+
+  it('setItemProps replaces a container props', () => {
+    const tree: StructuredSequence = [container('forEach', { items: '${a}' }, { body: [] })];
+    const out = setItemProps(tree, { steps: [], index: 0 }, { items: '${b}', itemVariable: 'x' });
+    expect((out[0] as { props: unknown }).props).toEqual({ items: '${b}', itemVariable: 'x' });
+  });
+
+  it('updateItemAt transforms the addressed item', () => {
+    const tree: StructuredSequence = [step(n('a')), step(n('b'))];
+    const out = updateItemAt(tree, { steps: [], index: 1 },
+      (it) => ({ ...(it as { kind: 'step'; node: WorkflowNode }), node: { ...(it as { node: WorkflowNode }).node, id: 'B2' } } as never));
+    expect((out[1] as { node: WorkflowNode }).node.id).toBe('B2');
   });
 });

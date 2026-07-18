@@ -144,3 +144,20 @@ export function moveAcross(
   }
   return insertItem(t1, adjusted, toIndex, item);
 }
+
+/** path'teki öğeyi fn ile değiştirir (immutable). */
+export function updateItemAt(
+  tree: StructuredSequence, path: Path, fn: (item: StructuredItem) => StructuredItem,
+): StructuredSequence {
+  return updateSeqAt(tree, path.steps, (seq) => seq.map((it, i) => (i === path.index ? fn(it) : it)));
+}
+
+/** Öğenin parametrelerini değiştirir: adım → node.properties; konteyner → props. */
+export function setItemProps(
+  tree: StructuredSequence, path: Path, props: Record<string, unknown>,
+): StructuredSequence {
+  return updateItemAt(tree, path, (item) =>
+    item.kind === 'step'
+      ? { ...item, node: { ...item.node, properties: props } }
+      : { ...item, props });
+}
