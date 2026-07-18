@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, Input, Output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { WorkflowVersion } from '../../../../shared/models/workflow.model';
@@ -84,11 +84,13 @@ export class StructuredViewComponent {
   @Output() readonly nodeSelect = new EventEmitter<StructuredSelection | null>();
 
   onSelect(item: StructuredItem): void {
+    this.propsEditing = false;
     this.selected.set(item);
     this.nodeSelect.emit(this.selectionOf(item));
   }
 
   clearSelection(): void {
+    this.propsEditing = false;
     this.selected.set(null);
     this.nodeSelect.emit(null);
   }
@@ -141,10 +143,52 @@ export class StructuredViewComponent {
     this.commit(next);
   }
 
-  // Task C3-4 bu gövdeyi geçmiş + koalesleme ile değiştirir; opts şimdilik yok sayılır.
-  private commit(next: StructuredSequence, _opts: { props?: boolean } = {}): void {
+  // ---- Undo/Redo (geçmiş + prop koalesleme) ----
+  private past: StructuredSequence[] = [];
+  private future: StructuredSequence[] = [];
+  private propsEditing = false;
+
+  get canUndo(): boolean { return this.past.length > 0; }
+  get canRedo(): boolean { return this.future.length > 0; }
+
+  private commit(next: StructuredSequence, opts: { props?: boolean } = {}): void {
+    if (!(opts.props && this.propsEditing)) {
+      this.past.push(this.tree());
+      this.future = [];
+    }
+    this.propsEditing = !!opts.props;
     this.tree.set(next);
     this.graphChanged.emit(treeToWorkflow(next));
+  }
+
+  undo(): void {
+    if (!this.canUndo) { return; }
+    this.future.push(this.tree());
+    this.tree.set(this.past.pop()!);
+    this.propsEditing = false;
+    this.clearSelection();
+    this.graphChanged.emit(treeToWorkflow(this.tree()));
+  }
+
+  redo(): void {
+    if (!this.canRedo) { return; }
+    this.past.push(this.tree());
+    this.tree.set(this.future.pop()!);
+    this.propsEditing = false;
+    this.clearSelection();
+    this.graphChanged.emit(treeToWorkflow(this.tree()));
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    if (!this.editable) { return; }
+    const tag = (event.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
+    const key = event.key.toLowerCase();
+    if (!(event.ctrlKey || event.metaKey) || (key !== 'z' && key !== 'y')) { return; }
+    event.preventDefault();
+    const redo = (key === 'z' && event.shiftKey) || key === 'y';
+    if (redo) { this.redo(); } else { this.undo(); }
   }
 
   // ---- Gezinme: zoom + sürükle-pan ----

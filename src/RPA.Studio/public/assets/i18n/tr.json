@@ -97,6 +97,8 @@
     "activity": "Aktivite",
     "pickActivity": "Aktivite seç…",
     "palette": "Palet",
+    "undo": "Geri al",
+    "redo": "Yinele",
     "fallback": "Bu workflow yapısal görünüme uygun değil (serbest-graf / tryCatch — Faz C/D).",
     "emptyView": "Görüntülenecek adım yok.",
     "type": { "forEach": "Her Biri İçin", "for": "Sayaç Döngüsü", "while": "While", "if": "Eğer", "tryCatch": "Dene-Yakala" },

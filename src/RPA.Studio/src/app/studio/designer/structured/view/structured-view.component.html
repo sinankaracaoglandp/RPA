@@ -8,6 +8,8 @@
     }
     @case ('tree') {
       <div class="structured-view__toolbar">
+        <button type="button" data-testid="structured-undo" [disabled]="!canUndo" [title]="'structured.undo' | translate" (click)="undo()">↶</button>
+        <button type="button" data-testid="structured-redo" [disabled]="!canRedo" [title]="'structured.redo' | translate" (click)="redo()">↷</button>
         <button type="button" data-testid="structured-zoom-out" (click)="zoomOut()">−</button>
         <span class="structured-view__zoom">{{ (zoom() * 100) | number:'1.0-0' }}%</span>
         <button type="button" data-testid="structured-zoom-in" (click)="zoomIn()">+</button>

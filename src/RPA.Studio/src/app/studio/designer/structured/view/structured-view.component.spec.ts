@@ -148,6 +148,37 @@ describe('StructuredViewComponent', () => {
     expect(emitted).toBe(true);
   });
 
+  it('undo restores the previous tree and clears selection', () => {
+    const wf = treeToWorkflow([step(n('a'))], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    cmp.addToRoot(step(n('b')));
+    expect(cmp.tree()).toHaveLength(2);
+    expect(cmp.canUndo).toBe(true);
+    let cleared = false;
+    cmp.nodeSelect.subscribe((s) => { if (s === null) { cleared = true; } });
+    cmp.undo();
+    expect(cmp.tree()).toHaveLength(1);
+    expect(cleared).toBe(true);
+    cmp.redo();
+    expect(cmp.tree()).toHaveLength(2);
+  });
+
+  it('coalesces consecutive prop edits into one undo step', () => {
+    const wf = treeToWorkflow([container('forEach', { items: '${a}' }, { body: [step(n('b'))] })], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    cmp.onSelect(cmp.tree()[0]);
+    cmp.updateSelectedProps({ items: '${b}' });
+    cmp.updateSelectedProps({ items: '${bc}' });
+    cmp.undo();
+    expect((cmp.tree()[0] as unknown as { props: { items: string } }).props.items).toBe('${a}');
+  });
+
   it('does not render edit controls for a fallback workflow', () => {
     const wf = treeToWorkflow(
       [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],
