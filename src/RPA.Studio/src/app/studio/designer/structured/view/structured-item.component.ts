@@ -27,8 +27,17 @@ export type StructuredAction =
 export class StructuredItemComponent {
   @Input({ required: true }) item!: StructuredItem;
   @Input() editable = false;
+  @Input() selectedRef: StructuredItem | null = null;
   @Output() readonly action = new EventEmitter<StructuredAction>();
   @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
+  @Output() readonly select = new EventEmitter<StructuredItem>();
+
+  get isSelected(): boolean { return this.item === this.selectedRef; }
+
+  onSelect(event: Event): void {
+    event.stopPropagation();
+    this.select.emit(this.item);
+  }
 
   get container(): ContainerItem | null {
     return this.item.kind === 'container' ? this.item : null;
@@ -60,7 +69,8 @@ export class StructuredItemComponent {
     return this.item.node.activity ?? this.item.node.type;
   }
 
-  emitAction(kind: 'delete' | 'up' | 'down'): void {
+  emitAction(kind: 'delete' | 'up' | 'down', event?: Event): void {
+    event?.stopPropagation();
     this.action.emit({ kind, target: this.item });
   }
 

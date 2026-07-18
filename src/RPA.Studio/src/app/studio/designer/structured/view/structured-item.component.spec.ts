@@ -46,6 +46,27 @@ describe('StructuredItemComponent', () => {
     expect(f.nativeElement.querySelector('[data-testid="item-delete"]')).toBeFalsy();
   });
 
+  it('emits select with the item reference on card click', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    const item = step({ id: 's', type: 'activity', activity: 'A' });
+    f.componentRef.setInput('item', item);
+    f.componentRef.setInput('editable', true);
+    f.detectChanges();
+    let selected: unknown;
+    f.componentInstance.select.subscribe((i) => (selected = i));
+    (f.nativeElement.querySelector('[data-testid="structured-step"]') as HTMLElement).click();
+    expect(selected).toBe(item);
+  });
+
+  it('marks the selected item', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    const item = step({ id: 's', type: 'activity', activity: 'A' });
+    f.componentRef.setInput('item', item);
+    f.componentRef.setInput('selectedRef', item);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('.structured-item--selected')).toBeTruthy();
+  });
+
   it('renders lanes as cdkDropList and items as cdkDrag when editable', () => {
     const f = TestBed.createComponent(StructuredItemComponent);
     f.componentRef.setInput('item', container('forEach', {}, { body: [step({ id: 'b', type: 'activity', activity: 'A' })] }));

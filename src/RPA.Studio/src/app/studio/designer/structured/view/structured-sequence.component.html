@@ -9,11 +9,13 @@
     <app-structured-item
       [item]="item"
       [editable]="editable"
+      [selectedRef]="selectedRef"
       cdkDrag
       [cdkDragData]="item"
       [cdkDragDisabled]="!editable"
       (action)="action.emit($event)"
       (drop)="drop.emit($event)"
+      (select)="select.emit($event)"
     ></app-structured-item>
   }
   @if (items.length === 0) {

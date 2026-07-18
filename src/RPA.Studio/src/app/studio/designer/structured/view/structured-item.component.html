@@ -1,28 +1,30 @@
 @if (item.kind === 'step') {
-  <div class="structured-step" data-testid="structured-step">
+  <div class="structured-step" data-testid="structured-step"
+       [class.structured-item--selected]="isSelected" (click)="onSelect($event)">
     <span class="structured-step__icon" aria-hidden="true">▸</span>
     <span class="structured-step__title">{{ stepTitle() }}</span>
     <span class="structured-step__type">{{ item.node.type }}</span>
     @if (editable) {
       <span class="structured-item__controls">
-        <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up')">↑</button>
-        <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down')">↓</button>
-        <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete')">✕</button>
+        <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
+        <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down', $event)">↓</button>
+        <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete', $event)">✕</button>
       </span>
     }
   </div>
 } @else if (container) {
-  <div class="structured-container" data-testid="structured-container" [attr.data-type]="container.type">
-    <header class="structured-container__header">
+  <div class="structured-container" data-testid="structured-container" [attr.data-type]="container.type"
+       [class.structured-item--selected]="isSelected">
+    <header class="structured-container__header" (click)="onSelect($event)">
       <span class="structured-container__label">{{ 'structured.type.' + container.type | translate }}</span>
       @if (summary(container)) {
         <code class="structured-container__summary">{{ summary(container) }}</code>
       }
       @if (editable) {
         <span class="structured-item__controls">
-          <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up')">↑</button>
-          <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down')">↓</button>
-          <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete')">✕</button>
+          <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
+          <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down', $event)">↓</button>
+          <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete', $event)">✕</button>
         </span>
       }
     </header>
@@ -41,11 +43,13 @@
             <app-structured-item
               [item]="child"
               [editable]="editable"
+              [selectedRef]="selectedRef"
               cdkDrag
               [cdkDragData]="child"
               [cdkDragDisabled]="!editable"
               (action)="action.emit($event)"
               (drop)="drop.emit($event)"
+              (select)="select.emit($event)"
             ></app-structured-item>
           }
           @if (laneItems(container, lane).length === 0) {

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 import { CommonModule } from '@angular/common';
 import { CdkDrag, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
-import { StructuredSequence } from '../structured-model';
+import { StructuredItem, StructuredSequence } from '../structured-model';
 import { StructuredAction, StructuredItemComponent } from './structured-item.component';
 
 @Component({
@@ -15,6 +15,8 @@ import { StructuredAction, StructuredItemComponent } from './structured-item.com
 export class StructuredSequenceComponent {
   @Input() items: StructuredSequence = [];
   @Input() editable = false;
+  @Input() selectedRef: StructuredItem | null = null;
   @Output() readonly action = new EventEmitter<StructuredAction>();
   @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
+  @Output() readonly select = new EventEmitter<StructuredItem>();
 }
