@@ -25,6 +25,37 @@ describe('reduceWorkflow — reducible', () => {
     expect((r.tree[0] as { type: string }).type).toBe('forEach');
   });
 
+  it('treats a Logic.ForEach activity node as an (empty-body) forEach container', () => {
+    const wf: WorkflowVersion = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [
+        { id: 'fe', type: 'activity', activity: 'Logic.ForEach', items: '${xs}', itemVariable: 'x' } as WorkflowNode,
+        { id: 'after', type: 'activity', activity: 'A' },
+      ],
+      connections: [{ from: 'fe', to: 'after', fromPort: 'out', toPort: 'in' }],
+    };
+    const r = ok(reduceWorkflow(wf));
+    expect(r.tree).toHaveLength(2);
+    const fe = r.tree[0] as { kind: string; type: string; props: Record<string, unknown>; lanes: Record<string, unknown[]> };
+    expect(fe.kind).toBe('container');
+    expect(fe.type).toBe('forEach');
+    expect(fe.props).toEqual({ items: '${xs}', itemVariable: 'x' }); // 'activity'/'type' props'a sizmaz
+    expect(fe.lanes['body']).toEqual([]);
+    expect((r.tree[1] as { node: WorkflowNode }).node.id).toBe('after');
+  });
+
+  it('treats a Logic.If activity node as an (empty-branch) if container', () => {
+    const wf: WorkflowVersion = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [{ id: 'iff', type: 'activity', activity: 'Logic.If', condition: '{{c}}' } as WorkflowNode],
+      connections: [],
+    };
+    const r = ok(reduceWorkflow(wf));
+    const it = r.tree[0] as { kind: string; type: string };
+    expect(it.kind).toBe('container');
+    expect(it.type).toBe('if');
+  });
+
   it('reduces a simple if with converging branches', () => {
     const wf = treeToWorkflow([container('if', { condition: '{{c}} == 1' }, { true: [step(n('t'))], false: [step(n('f'))] }), step(n('after'))], { idGen: seqIds() });
     const r = ok(reduceWorkflow(wf));

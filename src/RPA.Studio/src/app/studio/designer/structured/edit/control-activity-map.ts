@@ -11,3 +11,11 @@ export const CONTROL_ACTIVITY_OF: Record<ContainerType, string> = {
   while: 'Logic.While',
   tryCatch: 'Logic.TryCatch',
 };
+
+/** Ters eşleme: kontrol-akışı aktivite kimliği → konteyner tipi (ör. 'Logic.ForEach' → 'forEach'). */
+export const CONTAINER_OF_ACTIVITY: Record<string, ContainerType> = Object.fromEntries(
+  Object.entries(CONTROL_ACTIVITY_OF).map(([type, activityId]) => [activityId, type as ContainerType]),
+) as Record<string, ContainerType>;
+
+/** Kontrol-akışı aktivite kimlikleri kümesi (düz aktivite listelerinden çıkarmak için). */
+export const CONTROL_ACTIVITY_IDS: ReadonlySet<string> = new Set(Object.values(CONTROL_ACTIVITY_OF));

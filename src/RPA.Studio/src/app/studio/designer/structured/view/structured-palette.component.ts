@@ -5,6 +5,7 @@ import { TranslatePipe } from '../../../../core/translate.pipe';
 import { ActivityCatalogService } from '../../../../shared/services/activity-catalog.service';
 import { ContainerType, StructuredItem } from '../structured-model';
 import { newContainer, newStep } from '../edit/tree-ops';
+import { CONTROL_ACTIVITY_IDS } from '../edit/control-activity-map';
 
 interface Chip { label: string; factory: () => StructuredItem; }
 interface ControlChip extends Chip { type: ContainerType; }
@@ -32,9 +33,12 @@ export class StructuredPaletteComponent implements OnInit {
 
   ngOnInit(): void {
     this.catalog.getActivities().subscribe({
-      next: (list) => (this.activityChips = list.map((a) => ({
-        label: a.displayName || a.activityId, factory: () => newStep(a.activityId),
-      }))),
+      // Kontrol-akışı aktiviteleri paletten çıkarılır; döngü/if yalnız kontrol çipleriyle eklenir.
+      next: (list) => (this.activityChips = list
+        .filter((a) => !CONTROL_ACTIVITY_IDS.has(a.activityId))
+        .map((a) => ({
+          label: a.displayName || a.activityId, factory: () => newStep(a.activityId),
+        }))),
       error: () => (this.activityChips = []),
     });
   }

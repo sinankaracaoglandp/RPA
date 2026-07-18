@@ -1,5 +1,13 @@
 import { WorkflowConnection, WorkflowNode, WorkflowVersion } from '../../../../shared/models/workflow.model';
-import { ContainerType, StructuredSequence, container, step } from '../structured-model';
+import { ContainerType, LaneName, StructuredSequence, container, lanesFor, step } from '../structured-model';
+import { CONTAINER_OF_ACTIVITY } from './control-activity-map';
+
+/** Konteyner tipinin boş lane haritası (tüm lane'ler []). */
+function emptyLanes(type: ContainerType): Partial<Record<LaneName, StructuredSequence>> {
+  const lanes: Partial<Record<LaneName, StructuredSequence>> = {};
+  for (const lane of lanesFor(type)) { lanes[lane] = []; }
+  return lanes;
+}
 
 export type ReduceResult =
   | { ok: true; tree: StructuredSequence }
@@ -118,6 +126,27 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
       seen.add(cur);
       const node = byId.get(cur);
       if (!node) { throw new ReducerError(`Bilinmeyen node: '${cur}'`); }
+
+      // Kontrol-akışı AKTİVİTE düğümü (ör. 'Logic.ForEach') → boş-lane'li konteyner.
+      // Canvas kontrol düğümü üretir; ancak yapısal ekleme menüsü/palet geçmişte bu aktiviteleri
+      // düz aktivite olarak eklemiş olabilir. Bunları bloğa çevirerek düzenlenebilir kılıyoruz.
+      const asContainer = node.type === 'activity' && typeof node.activity === 'string'
+        ? CONTAINER_OF_ACTIVITY[node.activity]
+        : undefined;
+      if (asContainer) {
+        const outs = outEdges(cur);
+        if (outs.length > 1) { throw new ReducerError(`'${cur}' birden çok çıkışa sahip (yapısal değil)`); }
+        const nxt = outs[0]?.to ?? null;
+        if (nxt !== null && nxt !== stop && inCount(nxt) > 1) {
+          throw new ReducerError(`'${nxt}' node'u birden fazla yerden ulaşılıyor (yakınsama yok)`);
+        }
+        const props = propsOf(node);
+        delete props['activity']; // 'activity' anahtarı konteyner props'una sızmasın
+        seq.push(container(asContainer, props, emptyLanes(asContainer)));
+        cur = nxt;
+        continue;
+      }
+
       if (node.type === 'tryCatch') {
         const rec = node as unknown as Record<string, unknown>;
         const tryId = rec['tryNodeId'] as string | undefined;

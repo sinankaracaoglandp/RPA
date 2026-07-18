@@ -5,6 +5,7 @@ import { ActivityCatalogService } from '../../../../shared/services/activity-cat
 import { ActivityMetadata } from '../../../../shared/models/activity.model';
 import { ContainerType, StructuredItem } from '../structured-model';
 import { newContainer, newStep } from '../edit/tree-ops';
+import { CONTROL_ACTIVITY_IDS } from '../edit/control-activity-map';
 
 /**
  * Yapısal editörde bir diziye/lane'e yeni öğe eklemek için küçük menü:
@@ -29,7 +30,9 @@ export class StructuredAddMenuComponent implements OnInit {
 
   ngOnInit(): void {
     this.catalog.getActivities().subscribe({
-      next: (a) => (this.activities = a),
+      // Kontrol-akışı aktiviteleri (Logic.If/ForEach/...) düz aktivite olarak eklenmemeli;
+      // bunlar yalnız kontrol tipi düğmeleriyle (gerçek konteyner) eklenir.
+      next: (a) => (this.activities = a.filter((x) => !CONTROL_ACTIVITY_IDS.has(x.activityId))),
       error: () => (this.activities = []),
     });
   }

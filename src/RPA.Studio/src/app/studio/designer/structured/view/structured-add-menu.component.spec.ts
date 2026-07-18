@@ -25,6 +25,18 @@ describe('StructuredAddMenuComponent', () => {
     expect((picked as ContainerItem).type).toBe('if');
   });
 
+  it('excludes control-flow activities (Logic.ForEach) from the activity list', () => {
+    const f = TestBed.createComponent(StructuredAddMenuComponent);
+    f.componentInstance.open = true;
+    f.detectChanges();
+    http.match('/api/activities').forEach((r) => r.flush([
+      { activityId: 'Logic.ForEach', displayName: 'Her Biri İçin', category: 'Logic', inputs: [], outputs: [] },
+      { activityId: 'Web.Click', displayName: 'Tıkla', category: 'Web', inputs: [], outputs: [] },
+    ]));
+    f.detectChanges();
+    expect(f.componentInstance.activities.map((a) => a.activityId)).toEqual(['Web.Click']);
+  });
+
   it('emits a step item when an activity is chosen', () => {
     const f = TestBed.createComponent(StructuredAddMenuComponent);
     f.componentInstance.open = true;
