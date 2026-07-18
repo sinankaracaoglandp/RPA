@@ -1,5 +1,6 @@
 import { reduceWorkflow } from './structured-reducer';
 import { treeToWorkflow } from '../tree-to-workflow';
+import { workflowToTree } from '../workflow-to-tree';
 import { step, container, StructuredSequence } from '../structured-model';
 import { WorkflowNode, WorkflowVersion } from '../../../../shared/models/workflow.model';
 
@@ -105,5 +106,21 @@ describe('reduceWorkflow — if edge cases', () => {
     const r = reduceWorkflow(wf);
     expect(r.ok).toBe(false);
     expect((r as { reason: string }).reason).toMatch(/çıkış|ulaşıl|sızın|yakınsama|atlıyor/);
+  });
+});
+
+describe('reduceWorkflow — A round-trip agreement', () => {
+  it('agrees with workflowToTree on structured-authored graphs', () => {
+    const trees: StructuredSequence[] = [
+      [step(n('a')), step(n('b'))],
+      [container('while', { condition: '{{c}}' }, { body: [step(n('x'))] }), step(n('y'))],
+      [container('if', {}, { true: [step(n('t'))], false: [step(n('f'))] }), step(n('z'))],
+    ];
+    for (const t of trees) {
+      const wf = treeToWorkflow(t, { idGen: seqIds() });
+      const viaReduce = ok(reduceWorkflow(wf)).tree;
+      const viaTree = workflowToTree(wf);
+      expect(viaReduce.map((i) => i.kind)).toEqual(viaTree.map((i) => i.kind));
+    }
   });
 });
