@@ -27,6 +27,39 @@ export class StructuredViewComponent {
 
   readonly state = computed<ViewState>(() => this.convert(this._workflow()));
 
+  // ---- Gezinme: zoom + sürükle-pan ----
+  readonly zoom = signal(1);
+  private static readonly ZOOM_MIN = 0.4;
+  private static readonly ZOOM_MAX = 2;
+  private static readonly ZOOM_STEP = 1.15;
+
+  private clampZoom(z: number): number {
+    return Math.min(StructuredViewComponent.ZOOM_MAX, Math.max(StructuredViewComponent.ZOOM_MIN, z));
+  }
+  zoomIn(): void { this.zoom.update((z) => this.clampZoom(z * StructuredViewComponent.ZOOM_STEP)); }
+  zoomOut(): void { this.zoom.update((z) => this.clampZoom(z / StructuredViewComponent.ZOOM_STEP)); }
+
+  onWheel(event: WheelEvent): void {
+    if (!event.ctrlKey) { return; }
+    event.preventDefault();
+    if (event.deltaY < 0) { this.zoomIn(); } else { this.zoomOut(); }
+  }
+
+  private panning = false;
+  private panX = 0; private panY = 0; private scrollX = 0; private scrollY = 0;
+  onPanStart(event: PointerEvent, scroll: HTMLElement): void {
+    if (event.button !== 0) { return; }
+    this.panning = true;
+    this.panX = event.clientX; this.panY = event.clientY;
+    this.scrollX = scroll.scrollLeft; this.scrollY = scroll.scrollTop;
+  }
+  onPanMove(event: PointerEvent, scroll: HTMLElement): void {
+    if (!this.panning) { return; }
+    scroll.scrollLeft = this.scrollX - (event.clientX - this.panX);
+    scroll.scrollTop = this.scrollY - (event.clientY - this.panY);
+  }
+  onPanEnd(): void { this.panning = false; }
+
   private convert(workflow: WorkflowVersion | null): ViewState {
     if (!workflow || workflow.nodes.length === 0) {
       return { kind: 'empty' };

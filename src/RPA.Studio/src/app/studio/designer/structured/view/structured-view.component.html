@@ -7,8 +7,25 @@
       <p class="structured-view__msg" data-testid="structured-view-fallback">{{ 'structured.fallback' | translate }}</p>
     }
     @case ('tree') {
-      <div class="structured-view__scroll">
-        <div class="structured-view__canvas" data-testid="structured-view-tree">
+      <div class="structured-view__toolbar">
+        <button type="button" data-testid="structured-zoom-out" (click)="zoomOut()">−</button>
+        <span class="structured-view__zoom">{{ (zoom() * 100) | number:'1.0-0' }}%</span>
+        <button type="button" data-testid="structured-zoom-in" (click)="zoomIn()">+</button>
+      </div>
+      <div
+        #scroll
+        class="structured-view__scroll"
+        (wheel)="onWheel($event)"
+        (pointerdown)="onPanStart($event, scroll)"
+        (pointermove)="onPanMove($event, scroll)"
+        (pointerup)="onPanEnd()"
+        (pointerleave)="onPanEnd()"
+      >
+        <div
+          class="structured-view__canvas"
+          data-testid="structured-view-tree"
+          [style.transform]="'scale(' + zoom() + ')'"
+        >
           <app-structured-sequence [items]="state().tree ?? []"></app-structured-sequence>
         </div>
       </div>

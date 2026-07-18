@@ -55,6 +55,22 @@ describe('StructuredViewComponent', () => {
     expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();
   });
 
+  it('zoom in/out changes the zoom factor within clamp bounds', () => {
+    const wf = { schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [{ id: 'a', type: 'activity', activity: 'X' }], connections: [] };
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf as never);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    const start = cmp.zoom();
+    cmp.zoomIn();
+    expect(cmp.zoom()).toBeGreaterThan(start);
+    for (let i = 0; i < 20; i++) { cmp.zoomIn(); }
+    expect(cmp.zoom()).toBeLessThanOrEqual(2);
+    for (let i = 0; i < 40; i++) { cmp.zoomOut(); }
+    expect(cmp.zoom()).toBeGreaterThanOrEqual(0.4);
+  });
+
   it('shows an empty state for a null workflow', () => {
     const f = TestBed.createComponent(StructuredViewComponent);
     f.componentRef.setInput('workflow', null);
