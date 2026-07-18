@@ -1,6 +1,20 @@
-<div class="structured-sequence">
+<div
+  class="structured-sequence"
+  cdkDropList
+  [cdkDropListData]="items"
+  [cdkDropListDisabled]="!editable"
+  (cdkDropListDropped)="drop.emit($event)"
+>
   @for (item of items; track $index) {
-    <app-structured-item [item]="item" [editable]="editable" (action)="action.emit($event)"></app-structured-item>
+    <app-structured-item
+      [item]="item"
+      [editable]="editable"
+      cdkDrag
+      [cdkDragData]="item"
+      [cdkDragDisabled]="!editable"
+      (action)="action.emit($event)"
+      (drop)="drop.emit($event)"
+    ></app-structured-item>
   }
   @if (items.length === 0) {
     <p class="structured-sequence__empty" data-testid="sequence-empty">{{ 'structured.empty' | translate }}</p>

@@ -45,4 +45,13 @@ describe('StructuredItemComponent', () => {
     f.detectChanges();
     expect(f.nativeElement.querySelector('[data-testid="item-delete"]')).toBeFalsy();
   });
+
+  it('renders lanes as cdkDropList and items as cdkDrag when editable', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', container('forEach', {}, { body: [step({ id: 'b', type: 'activity', activity: 'A' })] }));
+    f.componentRef.setInput('editable', true);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('.cdk-drop-list')).toBeTruthy();
+    expect(f.nativeElement.querySelector('.cdk-drag')).toBeTruthy();
+  });
 });

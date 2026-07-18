@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkDrag, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { ContainerItem, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
@@ -19,7 +20,7 @@ export type StructuredAction =
   selector: 'app-structured-item',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, TranslatePipe, StructuredAddMenuComponent],
+  imports: [CommonModule, TranslatePipe, StructuredAddMenuComponent, CdkDrag, CdkDropList],
   templateUrl: './structured-item.component.html',
   styleUrls: ['./structured-item.component.scss'],
 })
@@ -27,6 +28,7 @@ export class StructuredItemComponent {
   @Input({ required: true }) item!: StructuredItem;
   @Input() editable = false;
   @Output() readonly action = new EventEmitter<StructuredAction>();
+  @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
 
   get container(): ContainerItem | null {
     return this.item.kind === 'container' ? this.item : null;

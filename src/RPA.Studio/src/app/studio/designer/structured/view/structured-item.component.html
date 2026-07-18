@@ -28,10 +28,25 @@
     </header>
     <div class="structured-container__lanes">
       @for (lane of lanes(container); track lane) {
-        <section class="structured-container__lane" [attr.data-testid]="'lane-' + lane">
+        <section
+          class="structured-container__lane"
+          [attr.data-testid]="'lane-' + lane"
+          cdkDropList
+          [cdkDropListData]="laneItems(container, lane)"
+          [cdkDropListDisabled]="!editable"
+          (cdkDropListDropped)="drop.emit($event)"
+        >
           <span class="structured-container__lane-label">{{ 'structured.lane.' + lane | translate }}</span>
           @for (child of laneItems(container, lane); track $index) {
-            <app-structured-item [item]="child" [editable]="editable" (action)="action.emit($event)"></app-structured-item>
+            <app-structured-item
+              [item]="child"
+              [editable]="editable"
+              cdkDrag
+              [cdkDragData]="child"
+              [cdkDragDisabled]="!editable"
+              (action)="action.emit($event)"
+              (drop)="drop.emit($event)"
+            ></app-structured-item>
           }
           @if (laneItems(container, lane).length === 0) {
             <p class="structured-container__lane-empty" data-testid="lane-empty">{{ 'structured.empty' | translate }}</p>
