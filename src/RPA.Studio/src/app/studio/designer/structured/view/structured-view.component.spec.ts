@@ -149,6 +149,22 @@ describe('StructuredViewComponent', () => {
     expect(sel!.activityType).toBe('X');
   });
 
+  it('emits nodeSelect with Logic.ForEach activity + props when a forEach block is selected', () => {
+    const wf = treeToWorkflow(
+      [container('forEach', { items: '${xs}', itemVariable: 'x' }, { body: [step(n('b'))] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    let sel: { activityType?: string; properties: Record<string, unknown> } | null = null;
+    cmp.nodeSelect.subscribe((s) => (sel = s));
+    cmp.onSelect(cmp.tree()[0]);
+    expect(sel!.activityType).toBe('Logic.ForEach');
+    expect(sel!.properties).toEqual({ items: '${xs}', itemVariable: 'x' });
+  });
+
   it('updateSelectedProps updates the selected item and emits workflow', () => {
     const wf = treeToWorkflow([container('forEach', { items: '${a}' }, { body: [step(n('b'))] }), step(n('after'))], { idGen: ids() });
     const f = TestBed.createComponent(StructuredViewComponent);
