@@ -91,6 +91,8 @@
     "empty": "boş",
     "toggle": "Yapısal görünüm",
     "add": "Buraya node ekle",
+    "controlCategory": "Kontrol",
+    "paletteEmpty": "Bu kategoride öğe yok",
     "delete": "Sil",
     "moveUp": "Yukarı",
     "moveDown": "Aşağı",

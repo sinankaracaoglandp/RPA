@@ -91,6 +91,8 @@
     "empty": "empty",
     "toggle": "Structured view",
     "add": "Add node here",
+    "controlCategory": "Control",
+    "paletteEmpty": "No items in this category",
     "delete": "Delete",
     "moveUp": "Up",
     "moveDown": "Down",

@@ -14,6 +14,7 @@ import { enclosingLoopItemVars } from '../edit/loop-item-vars';
 import { StructuredSequenceComponent } from './structured-sequence.component';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
 import { StructuredPaletteComponent } from './structured-palette.component';
+import { StructuredPaletteFilter } from './structured-palette-filter';
 import { StructuredAction } from './structured-item.component';
 
 interface ViewState {
@@ -36,6 +37,7 @@ export interface StructuredSelection {
     CommonModule, TranslatePipe, StructuredSequenceComponent, StructuredAddMenuComponent,
     StructuredPaletteComponent, CdkDropListGroup,
   ],
+  providers: [StructuredPaletteFilter],
   templateUrl: './structured-view.component.html',
   styleUrls: ['./structured-view.component.scss'],
 })
