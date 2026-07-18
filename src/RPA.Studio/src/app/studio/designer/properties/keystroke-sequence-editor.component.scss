@@ -21,6 +21,7 @@
 .ks__step-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.4rem;
 }
@@ -40,13 +41,15 @@
 }
 
 .ks__preview {
-  flex: 1 1 auto;
+  margin-bottom: 0.4rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: var(--surface, rgba(37, 99, 235, 0.08));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
-  opacity: 0.85;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  opacity: 0.9;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .ks__step-actions {
