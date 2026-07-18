@@ -101,6 +101,15 @@ describe('StructuredItemComponent', () => {
     expect((g.nativeElement as HTMLElement).querySelector('.structured-port--out')).toBeFalsy();
   });
 
+  it('shows a type icon in the container header (forEach → 🔁)', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', container('forEach', {}, { body: [] }));
+    f.detectChanges();
+    const icon = f.nativeElement.querySelector('[data-testid="container-icon"]') as HTMLElement;
+    expect(icon).toBeTruthy();
+    expect(icon.textContent).toContain('🔁');
+  });
+
   it('exposes the container control type for type-based styling', () => {
     const f = TestBed.createComponent(StructuredItemComponent);
     f.componentRef.setInput('item', container('forEach', {}, { body: [] }));

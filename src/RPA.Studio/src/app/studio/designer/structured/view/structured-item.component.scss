@@ -84,6 +84,7 @@
     border-radius: 10px 10px 0 0;
     cursor: pointer;
   }
+  &__icon { font-size: 14px; line-height: 1; }
   &__label { font-weight: 700; }
   &__summary { font-size: 12px; color: #475569; font-family: ui-monospace, Menlo, monospace; }
   &__lanes { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; }

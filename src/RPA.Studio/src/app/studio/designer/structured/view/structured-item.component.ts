@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 import { CommonModule } from '@angular/common';
 import { CdkDrag, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
-import { ContainerItem, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
+import { ContainerItem, ContainerType, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
 
 /** Yapısal editör düzenleme olayı; öğe referansı taşır (path `findPath` ile host'ta çıkar). */
@@ -48,6 +48,18 @@ export class StructuredItemComponent {
 
   lanes(c: ContainerItem): LaneName[] {
     return lanesFor(c.type);
+  }
+
+  /** Blok başlığındaki tip ikonu (mockup ile aynı görsel dil). */
+  containerIcon(type: ContainerType): string {
+    switch (type) {
+      case 'forEach': return '🔁';
+      case 'for': return '🔢';
+      case 'while': return '🔄';
+      case 'if': return '◆';
+      case 'tryCatch': return '🛡️';
+      default: return '▸';
+    }
   }
 
   laneItems(c: ContainerItem, lane: LaneName): StructuredSequence {
