@@ -1,0 +1,23 @@
+<div class="add-menu">
+  <button type="button" class="add-menu__toggle" data-testid="add-toggle" (click)="toggle()">
+    + {{ 'structured.add' | translate }}
+  </button>
+  @if (open) {
+    <div class="add-menu__panel">
+      @for (t of controlTypes; track t) {
+        <button type="button" [attr.data-testid]="'add-type-' + t" (click)="chooseControl(t)">
+          {{ 'structured.type.' + t | translate }}
+        </button>
+      }
+      <label class="add-menu__activity">
+        {{ 'structured.activity' | translate }}
+        <select data-testid="add-activity" (change)="chooseActivity($any($event.target).value)">
+          <option value="">{{ 'structured.pickActivity' | translate }}</option>
+          @for (a of activities; track a.activityId) {
+            <option [value]="a.activityId">{{ a.displayName || a.activityId }}</option>
+          }
+        </select>
+      </label>
+    </div>
+  }
+</div>

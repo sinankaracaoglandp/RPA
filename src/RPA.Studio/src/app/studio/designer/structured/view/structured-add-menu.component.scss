@@ -1,0 +1,4 @@
+.add-menu { position: relative; display: inline-block; }
+.add-menu__panel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; margin-top: 4px; }
+.add-menu__panel button { padding: 4px 8px; }
+.add-menu__activity { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
