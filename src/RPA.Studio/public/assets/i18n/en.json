@@ -87,6 +87,14 @@
     "autoSchemaHint": "Fields auto-derived from the source list.",
     "exitUnconnected": "No flow after the loop (exit port is empty)."
   },
+  "structured": {
+    "empty": "empty",
+    "toggle": "Structured view",
+    "fallback": "This workflow is not structured-viewable (free-graph / tryCatch — Phase C/D).",
+    "emptyView": "No steps to display.",
+    "type": { "forEach": "For Each", "for": "Counter Loop", "while": "While", "if": "If", "tryCatch": "Try-Catch" },
+    "lane": { "body": "Body", "true": "True", "false": "False", "success": "Try", "failure": "Catch", "out": "Finally" }
+  },
   "seq": {
     "empty": "No steps yet. Add steps in order for nested menus.",
     "addStep": "Add step",

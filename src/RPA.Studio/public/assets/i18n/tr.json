@@ -87,6 +87,14 @@
     "autoSchemaHint": "Alanlar kaynak listeden otomatik türetildi.",
     "exitUnconnected": "Döngü sonrası akış bağlı değil (exit portu boş)."
   },
+  "structured": {
+    "empty": "boş",
+    "toggle": "Yapısal görünüm",
+    "fallback": "Bu workflow yapısal görünüme uygun değil (serbest-graf / tryCatch — Faz C/D).",
+    "emptyView": "Görüntülenecek adım yok.",
+    "type": { "forEach": "Her Biri İçin", "for": "Sayaç Döngüsü", "while": "While", "if": "Eğer", "tryCatch": "Dene-Yakala" },
+    "lane": { "body": "Gövde", "true": "Doğru", "false": "Yanlış", "success": "Dene", "failure": "Yakala", "out": "Finally" }
+  },
   "seq": {
     "empty": "Henuz adim yok. Ic ice menuler icin sirayla adim ekleyin.",
     "addStep": "Adim ekle",

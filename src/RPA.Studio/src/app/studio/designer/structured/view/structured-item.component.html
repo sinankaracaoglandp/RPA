@@ -1,0 +1,29 @@
+@if (item.kind === 'step') {
+  <div class="structured-step" data-testid="structured-step">
+    <span class="structured-step__icon" aria-hidden="true">▸</span>
+    <span class="structured-step__title">{{ stepTitle() }}</span>
+    <span class="structured-step__type">{{ item.node.type }}</span>
+  </div>
+} @else if (container) {
+  <div class="structured-container" data-testid="structured-container" [attr.data-type]="container.type">
+    <header class="structured-container__header">
+      <span class="structured-container__label">{{ 'structured.type.' + container.type | translate }}</span>
+      @if (summary(container)) {
+        <code class="structured-container__summary">{{ summary(container) }}</code>
+      }
+    </header>
+    <div class="structured-container__lanes">
+      @for (lane of lanes(container); track lane) {
+        <section class="structured-container__lane" [attr.data-testid]="'lane-' + lane">
+          <span class="structured-container__lane-label">{{ 'structured.lane.' + lane | translate }}</span>
+          @for (child of laneItems(container, lane); track $index) {
+            <app-structured-item [item]="child"></app-structured-item>
+          }
+          @if (laneItems(container, lane).length === 0) {
+            <p class="structured-container__lane-empty" data-testid="lane-empty">{{ 'structured.empty' | translate }}</p>
+          }
+        </section>
+      }
+    </div>
+  </div>
+}

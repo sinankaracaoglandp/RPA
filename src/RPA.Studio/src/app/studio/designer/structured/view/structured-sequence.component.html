@@ -1,0 +1,8 @@
+<div class="structured-sequence">
+  @for (item of items; track $index) {
+    <app-structured-item [item]="item"></app-structured-item>
+  }
+  @if (items.length === 0) {
+    <p class="structured-sequence__empty" data-testid="sequence-empty">{{ 'structured.empty' | translate }}</p>
+  }
+</div>

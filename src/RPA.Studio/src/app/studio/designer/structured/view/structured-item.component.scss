@@ -1,0 +1,16 @@
+.structured-step {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 8px;
+  background: #fff;
+  &__title { font-weight: 600; }
+  &__type { margin-left: auto; font-size: 12px; color: #64748b; }
+}
+.structured-container {
+  border: 1px solid var(--border, #cbd5e1); border-radius: 10px; background: #f8fafc;
+  &__header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+  &__label { font-weight: 700; }
+  &__summary { font-size: 12px; color: #475569; }
+  &__lanes { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+  &__lane { border-left: 3px solid #94a3b8; padding-left: 10px; }
+  &__lane-label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+}
