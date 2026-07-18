@@ -90,7 +90,7 @@
   "structured": {
     "empty": "boş",
     "toggle": "Yapısal görünüm",
-    "add": "Ekle",
+    "add": "Buraya node ekle",
     "delete": "Sil",
     "moveUp": "Yukarı",
     "moveDown": "Aşağı",

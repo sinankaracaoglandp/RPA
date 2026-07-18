@@ -59,7 +59,7 @@
               (select)="select.emit($event)"
             ></app-structured-item>
           }
-          @if (laneItems(container, lane).length === 0) {
+          @if (laneItems(container, lane).length === 0 && !editable) {
             <p class="structured-container__lane-empty" data-testid="lane-empty">{{ 'structured.empty' | translate }}</p>
           }
           @if (editable) {

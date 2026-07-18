@@ -90,7 +90,7 @@
   "structured": {
     "empty": "empty",
     "toggle": "Structured view",
-    "add": "Add",
+    "add": "Add node here",
     "delete": "Delete",
     "moveUp": "Up",
     "moveDown": "Down",
