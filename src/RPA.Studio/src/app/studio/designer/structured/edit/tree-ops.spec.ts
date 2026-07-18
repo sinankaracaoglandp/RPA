@@ -1,4 +1,7 @@
-import { insertItem, removeItem, moveItem, findPath, newStep, newContainer } from './tree-ops';
+import {
+  insertItem, removeItem, moveItem, findPath, newStep, newContainer,
+  findSeqPath, reorderInSeq, moveAcross,
+} from './tree-ops';
 import { step, container, StructuredSequence } from '../structured-model';
 import { WorkflowNode } from '../../../../shared/models/workflow.model';
 
@@ -48,5 +51,55 @@ describe('tree-ops', () => {
     expect(c.kind).toBe('container');
     expect(Object.keys(c.lanes).sort()).toEqual(['failure', 'out', 'success']);
     expect(c.lanes.success).toEqual([]);
+  });
+});
+
+describe('tree-ops — drag-drop helpers', () => {
+  it('findSeqPath locates the root and a nested lane by reference', () => {
+    const body = [step(n('x'))];
+    const tree: StructuredSequence = [container('forEach', {}, { body })];
+    expect(findSeqPath(tree, tree)).toEqual([]);
+    expect(findSeqPath(tree, body)).toEqual([{ lane: 'body', index: 0 }]);
+    expect(findSeqPath(tree, [step(n('nope'))])).toBeNull();
+  });
+
+  it('reorderInSeq moves within a sequence (moveItemInArray semantics)', () => {
+    const tree: StructuredSequence = [step(n('a')), step(n('b')), step(n('c'))];
+    const out = reorderInSeq(tree, [], 0, 2);
+    expect(out.map((i) => (i as { node: WorkflowNode }).node.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('moveAcross moves an item between two lanes', () => {
+    const tree: StructuredSequence = [
+      container('if', {}, { true: [step(n('t0'))], false: [step(n('f0'))] }),
+    ];
+    const out = moveAcross(tree, [{ lane: 'true', index: 0 }], 0, [{ lane: 'false', index: 0 }], 1);
+    const c = out[0] as { lanes: { true: unknown[]; false: { node: WorkflowNode }[] } };
+    expect(c.lanes.true).toHaveLength(0);
+    expect(c.lanes.false.map((i) => i.node.id)).toEqual(['f0', 't0']);
+  });
+
+  it('moveAcross into an ancestor sequence (out of a lane to the root) stays correct', () => {
+    const inner = step(n('inner'));
+    const tree: StructuredSequence = [
+      step(n('a')),
+      container('forEach', {}, { body: [inner] }),
+    ];
+    const out = moveAcross(tree, [{ lane: 'body', index: 1 }], 0, [], 2);
+    expect((out[0] as { node: WorkflowNode }).node.id).toBe('a');
+    expect((out[1] as { lanes: { body: unknown[] } }).lanes.body).toHaveLength(0);
+    expect((out[2] as { node: WorkflowNode }).node.id).toBe('inner');
+  });
+
+  it('moveAcross adjusts a target path that passes through the source after the removed index', () => {
+    const tree: StructuredSequence = [
+      step(n('a')),
+      container('if', {}, { true: [], false: [] }),
+    ];
+    const out = moveAcross(tree, [], 0, [{ lane: 'true', index: 1 }], 0);
+    expect(out).toHaveLength(1);
+    const c = out[0] as { type: string; lanes: { true: { node: WorkflowNode }[] } };
+    expect(c.type).toBe('if');
+    expect(c.lanes.true.map((i) => i.node.id)).toEqual(['a']);
   });
 });

@@ -76,3 +76,71 @@ export function newContainer(type: ContainerType): ContainerItem {
   for (const lane of lanesFor(type)) { lanes[lane] = []; }
   return { kind: 'container', type, props: {}, lanes };
 }
+
+// ---- Sürükle-bırak yardımcıları (C2) ----
+
+/** Bir dizi REFERANSINI ağaçta arar; adım yolunu döndürür (kök = []); yoksa null. */
+export function findSeqPath(tree: StructuredSequence, seq: StructuredSequence): PathStep[] | null {
+  if (seq === tree) { return []; }
+  const walk = (current: StructuredSequence, steps: PathStep[]): PathStep[] | null => {
+    for (let i = 0; i < current.length; i++) {
+      const item = current[i];
+      if (item.kind === 'container') {
+        for (const lane of lanesFor(item.type)) {
+          const laneSeq = item.lanes[lane] ?? [];
+          const here = [...steps, { lane, index: i }];
+          if (laneSeq === seq) { return here; }
+          const r = walk(laneSeq, here);
+          if (r) { return r; }
+        }
+      }
+    }
+    return null;
+  };
+  return walk(tree, []);
+}
+
+/** Aynı dizide taşır (CDK moveItemInArray semantiği; ek index ayarı yok). */
+export function reorderInSeq(
+  tree: StructuredSequence, seqSteps: PathStep[], fromIndex: number, toIndex: number,
+): StructuredSequence {
+  return updateSeqAt(tree, seqSteps, (seq) => {
+    const next = [...seq];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  });
+}
+
+/** Diziyi adımlarla dolaşıp döndürür (yardımcı). */
+function seqAt(tree: StructuredSequence, steps: PathStep[]): StructuredSequence {
+  let seq = tree;
+  for (const s of steps) {
+    const item = seq[s.index];
+    seq = item.kind === 'container' ? (item.lanes[s.lane] ?? []) : [];
+  }
+  return seq;
+}
+
+/**
+ * Öğeyi kaynak diziden (fromSteps, fromIndex) hedef diziye (toSteps, toIndex) taşır.
+ * Silme, hedef yolu kaynak dizinin ATASINDAN geçiyorsa ve indeks silinenden sonra ise
+ * o adımı bir azaltır (index-tabanlı yol tutarlılığı).
+ */
+export function moveAcross(
+  tree: StructuredSequence,
+  fromSteps: PathStep[], fromIndex: number,
+  toSteps: PathStep[], toIndex: number,
+): StructuredSequence {
+  const item = seqAt(tree, fromSteps)[fromIndex];
+  if (item === undefined) { return tree; }
+  const t1 = removeItem(tree, { steps: fromSteps, index: fromIndex });
+
+  const adjusted = toSteps.map((s) => ({ ...s }));
+  if (adjusted.length > fromSteps.length
+    && fromSteps.every((s, i) => s.lane === adjusted[i].lane && s.index === adjusted[i].index)
+    && adjusted[fromSteps.length].index > fromIndex) {
+    adjusted[fromSteps.length].index -= 1;
+  }
+  return insertItem(t1, adjusted, toIndex, item);
+}
