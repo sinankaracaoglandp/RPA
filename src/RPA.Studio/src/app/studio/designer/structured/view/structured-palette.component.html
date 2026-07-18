@@ -1,0 +1,11 @@
+<div class="palette">
+  <span class="palette__title">{{ 'structured.palette' | translate }}</span>
+  <div class="palette__chips" cdkDropList [cdkDropListSortingDisabled]="true" [cdkDropListData]="'__palette__'">
+    @for (c of controlChips; track c.type) {
+      <div class="palette__chip" cdkDrag [cdkDragData]="{ factory: c.factory }">{{ c.label | translate }}</div>
+    }
+    @for (c of activityChips; track c.label) {
+      <div class="palette__chip" cdkDrag [cdkDragData]="{ factory: c.factory }">{{ c.label }}</div>
+    }
+  </div>
+</div>
