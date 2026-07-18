@@ -464,6 +464,16 @@ describe('DesignerComponent — structured view toggle', () => {
     expect(fixture.nativeElement.querySelector('app-structured-view')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('app-canvas')).toBeFalsy();
   });
+
+  it('marks dirty and updates currentGraph when structured view emits graphChanged', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const cmp = fixture.componentInstance;
+    fixture.detectChanges();
+    const g = { schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0', nodes: [], connections: [] };
+    cmp.onGraphChanged(g as never);
+    expect(cmp.dirty()).toBe(true);
+    expect(cmp.currentGraph()).toEqual(g);
+  });
 });
 
 describe('DesignerComponent — ForEach item variable injection', () => {

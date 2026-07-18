@@ -77,4 +77,29 @@ describe('StructuredViewComponent', () => {
     f.detectChanges();
     expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-empty"]')).toBeTruthy();
   });
+
+  it('applies a delete and emits an updated workflow', () => {
+    const wf = treeToWorkflow([step(n('a')), step(n('b'))], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    let emitted: { nodes: unknown[] } | undefined;
+    f.componentInstance.graphChanged.subscribe((g) => (emitted = g as unknown as { nodes: unknown[] }));
+    const items = f.nativeElement.querySelectorAll('[data-testid="item-delete"]');
+    (items[0] as HTMLButtonElement).click();
+    expect(emitted).toBeTruthy();
+    expect(emitted!.nodes.length).toBe(1);
+  });
+
+  it('does not render edit controls for a fallback workflow', () => {
+    const wf = treeToWorkflow(
+      [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[data-testid="item-delete"]')).toBeFalsy();
+    expect(f.nativeElement.querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();
+  });
 });

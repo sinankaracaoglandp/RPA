@@ -115,7 +115,10 @@
       </button>
     </div>
     @if (structuredView()) {
-      <app-structured-view [workflow]="currentGraph() ?? workflow()"></app-structured-view>
+      <app-structured-view
+        [workflow]="currentGraph() ?? workflow()"
+        (graphChanged)="onGraphChanged($event)"
+      ></app-structured-view>
     } @else {
       <app-canvas
         [workflow]="workflow()"

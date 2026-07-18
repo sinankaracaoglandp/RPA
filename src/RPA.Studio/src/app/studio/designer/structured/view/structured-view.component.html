@@ -1,5 +1,5 @@
 <div class="structured-view" data-testid="structured-view">
-  @switch (state().kind) {
+  @switch (mode()) {
     @case ('empty') {
       <p class="structured-view__msg" data-testid="structured-view-empty">{{ 'structured.emptyView' | translate }}</p>
     }
@@ -26,7 +26,14 @@
           data-testid="structured-view-tree"
           [style.transform]="'scale(' + zoom() + ')'"
         >
-          <app-structured-sequence [items]="state().tree ?? []"></app-structured-sequence>
+          <app-structured-sequence
+            [items]="tree()"
+            [editable]="editable"
+            (action)="onAction($event)"
+          ></app-structured-sequence>
+          @if (editable) {
+            <app-structured-add-menu data-testid="root-add" (pick)="addToRoot($event)"></app-structured-add-menu>
+          }
         </div>
       </div>
     }

@@ -90,6 +90,12 @@
   "structured": {
     "empty": "empty",
     "toggle": "Structured view",
+    "add": "Add",
+    "delete": "Delete",
+    "moveUp": "Up",
+    "moveDown": "Down",
+    "activity": "Activity",
+    "pickActivity": "Pick activity…",
     "fallback": "This workflow is not structured-viewable (free-graph / tryCatch — Phase C/D).",
     "emptyView": "No steps to display.",
     "type": { "forEach": "For Each", "for": "Counter Loop", "while": "While", "if": "If", "tryCatch": "Try-Catch" },
