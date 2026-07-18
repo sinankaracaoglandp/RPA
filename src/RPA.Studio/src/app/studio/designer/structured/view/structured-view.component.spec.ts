@@ -1,0 +1,64 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { StructuredViewComponent } from './structured-view.component';
+import { treeToWorkflow } from '../tree-to-workflow';
+import { step, container } from '../structured-model';
+import { WorkflowNode } from '../../../../shared/models/workflow.model';
+
+const n = (id: string): WorkflowNode => ({ id, type: 'activity', activity: 'X' });
+const ids = () => { let i = 0; return () => `c${++i}`; };
+
+describe('StructuredViewComponent', () => {
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [StructuredViewComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  }));
+
+  it('renders the structured tree for a structural-subset workflow', () => {
+    const wf = treeToWorkflow([
+      container('forEach', { items: '${xs}', itemVariable: 'x' }, { body: [step(n('b'))] }),
+      step(n('after')),
+    ], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="structured-view-tree"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="structured-container"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="structured-view-fallback"]')).toBeFalsy();
+  });
+
+  it('shows the fallback when conversion throws (tryCatch)', () => {
+    const wf = treeToWorkflow(
+      [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();
+  });
+
+  it('shows the fallback for a non-structural free-graph', () => {
+    const wf = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [n('a'), n('b'), n('c')],
+      connections: [
+        { from: 'a', to: 'c', fromPort: 'out', toPort: 'in' },
+        { from: 'b', to: 'c', fromPort: 'out', toPort: 'in' },
+      ],
+    };
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf as never);
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-fallback"]')).toBeTruthy();
+  });
+
+  it('shows an empty state for a null workflow', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', null);
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).querySelector('[data-testid="structured-view-empty"]')).toBeTruthy();
+  });
+});
