@@ -51,3 +51,59 @@ describe('reduceWorkflow — rejected', () => {
     expect((r as { reason: string }).reason).toContain('tryCatch');
   });
 });
+
+describe('reduceWorkflow — if edge cases', () => {
+  it('reduces an if with an empty false branch', () => {
+    const wf = treeToWorkflow([container('if', {}, { true: [step(n('t'))], false: [] }), step(n('after'))], { idGen: seqIds() });
+    const r = ok(reduceWorkflow(wf));
+    const iff = r.tree[0] as { type: string; lanes: { true: unknown[]; false: unknown[] } };
+    expect(iff.type).toBe('if');
+    expect(iff.lanes.false).toHaveLength(0);
+  });
+
+  it('reduces a nested loop inside an if branch', () => {
+    const wf = treeToWorkflow([
+      container('if', {}, {
+        true: [container('forEach', { items: '${xs}', itemVariable: 'x' }, { body: [step(n('b'))] })],
+        false: [step(n('f'))],
+      }),
+      step(n('after')),
+    ], { idGen: seqIds() });
+    const r = ok(reduceWorkflow(wf));
+    const iff = r.tree[0] as { lanes: { true: { type: string }[] } };
+    expect(iff.lanes.true[0].type).toBe('forEach');
+  });
+
+  it('rejects a non-branch fork (step with multiple outgoing edges)', () => {
+    const wf: WorkflowVersion = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [n('a'), n('b'), n('c')],
+      connections: [
+        { from: 'a', to: 'b', fromPort: 'out', toPort: 'in' },
+        { from: 'a', to: 'c', fromPort: 'out', toPort: 'in' },
+      ],
+    };
+    const r = reduceWorkflow(wf);
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toContain('çıkış');
+  });
+
+  it('rejects a cross-branch leak into the middle of the other branch', () => {
+    // if1 true→t1→t2→conv ; false→f1→conv ; t1→f1 (dallar arası sızıntı, f1 iki daldan ulaşılıyor)
+    const wf: WorkflowVersion = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [{ id: 'if1', type: 'if' }, n('t1'), n('t2'), n('f1'), n('conv')],
+      connections: [
+        { from: 'if1', to: 't1', fromPort: 'true', toPort: 'in' },
+        { from: 'if1', to: 'f1', fromPort: 'false', toPort: 'in' },
+        { from: 't1', to: 't2', fromPort: 'out', toPort: 'in' },
+        { from: 't1', to: 'f1', fromPort: 'out', toPort: 'in' },
+        { from: 't2', to: 'conv', fromPort: 'out', toPort: 'in' },
+        { from: 'f1', to: 'conv', fromPort: 'out', toPort: 'in' },
+      ],
+    };
+    const r = reduceWorkflow(wf);
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/çıkış|ulaşıl|sızın|yakınsama|atlıyor/);
+  });
+});

@@ -61,16 +61,38 @@ export function reduceWorkflow(workflow: WorkflowVersion): ReduceResult {
     order.reverse().forEach((id, i) => topoIndex.set(id, i));
   }
 
+  const branchRegion = (head: string | null, conv: string | null): Set<string> =>
+    head && head !== conv ? forwardReach(head, conv) : new Set<string>();
+
   const convergence = (ifId: string): string | null => {
     const tHead = outTarget(ifId, 'true');
     const fHead = outTarget(ifId, 'false');
     const t = forwardReach(tHead, ifId);
     const f = forwardReach(fHead, ifId);
-    let best: string | null = null;
+    let conv: string | null = null;
     for (const x of t) {
-      if (f.has(x) && (best === null || (topoIndex.get(x) ?? 0) < (topoIndex.get(best) ?? 0))) { best = x; }
+      if (f.has(x) && (conv === null || (topoIndex.get(x) ?? 0) < (topoIndex.get(conv) ?? 0))) { conv = x; }
     }
-    return best;
+    // Doğrulama: dallar ayrık + tek-giriş; conv dışına sızıntı yok.
+    const tReg = branchRegion(tHead, conv);
+    const fReg = branchRegion(fHead, conv);
+    for (const x of tReg) {
+      if (fReg.has(x)) { throw new ReducerError(`'${x}' node'u iki daldan ulaşılıyor (yakınsama yok)`); }
+    }
+    for (const [reg, head] of [[tReg, tHead], [fReg, fHead]] as const) {
+      for (const x of reg) {
+        for (const c of conns) {
+          if (c.to === x && c.toPort !== 'loop-back') {
+            const okSource = reg.has(c.from) || (x === head && c.from === ifId);
+            if (!okSource) { throw new ReducerError(`'${x}' node'u bölge dışından ulaşılıyor (yakınsama yok)`); }
+          }
+        }
+        for (const e of outEdges(x)) {
+          if (!reg.has(e.to) && e.to !== conv) { throw new ReducerError(`'${x}' node'u dal-içinden bölge dışına atlıyor`); }
+        }
+      }
+    }
+    return conv;
   };
 
   const reduceRegion = (entry: string | null, stop: string | null): StructuredSequence => {
