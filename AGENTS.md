@@ -644,6 +644,39 @@ Gerekçe: sözleşmesi tanımlanmış ama bağlanmamış bir kapı, uygulanmayan
 
 ---
 
+## Kontrat Değişikliği — 2026-07-18 (Desktop.SendKeys yapısal tuş dizisi)
+
+`Desktop.SendKeys` artık modifier + özel tuş (Ctrl+A, F4, Home/End/PageUp/PageDown, AltGr, Win…)
+gönderebiliyor. Önceki implementasyon `keys`'i FlaUI `Keyboard.Type` ile yalnız **düz metin** olarak
+yazıyordu; metadata'nın ima ettiği `'^s'` (Ctrl+S) sözdizimi hiç çalışmıyordu. Tasarım:
+`docs/superpowers/specs/2026-07-18-desktop-sendkeys-structural-editor-design.md`.
+
+- **Yeni value object:** `RPA.Domain.ValueObjects.KeystrokeStep` (record) + `KeystrokeStepType`
+  enum (`Chord`, `Text`). Bir adım ya modifier(ler) + tek ana tuş (chord) ya da düz metindir;
+  opsiyonel `WaitMs` taşır.
+- **Yeni parser:** `RPA.Domain.ValueObjects.KeystrokeSequenceParser.Parse(string?)` — ham `keys`
+  alanını JSON adım dizisine çevirir; **geçerli JSON dizi değilse tek `Text` adımı** (geriye
+  uyumluluk: eski düz-metin `keys` değerleri korunur). Doğrulama hataları (tanınmayan tuş/modifier,
+  boş chord, boş metin, boş girdi) → `BusinessException`. Parse tek yerdedir (tek kaynak).
+- **`IDesktopAutomationChannel`** kontrat genişledi: yeni **opsiyonel overload**
+  `SendKeysAsync(string? selector, IReadOnlyList<KeystrokeStep> steps)`. Mevcut string imza
+  **korundu** (geriye uyumlu). `DesktopSendKeysActivity` artık `keys`'i parse edip tipli overload'ı
+  çağırır; `Desktop.SendKeys` `keys` parametresi katalogda `pickerKind:"keystroke-sequence"` alır.
+- **FlaUI implementasyonu** (`FlaUiDesktopAutomationChannel`): chord → modifier'lar
+  `Keyboard.Pressing(VirtualKeyShort)` ile basılı tutulur, ana tuş `Keyboard.Type(VirtualKeyShort)`
+  ile gönderilir, ters sırada bırakılır (`try/finally`). AltGr→`RMENU`, Win→`LWIN`. `UnavailableDesktop
+  AutomationChannel` yeni overload'ı da uygular.
+- **Studio:** yeni `KeystrokeSequenceEditorComponent` (`pickerKind:"keystroke-sequence"`, spy türü
+  DEĞİL — editör ipucu, `selector-picker-button`'a null geçer). Modifier checkbox'ları
+  (Ctrl/Shift/Alt/AltGr/Win) + gruplu ana-tuş dropdown'u (Harf/Rakam, F1–F12, Gezinme) + tip seçici
+  (Tuş vuruşu/Metin) + bekleme (ms) + canlı önizleme. i18n `keystroke.*` (TR + EN).
+
+Etkilenen paketler: Domain (yeni VO + parser), Infrastructure (Desktop aktivitesi + katalog),
+Agent (FlaUI kanalı), Studio (yapısal editör). WebAPI/LicenseGenerator etkilenmez.
+Doğrulama: Domain 31, Infrastructure 710, Agent 150, Studio 500 — tümü yeşil.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

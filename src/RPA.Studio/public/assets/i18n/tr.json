@@ -116,6 +116,19 @@
     "noImage": "Goruntu secilmedi",
     "image": "Goruntu"
   },
+  "keystroke": {
+    "empty": "Henuz adim yok. Tus vurusu (Ctrl+A, F4...) veya metin adimlari ekleyin.",
+    "stepType": "Adim turu",
+    "chord": "Tus vurusu",
+    "text": "Metin",
+    "modifiers": "Degistiriciler",
+    "mainKey": "Ana tus",
+    "keyGroupLetters": "Harf / Rakam",
+    "keyGroupFunction": "Fonksiyon (F1-F12)",
+    "keyGroupNavigation": "Gezinme",
+    "addStep": "Adim ekle",
+    "waitMs": "Sonraki bekleme (ms)"
+  },
   "login": {
     "title": "RPA Studio'ya Giriş",
     "subtitle": "Devam etmek için kimlik bilgilerinizi girin",

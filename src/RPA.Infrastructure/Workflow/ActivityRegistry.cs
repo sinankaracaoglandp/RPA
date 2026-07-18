@@ -425,8 +425,8 @@ public static class ActivityRegistry
             .Input("selector", "string", pickerKind: "desktop").Input("item", "string");
 
         b.Activity("Desktop.SendKeys").DisplayName("Masaüstü Tuş Gönder").Category(CatDesktop).Capability(cap)
-            .Description("Klavye tuşları gönderir. Selector boşsa aktif odağa.")
-            .Input("selector", "string", required: false, pickerKind: "desktop").Input("keys", "string");
+            .Description("Sıralı tuş vuruşları (Ctrl+A, F4, Home…) ve/veya düz metin gönderir. Selector boşsa aktif odağa.")
+            .Input("selector", "string", required: false, pickerKind: "desktop").Input("keys", "string", pickerKind: "keystroke-sequence");
 
         b.Activity("Desktop.WaitFor").DisplayName("Masaüstü Bekle").Category(CatDesktop).Capability(cap)
             .Description("Bir element görünür/etkin olana kadar bekler (timeout → System).")

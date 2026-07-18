@@ -8,6 +8,7 @@ import { SpyElement } from '../../../shared/services/spy.service';
 import { SelectorPickerButtonComponent } from './selector-picker-button.component';
 import { VisionSequenceEditorComponent } from './vision-sequence-editor.component';
 import { TextOffsetEditorComponent } from './text-offset-editor.component';
+import { KeystrokeSequenceEditorComponent } from './keystroke-sequence-editor.component';
 import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.component';
 import { EInvoiceProfile, EInvoiceProfileVersion } from '../../../shared/models/einvoice-profile.model';
 import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
@@ -33,7 +34,7 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 @Component({
   selector: 'app-generic-property',
   standalone: true,
-  imports: [CommonModule, FormsModule, TranslatePipe, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, EInvoiceMappingEditorComponent],
+  imports: [CommonModule, FormsModule, TranslatePipe, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, KeystrokeSequenceEditorComponent, EInvoiceMappingEditorComponent],
   templateUrl: './generic-property.component.html',
   styleUrls: ['./generic-property.component.scss'],
 })
@@ -327,6 +328,11 @@ export class GenericPropertyComponent {
     return port.pickerKind === 'text-offset';
   }
 
+  /** Desktop.SendKeys gibi yapısal tuş dizisi editörü gerektiren alan mı? */
+  isKeystrokeField(port: ActivityPort): boolean {
+    return port.pickerKind === 'keystroke-sequence';
+  }
+
   /** Editöre geçilecek değeri string'e indirger (JSON dizisi). */
   stringValue(port: ActivityPort): string {
     const v = this.value(port);
@@ -335,7 +341,8 @@ export class GenericPropertyComponent {
 
   /** selector-picker-button'a geçilecek spy türü ('image-sequence'/'text-offset' spy türü değil, editör ipucu → null). */
   spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | null {
-    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset' || port.pickerKind === 'einvoice-profile'
+    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset'
+      || port.pickerKind === 'keystroke-sequence' || port.pickerKind === 'einvoice-profile'
       ? null
       : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | undefined) ?? null;
   }

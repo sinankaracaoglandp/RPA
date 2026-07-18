@@ -1,0 +1,130 @@
+.ks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.ks__empty {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.ks__step {
+  border: 1px solid var(--border-color, #d0d4da);
+  border-radius: 6px;
+  padding: 0.5rem;
+  background: var(--surface-2, rgba(0, 0, 0, 0.02));
+}
+
+.ks__step-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.ks__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ks__preview {
+  flex: 1 1 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ks__step-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.ks__icon {
+  border: 1px solid var(--border-color, #d0d4da);
+  background: var(--surface, #fff);
+  border-radius: 4px;
+  width: 1.6rem;
+  height: 1.6rem;
+  cursor: pointer;
+  line-height: 1;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &--danger {
+    color: #b91c1c;
+  }
+}
+
+.ks__step-body {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.ks__modifiers {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ks__modifier {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.ks__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+
+  &--grow {
+    flex: 1 1 auto;
+    min-width: 160px;
+  }
+
+  select,
+  input {
+    padding: 0.25rem 0.35rem;
+    border: 1px solid var(--border-color, #d0d4da);
+    border-radius: 4px;
+  }
+}
+
+.ks__add {
+  align-self: flex-start;
+  border: 1px dashed var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+  background: transparent;
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+
+  &:hover {
+    background: rgba(37, 99, 235, 0.08);
+  }
+}

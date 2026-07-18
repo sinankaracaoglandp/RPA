@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.Activities.Desktop;
 
 using RPA.Domain.Interfaces;
+using RPA.Domain.ValueObjects;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
 // Windows Masaüstü Otomasyonu — Desktop.* aktivite ailesi (Spec Bölüm 5, Paket E).
@@ -252,11 +253,11 @@ public sealed class DesktopSendKeysActivity : IActivity
         ActivityId = "Desktop.SendKeys",
         DisplayName = "Masaüstü Tuş Gönder",
         Category = DesktopMeta.Category,
-        Description = "Klavye tuşları gönderir. Selector boşsa aktif odağa gönderilir.",
+        Description = "Sıralı tuş vuruşları (Ctrl+A, F4, Home…) ve/veya düz metin gönderir. Selector boşsa aktif odağa gönderilir.",
         Inputs = new()
         {
             new ActivityParameter { Name = "selector", Type = "string", Required = false, Description = "Hedef element (opsiyonel).", PickerKind = "desktop" },
-            new ActivityParameter { Name = "keys", Type = "string", Required = true, Description = "Gönderilecek tuşlar (örn. '^s', '09.07.2026')." },
+            new ActivityParameter { Name = "keys", Type = "string", Required = true, Description = "Tuş dizisi (tuş vuruşu + metin adımları).", PickerKind = "keystroke-sequence" },
         },
         Outputs = new(),
         RequiredCapabilities = new() { DesktopMeta.Capability },
@@ -265,13 +266,10 @@ public sealed class DesktopSendKeysActivity : IActivity
     public async Task<Dictionary<string, object?>> ExecuteAsync(IActivityExecutionContext context)
     {
         var keys = context.GetVariable<string?>("keys");
-        if (string.IsNullOrEmpty(keys))
-        {
-            throw new BusinessException("'keys' parametresi boş olamaz.");
-        }
+        var steps = KeystrokeSequenceParser.Parse(keys);
         var selector = context.GetVariable<string?>("selector");
         context.Log($"Masaüstü tuş gönderiliyor: {(string.IsNullOrWhiteSpace(selector) ? "(odak)" : selector)}");
-        await _channel.SendKeysAsync(string.IsNullOrWhiteSpace(selector) ? null : selector, keys);
+        await _channel.SendKeysAsync(string.IsNullOrWhiteSpace(selector) ? null : selector, steps);
         return new();
     }
 }

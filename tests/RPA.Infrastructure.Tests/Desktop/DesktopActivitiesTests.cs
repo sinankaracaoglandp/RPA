@@ -2,6 +2,7 @@ namespace RPA.Infrastructure.Tests.Desktop;
 
 using Moq;
 using RPA.Domain.Interfaces;
+using RPA.Domain.ValueObjects;
 using RPA.Infrastructure.Activities.Desktop;
 using BusinessException = RPA.Domain.Exceptions.BusinessException;
 
@@ -152,13 +153,19 @@ public class DesktopActivitiesTests
     // ---- SendKeys ----
 
     [Fact]
-    public async Task SendKeys_WithSelector_CallsChannel()
+    public async Task SendKeys_PlainText_SendsSingleTextStep()
     {
         var (act, channel) = Build(c => new DesktopSendKeysActivity(c));
+        IReadOnlyList<KeystrokeStep>? captured = null;
+        channel.Setup(c => c.SendKeysAsync("Edit[AutomationId='date']", It.IsAny<IReadOnlyList<KeystrokeStep>>()))
+            .Callback<string?, IReadOnlyList<KeystrokeStep>>((_, s) => captured = s)
+            .Returns(Task.CompletedTask);
 
         await act.ExecuteAsync(Ctx(("selector", "Edit[AutomationId='date']"), ("keys", "09.07.2026")));
 
-        channel.Verify(c => c.SendKeysAsync("Edit[AutomationId='date']", "09.07.2026"), Times.Once);
+        var step = Assert.Single(captured!);
+        Assert.Equal(KeystrokeStepType.Text, step.Type);
+        Assert.Equal("09.07.2026", step.Text);
     }
 
     [Fact]
@@ -166,9 +173,27 @@ public class DesktopActivitiesTests
     {
         var (act, channel) = Build(c => new DesktopSendKeysActivity(c));
 
-        await act.ExecuteAsync(Ctx(("keys", "^s")));
+        await act.ExecuteAsync(Ctx(("keys", "hello")));
 
-        channel.Verify(c => c.SendKeysAsync(null, "^s"), Times.Once);
+        channel.Verify(c => c.SendKeysAsync(null, It.IsAny<IReadOnlyList<KeystrokeStep>>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendKeys_JsonChord_ParsesSteps()
+    {
+        var (act, channel) = Build(c => new DesktopSendKeysActivity(c));
+        IReadOnlyList<KeystrokeStep>? captured = null;
+        channel.Setup(c => c.SendKeysAsync(null, It.IsAny<IReadOnlyList<KeystrokeStep>>()))
+            .Callback<string?, IReadOnlyList<KeystrokeStep>>((_, s) => captured = s)
+            .Returns(Task.CompletedTask);
+
+        await act.ExecuteAsync(Ctx(("keys",
+            """[ { "type": "chord", "modifiers": ["ctrl"], "key": "A" } ]""")));
+
+        var step = Assert.Single(captured!);
+        Assert.Equal(KeystrokeStepType.Chord, step.Type);
+        Assert.Equal(new[] { "ctrl" }, step.Modifiers);
+        Assert.Equal("A", step.Key);
     }
 
     [Fact]
@@ -177,6 +202,15 @@ public class DesktopActivitiesTests
         var (act, _) = Build(c => new DesktopSendKeysActivity(c));
 
         await Assert.ThrowsAsync<BusinessException>(() => act.ExecuteAsync(Ctx(("keys", ""))));
+    }
+
+    [Fact]
+    public async Task SendKeys_UnknownKey_ThrowsBusiness()
+    {
+        var (act, _) = Build(c => new DesktopSendKeysActivity(c));
+
+        await Assert.ThrowsAsync<BusinessException>(() => act.ExecuteAsync(Ctx(("keys",
+            """[ { "type": "chord", "key": "Banana" } ]"""))));
     }
 
     // ---- WaitFor ----

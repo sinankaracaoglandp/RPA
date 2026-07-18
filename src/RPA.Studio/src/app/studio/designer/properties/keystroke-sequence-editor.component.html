@@ -1,0 +1,96 @@
+<div class="ks" data-testid="keystroke-sequence-editor">
+  @if (steps.length === 0) {
+    <p class="ks__empty">{{ 'keystroke.empty' | translate }}</p>
+  }
+
+  @for (step of steps; track $index) {
+    <div class="ks__step" [attr.data-testid]="'ks-step-' + $index">
+      <div class="ks__step-head">
+        <span class="ks__badge">{{ $index + 1 }}</span>
+        <span class="ks__preview">{{ previewOf(step) }}</span>
+        <div class="ks__step-actions">
+          <button type="button" class="ks__icon" [disabled]="$index === 0"
+            [title]="'seq.moveUp' | translate" (click)="moveUp($index)">↑</button>
+          <button type="button" class="ks__icon" [disabled]="$index === steps.length - 1"
+            [title]="'seq.moveDown' | translate" (click)="moveDown($index)">↓</button>
+          <button type="button" class="ks__icon ks__icon--danger"
+            [attr.data-testid]="'ks-remove-' + $index"
+            [title]="'seq.remove' | translate" (click)="removeStep($index)">✕</button>
+        </div>
+      </div>
+
+      <div class="ks__step-body">
+        <label class="ks__field">
+          <span>{{ 'keystroke.stepType' | translate }}</span>
+          <select
+            [attr.data-testid]="'ks-type-' + $index"
+            [ngModel]="step.type"
+            (ngModelChange)="setType($index, $event)"
+          >
+            <option value="chord">{{ 'keystroke.chord' | translate }}</option>
+            <option value="text">{{ 'keystroke.text' | translate }}</option>
+          </select>
+        </label>
+
+        @if (step.type === 'chord') {
+          <div class="ks__modifiers" role="group" [attr.aria-label]="'keystroke.modifiers' | translate">
+            @for (mod of modifierKeys; track mod) {
+              <label class="ks__modifier">
+                <input
+                  type="checkbox"
+                  [attr.data-testid]="'ks-mod-' + $index + '-' + mod"
+                  [checked]="hasModifier(step, mod)"
+                  (change)="toggleModifier($index, mod)"
+                />
+                <span>{{ modifierLabels[mod] }}</span>
+              </label>
+            }
+          </div>
+
+          <label class="ks__field">
+            <span>{{ 'keystroke.mainKey' | translate }}</span>
+            <select
+              [attr.data-testid]="'ks-key-' + $index"
+              [ngModel]="step.key"
+              (ngModelChange)="setKey($index, $event)"
+            >
+              @for (group of keyGroups; track group.labelKey) {
+                <optgroup [label]="group.labelKey | translate">
+                  @for (k of group.keys; track k) {
+                    <option [value]="k">{{ k }}</option>
+                  }
+                </optgroup>
+              }
+            </select>
+          </label>
+        } @else {
+          <label class="ks__field ks__field--grow">
+            <span>{{ 'keystroke.text' | translate }}</span>
+            <input
+              type="text"
+              [attr.data-testid]="'ks-text-' + $index"
+              [ngModel]="step.text"
+              (ngModelChange)="setText($index, $event)"
+            />
+          </label>
+        }
+
+        <label class="ks__field">
+          <span>{{ 'keystroke.waitMs' | translate }}</span>
+          <input
+            type="number"
+            min="0"
+            step="100"
+            [attr.data-testid]="'ks-wait-' + $index"
+            [ngModel]="step.waitMs"
+            (ngModelChange)="setWait($index, $event)"
+          />
+        </label>
+      </div>
+    </div>
+  }
+
+  <button type="button" class="ks__add" data-testid="ks-add" (click)="addStep()">
+    + {{ 'keystroke.addStep' | translate }}
+  </button>
+</div>

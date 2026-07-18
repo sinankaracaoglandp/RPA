@@ -116,6 +116,19 @@
     "noImage": "No image selected",
     "image": "Image"
   },
+  "keystroke": {
+    "empty": "No steps yet. Add keystroke (Ctrl+A, F4...) or text steps.",
+    "stepType": "Step type",
+    "chord": "Keystroke",
+    "text": "Text",
+    "modifiers": "Modifiers",
+    "mainKey": "Main key",
+    "keyGroupLetters": "Letter / Number",
+    "keyGroupFunction": "Function (F1-F12)",
+    "keyGroupNavigation": "Navigation",
+    "addStep": "Add step",
+    "waitMs": "Wait after (ms)"
+  },
   "login": {
     "title": "Sign in to RPA Studio",
     "subtitle": "Enter your credentials to continue",

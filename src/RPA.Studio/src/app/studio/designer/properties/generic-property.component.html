@@ -128,6 +128,17 @@
                 (valueChange)="onValueChange(port, $event)"
               ></app-text-offset-editor>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            } @else if (isKeystrokeField(port)) {
+              <label class="generic-property__label">
+                {{ port.description || port.name }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <app-keystroke-sequence-editor
+                [attr.data-testid]="'prop-' + port.name + '-keystroke'"
+                [value]="stringValue(port)"
+                (valueChange)="onValueChange(port, $event)"
+              ></app-keystroke-sequence-editor>
+              <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
             } @else {
               <label class="generic-property__label" [attr.for]="'prop-' + port.name">
                 {{ port.description || port.name }}

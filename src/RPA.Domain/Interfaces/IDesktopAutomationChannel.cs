@@ -50,9 +50,17 @@ public interface IDesktopAutomationChannel
 
     /// <summary>
     /// Klavye tuşları gönderir (tarih yazma, kısayol). <paramref name="selector"/> null ise
-    /// aktif odağa gönderilir; doluysa önce o element odaklanır.
+    /// aktif odağa gönderilir; doluysa önce o element odaklanır. <paramref name="keys"/> düz
+    /// metin olarak yazılır (modifier/özel tuş için tipli aşırı yüklemeyi kullanın).
     /// </summary>
     Task SendKeysAsync(string? selector, string keys);
+
+    /// <summary>
+    /// Yapısal tuş dizisi gönderir: her adım ya bir tuş vuruşu (modifier + ana tuş, örn. Ctrl+A,
+    /// F4) ya da düz metindir; adımlar sırayla çalışır (Spec — Paket E, yapısal tuş editörü).
+    /// <paramref name="selector"/> null ise aktif odağa gönderilir; doluysa önce o element odaklanır.
+    /// </summary>
+    Task SendKeysAsync(string? selector, IReadOnlyList<RPA.Domain.ValueObjects.KeystrokeStep> steps);
 
     /// <summary>
     /// Bir element görünür/etkin olana kadar bekler. Süre aşımında <c>SystemException</c> fırlatır.

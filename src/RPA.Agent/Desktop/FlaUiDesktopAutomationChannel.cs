@@ -8,9 +8,11 @@ using FlaUI.Core.Conditions;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using Microsoft.Extensions.Logging;
 using RPA.Domain.Interfaces;
+using RPA.Domain.ValueObjects;
 using Capture = FlaUI.Core.Capturing.Capture;
 using SystemException = RPA.Domain.Exceptions.SystemException;
 
@@ -221,6 +223,116 @@ public sealed class FlaUiDesktopAutomationChannel : IDesktopAutomationChannel, I
         }
         Keyboard.Type(keys);
         return Task.CompletedTask;
+    }
+
+    public Task SendKeysAsync(string? selector, IReadOnlyList<KeystrokeStep> steps)
+    {
+        if (!string.IsNullOrWhiteSpace(selector))
+        {
+            Resolve(selector).Focus();
+        }
+
+        foreach (var step in steps)
+        {
+            if (step.Type == KeystrokeStepType.Text)
+            {
+                if (!string.IsNullOrEmpty(step.Text))
+                {
+                    Keyboard.Type(step.Text);
+                }
+            }
+            else
+            {
+                SendChord(step);
+            }
+
+            if (step.WaitMs > 0)
+            {
+                Thread.Sleep(step.WaitMs);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Modifier'ları basılı tutup ana tuşu gönderir, sonra ters sırada bırakır.</summary>
+    private static void SendChord(KeystrokeStep step)
+    {
+        var held = new List<IDisposable>();
+        try
+        {
+            foreach (var modifier in step.Modifiers)
+            {
+                held.Add(Keyboard.Pressing(ModifierKey(modifier)));
+            }
+
+            Keyboard.Type(MainKey(step.Key!));
+        }
+        finally
+        {
+            for (var i = held.Count - 1; i >= 0; i--)
+            {
+                held[i].Dispose();
+            }
+        }
+    }
+
+    private static VirtualKeyShort ModifierKey(string modifier) => modifier switch
+    {
+        "ctrl" => VirtualKeyShort.CONTROL,
+        "shift" => VirtualKeyShort.SHIFT,
+        "alt" => VirtualKeyShort.LMENU,
+        "altgr" => VirtualKeyShort.RMENU,
+        "win" => VirtualKeyShort.LWIN,
+        _ => throw new SystemException($"Desteklenmeyen modifier: '{modifier}'."),
+    };
+
+    private static VirtualKeyShort MainKey(string key)
+    {
+        if (key.Length == 1)
+        {
+            var c = key[0];
+            if (c is >= 'A' and <= 'Z')
+            {
+                return Enum.Parse<VirtualKeyShort>($"KEY_{c}");
+            }
+            if (c is >= '0' and <= '9')
+            {
+                return Enum.Parse<VirtualKeyShort>($"KEY_{c}");
+            }
+        }
+
+        return key switch
+        {
+            "F1" => VirtualKeyShort.F1,
+            "F2" => VirtualKeyShort.F2,
+            "F3" => VirtualKeyShort.F3,
+            "F4" => VirtualKeyShort.F4,
+            "F5" => VirtualKeyShort.F5,
+            "F6" => VirtualKeyShort.F6,
+            "F7" => VirtualKeyShort.F7,
+            "F8" => VirtualKeyShort.F8,
+            "F9" => VirtualKeyShort.F9,
+            "F10" => VirtualKeyShort.F10,
+            "F11" => VirtualKeyShort.F11,
+            "F12" => VirtualKeyShort.F12,
+            "Home" => VirtualKeyShort.HOME,
+            "End" => VirtualKeyShort.END,
+            "PageUp" => VirtualKeyShort.PRIOR,
+            "PageDown" => VirtualKeyShort.NEXT,
+            "Up" => VirtualKeyShort.UP,
+            "Down" => VirtualKeyShort.DOWN,
+            "Left" => VirtualKeyShort.LEFT,
+            "Right" => VirtualKeyShort.RIGHT,
+            "Tab" => VirtualKeyShort.TAB,
+            "Enter" => VirtualKeyShort.RETURN,
+            "Esc" => VirtualKeyShort.ESCAPE,
+            "Space" => VirtualKeyShort.SPACE,
+            "Backspace" => VirtualKeyShort.BACK,
+            "Delete" => VirtualKeyShort.DELETE,
+            "Insert" => VirtualKeyShort.INSERT,
+            _ => throw new SystemException($"Desteklenmeyen tuş: '{key}'."),
+        };
     }
 
     public Task WaitForAsync(string selector, int timeoutMs)
