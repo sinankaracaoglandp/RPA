@@ -3,14 +3,13 @@ import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { WorkflowVersion } from '../../../../shared/models/workflow.model';
 import { ContainerType, LaneName, StructuredItem, StructuredSequence } from '../structured-model';
-import { workflowToTree } from '../workflow-to-tree';
 import { treeToWorkflow } from '../tree-to-workflow';
-import { checkStructuralInvariants } from '../structural-invariants';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
   insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross, setItemProps,
 } from '../edit/tree-ops';
 import { CONTROL_ACTIVITY_OF } from '../edit/control-activity-map';
+import { reduceWorkflow } from '../edit/structured-reducer';
 import { StructuredSequenceComponent } from './structured-sequence.component';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
 import { StructuredPaletteComponent } from './structured-palette.component';
@@ -42,6 +41,7 @@ export class StructuredViewComponent {
   private seeded = false;
   readonly tree = signal<StructuredSequence>([]);
   readonly mode = signal<'empty' | 'tree' | 'fallback'>('empty');
+  readonly fallbackReason = signal<string>('');
 
   @Input() set workflow(value: WorkflowVersion | null | undefined) {
     if (this.seeded) { return; }
@@ -228,21 +228,11 @@ export class StructuredViewComponent {
     if (!workflow || workflow.nodes.length === 0) {
       return { kind: 'empty' };
     }
-    try {
-      const tree = workflowToTree(workflow);
-      // Güvence: graf yapısal alt-küme değilse (keyfi serbest-graf) fallback.
-      if (checkStructuralInvariants(workflow).length > 0) {
-        return { kind: 'fallback' };
-      }
-      let i = 0;
-      const back = treeToWorkflow(tree, { idGen: () => `g${++i}` });
-      if (back.nodes.length !== workflow.nodes.length
-        || back.connections.length !== workflow.connections.length) {
-        return { kind: 'fallback' };
-      }
-      return { kind: 'tree', tree };
-    } catch {
-      return { kind: 'fallback' };
+    const r = reduceWorkflow(workflow);
+    if (r.ok) {
+      return { kind: 'tree', tree: r.tree };
     }
+    this.fallbackReason.set(r.reason);
+    return { kind: 'fallback' };
   }
 }

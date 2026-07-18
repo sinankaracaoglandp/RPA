@@ -179,6 +179,23 @@ describe('StructuredViewComponent', () => {
     expect((cmp.tree()[0] as unknown as { props: { items: string } }).props.items).toBe('${a}');
   });
 
+  it('shows the precise reason on a non-reducible workflow', () => {
+    const wf = {
+      schemaVersion: '1.0', id: 'w', name: 'w', version: '1.0.0',
+      nodes: [n('a'), n('b'), n('c')],
+      connections: [
+        { from: 'a', to: 'c', fromPort: 'out', toPort: 'in' },
+        { from: 'b', to: 'c', fromPort: 'out', toPort: 'in' },
+      ],
+    };
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf as never);
+    f.detectChanges();
+    const el = f.nativeElement.querySelector('[data-testid="structured-view-fallback"]') as HTMLElement;
+    expect(el).toBeTruthy();
+    expect(el.textContent).toContain('giriş');
+  });
+
   it('does not render edit controls for a fallback workflow', () => {
     const wf = treeToWorkflow(
       [container('tryCatch', {}, { success: [step(n('t'))], failure: [step(n('c'))], out: [step(n('fin'))] })],

@@ -4,7 +4,12 @@
       <p class="structured-view__msg" data-testid="structured-view-empty">{{ 'structured.emptyView' | translate }}</p>
     }
     @case ('fallback') {
-      <p class="structured-view__msg" data-testid="structured-view-fallback">{{ 'structured.fallback' | translate }}</p>
+      <p class="structured-view__msg" data-testid="structured-view-fallback">
+        {{ 'structured.fallback' | translate }}
+        @if (fallbackReason()) {
+          <br /><small>{{ 'structured.fallbackReason' | translate }}: {{ fallbackReason() }}</small>
+        }
+      </p>
     }
     @case ('tree') {
       <div class="structured-view__toolbar">
