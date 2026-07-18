@@ -23,7 +23,7 @@ interface ViewState {
 })
 export class StructuredViewComponent {
   private readonly _workflow = signal<WorkflowVersion | null>(null);
-  @Input() set workflow(value: WorkflowVersion | null) { this._workflow.set(value); }
+  @Input() set workflow(value: WorkflowVersion | null | undefined) { this._workflow.set(value ?? null); }
 
   readonly state = computed<ViewState>(() => this.convert(this._workflow()));
 

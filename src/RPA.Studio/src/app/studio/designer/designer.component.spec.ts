@@ -436,6 +436,36 @@ describe('draft persistence (Paket B)', () => {
   });
 });
 
+describe('DesignerComponent — structured view toggle', () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    await TestBed.configureTestingModule({
+      imports: [DesignerComponent],
+      providers: [
+        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    (TestBed.inject(HttpTestingController)).match('/api/activities').forEach((r) => r.flush([]));
+  });
+
+  it('toggles between canvas and structured view', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const cmp = fixture.componentInstance;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-canvas')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('app-structured-view')).toBeFalsy();
+
+    cmp.toggleStructuredView();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-structured-view')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('app-canvas')).toBeFalsy();
+  });
+});
+
 describe('DesignerComponent — ForEach item variable injection', () => {
   beforeEach(async () => {
     localStorage.clear();

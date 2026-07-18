@@ -21,6 +21,7 @@ import { LogConsoleComponent } from './log-console/log-console.component';
 import { ExecutionLogService } from '../../shared/services/execution-log.service';
 import { RunLogService } from '../../shared/services/run-log.service';
 import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema';
+import { StructuredViewComponent } from './structured/view/structured-view.component';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -45,6 +46,7 @@ import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema
     VariablesPanelComponent,
     BackHomeComponent,
     LogConsoleComponent,
+    StructuredViewComponent,
   ],
   templateUrl: './designer.component.html',
   styleUrls: ['./designer.component.scss'],
@@ -80,6 +82,10 @@ export class DesignerComponent implements OnDestroy {
   readonly currentGraph = signal<WorkflowVersion | undefined>(undefined);
   readonly variables = signal<WorkflowVariable[]>([]);
   readonly debugMode = signal(false);
+
+  /** Salt-okunur yapısal görünüm açık mı (serbest-graf canvas yerine iç içe kutular). */
+  readonly structuredView = signal(false);
+  toggleStructuredView(): void { this.structuredView.update((v) => !v); }
 
   /**
    * Properties paneline geçen değişkenler: temel workflow değişkenleri + seçili node'u
