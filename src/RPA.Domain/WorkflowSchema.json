@@ -150,7 +150,7 @@
         "required": ["name", "type"],
         "properties": {
           "name": { "type": "string" },
-          "type": { "type": "string", "enum": ["string", "int", "decimal", "bool", "DateTime", "DataTable", "JSON", "Credential"] },
+          "type": { "type": "string", "enum": ["string", "int", "decimal", "bool", "DateTime", "DataTable", "JSON", "Credential", "object", "list<object>"] },
           "scope": { "type": "string", "enum": ["local", "component", "global"], "default": "local" },
           "default": {},
           "description": { "type": "string" }
@@ -185,6 +185,7 @@
             ]
           },
           "activity": { "type": "string", "description": "Activity ID (örn. 'Sap.Nco.CallBapi') — type=activity ise zorunlu" },
+          "label": { "type": "string", "description": "Kullanıcının verdiği okunabilir node adı (örn. 'Fatura no girişi') — yalnız gösterim" },
           "channel": { "type": "string", "enum": ["nco", "gui"], "description": "SAP aktiviteleri için: NCo veya GUI Scripting" },
           "properties": { "type": "object", "description": "Aktivite-spesifik property'ler (JSON; key-value)" },
           "variableName": { "type": "string", "description": "type=assign için: atanacak değişken adı" },

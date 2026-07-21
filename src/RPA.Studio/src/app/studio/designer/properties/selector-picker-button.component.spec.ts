@@ -36,8 +36,16 @@ describe('SelectorPickerButtonComponent', () => {
     fixture.nativeElement.querySelector('[data-testid="selector-picker"]').click();
     await fixture.whenStable();
 
-    // Non-image kind → options undefined.
-    expect(spy.pick).toHaveBeenCalledWith('sap', undefined);
+    // SAP seçimi onay tuşuyla verilir (tıklama SAP'ta alanı/butonu tetiklerdi) → tuş
+    // seçenekleri gönderilir. Ekran dondurma SAP'ta yok; captureMode varsayılan kalır.
+    expect(spy.pick).toHaveBeenCalledWith('sap', {
+      captureMode: 'f2',
+      delaySeconds: 5,
+      hotKey: 'T',
+      ctrl: true,
+      shift: false,
+      alt: false,
+    });
     expect(emitted).toEqual(['wnd[0]/usr/btn[OK]']);
   });
 

@@ -114,7 +114,7 @@ export class GenericPropertyComponent {
   /** Bu alan için kip seçici gösterilsin mi? Yalnız düz metin/sayı/tarih alanlarında. */
   showModeSelector(port: ActivityPort): boolean {
     if ((port.options?.length ?? 0) > 0) return false; // enum → dropdown
-    if (this.isVariableField(port) && this.variables.length > 0) return false; // değişken adı alanı
+    if (this.isVariableField(port)) return false; // değişken adı alanı — kip seçici yok
     const t = this.inputType(port);
     return t === 'text' || t === 'number' || t === 'date' || t === 'datetime-local';
   }
@@ -340,11 +340,23 @@ export class GenericPropertyComponent {
   }
 
   /** selector-picker-button'a geçilecek spy türü ('image-sequence'/'text-offset' spy türü değil, editör ipucu → null). */
-  spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | null {
+  spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | 'folder' | null {
     return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset'
       || port.pickerKind === 'keystroke-sequence' || port.pickerKind === 'einvoice-profile'
       ? null
-      : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | undefined) ?? null;
+      : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | 'folder' | undefined) ?? null;
+  }
+
+  /** File.List pattern alanı için birden çok uzantı örneği gösterilsin mi? */
+  showPatternExamples(port: ActivityPort): boolean {
+    return this.activityType === 'File.List' && port.name === 'pattern';
+  }
+
+  patternExamples(port: ActivityPort): string[] {
+    if (!this.showPatternExamples(port)) {
+      return [];
+    }
+    return ['*.pdf', '*.xlsx;*.xls', '*.pdf;*.docx;*.png', 'rapor_*.csv'];
   }
 
   boolValue(port: ActivityPort): boolean {
@@ -461,6 +473,13 @@ export class GenericPropertyComponent {
       return;
     }
     this.onValueChange(port, element.elementId);
+
+    // ALV grid seçildiyse tasarım anındaki kolon adlarını da kaydet. Bu bir SÖZLEŞMEDİR:
+    // çalışma anında eksik kolon null gelir, fazlası yok sayılır (runtime bunu uygular).
+    // Kolonlar yalnız tasarım anında okunabilir; çalışma anında süreç tasarlanamaz.
+    if (element.columns?.length) {
+      this.onValueChange({ ...port, name: 'columns' }, JSON.stringify(element.columns));
+    }
   }
 
   /// <summary>
@@ -479,7 +498,7 @@ export class GenericPropertyComponent {
     return (
       this.inputType(port) !== 'checkbox' &&
       (port.options?.length ?? 0) === 0 &&
-      !(this.isVariableField(port) && this.variables.length > 0)
+      !this.isVariableField(port)
     );
   }
 
@@ -640,6 +659,7 @@ export class GenericPropertyComponent {
       next: (meta) => {
         this.metadata = meta;
         this.loading = false;
+        this.seedDefaultValues(meta);
         if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
           this.loadProjectOptions();
           this.adoptContextProjectId();
@@ -656,6 +676,29 @@ export class GenericPropertyComponent {
         this.cdr.markForCheck();
       },
     });
+  }
+
+  /**
+   * Katalog metadata'sındaki varsayılan değerleri (ör. sourceMode="XmlContent") node'da
+   * henüz set edilmemiş alanlara işler ve emit eder. Dropdown/enum alanlarında görünen
+   * "ilk seçenek" modele yazılmıyordu → zorunlu bir varsayılan (sourceMode) kaydet anında
+   * "eksik" sayılıp doğrulama 400 dönüyordu. Yalnız tanımsız alanları tohumlar (kullanıcının
+   * girdiği değerleri ezmez).
+   */
+  private seedDefaultValues(meta: ActivityMetadata): void {
+    const inputs = meta.inputs ?? [];
+    let changed = false;
+    const next = { ...this.properties };
+    for (const input of inputs) {
+      if (input.defaultValue !== undefined && input.defaultValue !== null && next[input.name] === undefined) {
+        next[input.name] = input.defaultValue;
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.properties = next;
+      this.propertiesChange.emit(next);
+    }
   }
 
   private normalizeEditorValue(port: ActivityPort, value: string): string {

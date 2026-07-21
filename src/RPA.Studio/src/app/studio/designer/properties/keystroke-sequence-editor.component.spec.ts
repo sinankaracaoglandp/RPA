@@ -22,6 +22,43 @@ describe('KeystrokeSequenceEditorComponent', () => {
     expect(component.steps[1].waitMs).toBe(100);
   });
 
+  it('toggles the modifier on the clicked STEP, not the modifier position', () => {
+    // Regresyon: şablonda iç içe @for vardı ve modifier checkbox'ı $index'i (modifier sırası)
+    // adım index'i sanıp yanlış adımı değiştiriyordu. 5. adımda Ctrl işaretleyince 1. adım
+    // değişiyor, 5. adım boş kalıyordu (kaydet+yenile sonrası "seçim kayboldu").
+    component.value = JSON.stringify([
+      { type: 'chord', modifiers: [], key: 'A', waitMs: 0 },
+      { type: 'chord', modifiers: [], key: 'B', waitMs: 0 },
+      { type: 'chord', modifiers: [], key: 'C', waitMs: 0 },
+      { type: 'chord', modifiers: [], key: 'D', waitMs: 0 },
+      { type: 'chord', modifiers: [], key: 'S', waitMs: 0 },
+    ]);
+
+    // 5. adıma (index 4) Ctrl; ayrıca 4. adıma (index 3) Alt — Alt modifier sırası 0 değil.
+    component.toggleModifier(4, 'ctrl');
+    component.toggleModifier(3, 'alt');
+
+    expect(component.steps[4].modifiers).toEqual(['ctrl']);
+    expect(component.steps[3].modifiers).toEqual(['alt']);
+    // Diğer adımlara sızmamalı.
+    expect(component.steps[0].modifiers).toEqual([]);
+    expect(component.steps[2].modifiers).toEqual([]);
+  });
+
+  it('flags empty text steps so they are caught at design time', () => {
+    component.value = JSON.stringify([
+      { type: 'text', text: '{{fatura.FaturaNo}}', waitMs: 0 },
+      { type: 'chord', modifiers: [], key: 'Enter', waitMs: 0 },
+      { type: 'text', text: '   ', waitMs: 0 },
+    ]);
+
+    expect(component.isEmptyText(component.steps[0])).toBe(false);
+    // Chord adımı metin doğrulamasına takılmamalı.
+    expect(component.isEmptyText(component.steps[1])).toBe(false);
+    // Boş/whitespace metin adımı çalışma anında BusinessException verir → işaretlenmeli.
+    expect(component.isEmptyText(component.steps[2])).toBe(true);
+  });
+
   it('parses legacy plain text as a single text step', () => {
     component.value = '09.07.2026';
 

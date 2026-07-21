@@ -84,7 +84,14 @@
 .einvoice-mapping__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
 .einvoice-mapping__group-title {
   margin: 0.8rem 0 0.3rem; font-size: 0.85rem;
-  .einvoice-mapping__scope { opacity: 0.6; margin-left: 0.4rem; font-family: monospace; font-size: 0.72rem; font-weight: 400; }
+  display: flex; align-items: center; gap: 0.4rem;
+  .einvoice-mapping__scope { opacity: 0.6; font-family: monospace; font-size: 0.72rem; font-weight: 400; }
+  .einvoice-mapping__collection-delete {
+    margin-left: auto; font-size: 0.72rem; font-weight: 400;
+    color: #b42318; background: transparent; border: 1px solid currentColor;
+    border-radius: 4px; padding: 0.1rem 0.4rem; cursor: pointer;
+    &:hover { background: #b42318; color: #fff; }
+  }
 }
 .einvoice-mapping__field-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .einvoice-mapping__field-row {

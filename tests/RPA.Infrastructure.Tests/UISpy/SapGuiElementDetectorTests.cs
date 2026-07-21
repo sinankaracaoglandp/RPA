@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.Tests.UISpy;
+﻿namespace RPA.Infrastructure.Tests.UISpy;
 
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -33,6 +33,104 @@ public class SapGuiElementDetectorTests
         Assert.Equal(expected, SapGuiElementDetector.IsSapWindow(windowClass));
     }
 
+    // =============================================================== Kök pencere tespiti
+
+    [Fact]
+    public void DetectAt_WhenChildControlIsNotSapButRootIs_StillResolves()
+    {
+        // Gerçek dünya: WindowFromPoint SAP metin alanının üzerinde ALT kontrolü döndürür ve onun
+        // sınıfı SAP_FRONTEND* DEĞİLDİR. Yalnız child sınıfına bakıldığında picker hiçbir zaman
+        // element üretmiyordu (çerçeve yok, tıklama işlemiyor).
+        var native = new Mock<INativeWindowApi>();
+        native.Setup(n => n.GetWindowClassAt(120, 340)).Returns("Edit");
+        native.Setup(n => n.GetRootWindowClassAt(120, 340)).Returns("SAP_FRONTEND_SESSION");
+
+        var resolver = new Mock<ISapGuiElementResolver>();
+        resolver.Setup(r => r.ResolveAt(120, 340))
+                .Returns(new SapGuiElement("wnd[0]/usr/ctxtRMMG1-MATNR", "GuiCTextField", "Malzeme"));
+
+        var element = NewDetector(native, resolver).DetectElementAt(120, 340);
+
+        Assert.NotNull(element);
+        Assert.Equal("wnd[0]/usr/ctxtRMMG1-MATNR", element!.Id);
+    }
+
+    [Fact]
+    public void DetectAt_AlwaysAsksResolver_EvenWhenWindowClassLooksNonSap()
+    {
+        // Regresyon: pencere sınıfı kapısı SÜREKLİ yanlış negatif üretiyordu. WindowFromPoint en
+        // derin child'ı verir; SAP ekranında bu 'Edit', açık menüde '#32768' olur — hiçbiri
+        // 'SAP_FRONTEND*' değildir. Sınıfa bakıp erken dönmek picker'ı tamamen ölü bırakıyordu.
+        // Otorite SAP'tır: FindByPosition bir şey döndürüyorsa nokta SAP oturumundadır.
+        var native = new Mock<INativeWindowApi>();
+        native.Setup(n => n.GetWindowClassAt(10, 10)).Returns("#32768"); // Windows menü sınıfı
+        native.Setup(n => n.GetRootWindowClassAt(10, 10)).Returns("#32768");
+
+        var resolver = new Mock<ISapGuiElementResolver>();
+        resolver.Setup(r => r.ResolveAt(10, 10))
+                .Returns(new SapGuiElement("wnd[0]/usr/ctxtRMMG1-MATNR", "GuiCTextField", "Malzeme"));
+
+        var element = NewDetector(native, resolver).DetectElementAt(10, 10);
+
+        Assert.NotNull(element);
+        Assert.Equal("wnd[0]/usr/ctxtRMMG1-MATNR", element!.Id);
+    }
+
+    [Fact]
+    public void DetectAt_WhenResolverFindsNothing_ReturnsNull()
+    {
+        var native = new Mock<INativeWindowApi>();
+        native.Setup(n => n.GetWindowClassAt(10, 10)).Returns("Chrome_WidgetWin_1");
+        native.Setup(n => n.GetRootWindowClassAt(10, 10)).Returns("Chrome_WidgetWin_1");
+
+        var resolver = new Mock<ISapGuiElementResolver>(); // ResolveAt → null
+
+        Assert.Null(NewDetector(native, resolver).DetectElementAt(10, 10));
+    }
+
+    // =============================================================== Diagnose (tanılama)
+
+    [Fact]
+    public void Diagnose_WhenNotSapWindow_ReportsBothClassNames()
+    {
+        var native = new Mock<INativeWindowApi>();
+        native.Setup(n => n.GetWindowClassAt(5, 6)).Returns("Chrome_WidgetWin_1");
+        native.Setup(n => n.GetRootWindowClassAt(5, 6)).Returns("Chrome_WidgetWin_0");
+
+        var reason = NewDetector(native, new Mock<ISapGuiElementResolver>()).Diagnose(5, 6);
+
+        Assert.Contains("SAP elementi yok", reason);
+        Assert.Contains("Chrome_WidgetWin_1", reason);
+        Assert.Contains("Chrome_WidgetWin_0", reason);
+    }
+
+    [Fact]
+    public void Diagnose_WhenSapWindowButResolverFailed_ReportsResolverError()
+    {
+        var native = new Mock<INativeWindowApi>();
+        native.Setup(n => n.GetWindowClassAt(5, 6)).Returns("Edit");
+        native.Setup(n => n.GetRootWindowClassAt(5, 6)).Returns("SAP_FRONTEND_SESSION");
+
+        var resolver = new Mock<ISapGuiElementResolver>();
+        resolver.SetupGet(r => r.LastError).Returns("SystemException: SAP GUI Scripting devre dışı");
+
+        var reason = NewDetector(native, resolver).Diagnose(5, 6);
+
+        Assert.Contains("SAP GUI Scripting devre dışı", reason);
+    }
+
+    [Fact]
+    public void Diagnose_WhenSapWindowAndNoResolverError_PointsAtScripting()
+    {
+        var native = new Mock<INativeWindowApi>();
+        native.Setup(n => n.GetWindowClassAt(5, 6)).Returns("SAP_FRONTEND_SESSION");
+        native.Setup(n => n.GetRootWindowClassAt(5, 6)).Returns("SAP_FRONTEND_SESSION");
+
+        var reason = NewDetector(native, new Mock<ISapGuiElementResolver>()).Diagnose(5, 6);
+
+        Assert.Contains("SAP elementi yok", reason);
+    }
+
     // =============================================================== DetectElementUnderCursor
 
     [Fact]
@@ -56,18 +154,16 @@ public class SapGuiElementDetectorTests
     }
 
     [Fact]
-    public void DetectUnderCursor_WhenNotSapWindow_ReturnsNull_AndSkipsResolver()
+    public void DetectUnderCursor_WhenResolverFindsNothing_ReturnsNull()
     {
+        // Pencere sınıfı artık kapı DEĞİLDİR (yanlış negatif kaynağıydı); sonucu SAP belirler.
         var native = new Mock<INativeWindowApi>();
         native.Setup(n => n.GetCursorPosition()).Returns((10, 20));
         native.Setup(n => n.GetWindowClassAt(10, 20)).Returns("Chrome_WidgetWin_1");
 
-        var resolver = new Mock<ISapGuiElementResolver>();
+        var resolver = new Mock<ISapGuiElementResolver>(); // ResolveAt → null
 
-        var element = NewDetector(native, resolver).DetectElementUnderCursor();
-
-        Assert.Null(element);
-        resolver.Verify(r => r.ResolveAt(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        Assert.Null(NewDetector(native, resolver).DetectElementUnderCursor());
     }
 
     [Fact]

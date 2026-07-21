@@ -7,6 +7,7 @@ import { treeToWorkflow } from '../tree-to-workflow';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
   insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross, setItemProps,
+  setItemLabel, duplicateItem,
 } from '../edit/tree-ops';
 import { CONTROL_ACTIVITY_OF } from '../edit/control-activity-map';
 import { reduceWorkflow } from '../edit/structured-reducer';
@@ -50,8 +51,15 @@ export class StructuredViewComponent {
 
   @Input() set workflow(value: WorkflowVersion | null | undefined) {
     if (this.seeded) { return; }
+    // Taslak HTTP ile geldiği için ilk bağlanma null'dır — bunu tohum saymak ağacı kalıcı olarak
+    // boş bırakıyordu (yalnız görünümden çıkıp dönünce, yani bileşen yeniden kurulunca doluyordu).
+    // Yalnız gerçek bir workflow geldiğinde tohumla; null "henüz yüklenmedi" demektir.
+    if (value == null) {
+      this.mode.set('empty');
+      return;
+    }
     this.seeded = true;
-    const s = this.convert(value ?? null);
+    const s = this.convert(value);
     this.mode.set(s.kind);
     this.tree.set(s.tree ?? []);
   }
@@ -76,9 +84,19 @@ export class StructuredViewComponent {
     } else {
       const p = findPath(t, a.target);
       if (!p) { return; }
-      next = a.kind === 'delete'
-        ? removeItem(t, p)
-        : moveItem(t, p, a.kind === 'up' ? -1 : 1);
+      if (a.kind === 'rename') {
+        next = setItemLabel(t, p, a.label);
+      } else if (a.kind === 'duplicate') {
+        const r = duplicateItem(t, p);
+        if (!r) { return; }
+        this.commit(r.tree);
+        this.onSelect(r.copy); // kopya seçili gelir → değişecek alan hemen düzenlenebilir
+        return;
+      } else {
+        next = a.kind === 'delete'
+          ? removeItem(t, p)
+          : moveItem(t, p, a.kind === 'up' ? -1 : 1);
+      }
     }
     this.commit(next);
   }

@@ -29,6 +29,7 @@ public class StudioHub : Hub
         "desktop",
         "image",
         "text-offset",
+        "folder",
     };
 
     private readonly ILogger<StudioHub> _logger;

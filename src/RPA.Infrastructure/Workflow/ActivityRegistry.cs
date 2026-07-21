@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.Workflow;
+﻿namespace RPA.Infrastructure.Workflow;
 
 using RPA.Domain.Enums;
 using RPA.Domain.Interfaces;
@@ -146,8 +146,7 @@ public static class ActivityRegistry
             .Input("client", "string", required: true, description: "SAP Client (örn. 100)")
             .Input("userId", "string", required: true, description: "SAP kullanıcı adı")
             .Input("credentialName", "Credential", required: true, description: "Şifre için Vault key referansı")
-            .Input("language", "string", required: false, defaultValue: "EN", description: "Oturum dili (örn. TR, EN)")
-            .Output("session", "JSON");
+            .Input("language", "string", required: false, defaultValue: "EN", description: "Oturum dili (örn. TR, EN)");
 
         b.Activity("Sap.Gui.Login").DisplayName("SAP GUI Giriş").Category(CatSapGui).Capability(cap)
             .Description("Client/kullanıcı ile SAP oturumu açar (credential Vault'tan).")
@@ -174,17 +173,29 @@ public static class ActivityRegistry
             .Description("Sekme kontrolünde sekme seçer.")
             .Input("elementId", "string", pickerKind: "sap");
 
+        b.Activity("Sap.Gui.SendVKey").DisplayName("SAP GUI Tuş Gönder").Category(CatSapGui).Capability(cap)
+            .Description("Ekrana sanal tuş gönderir: F8 Çalıştır, F3 Geri, F4 Arama yardımı, F12 İptal, Enter.")
+            .Input("key", "string", defaultValue: "F8",
+                description: "Enter, F1–F12, Shift+F1–F12, Ctrl+F1–F12, Ctrl+Shift+F1–F12.")
+            .Input("windowId", "string", required: false, defaultValue: "wnd[0]",
+                description: "Hedef pencere; iletişim kutusu için wnd[1].");
+
         b.Activity("Sap.Gui.SelectMenu").DisplayName("SAP GUI Menü Seç").Category(CatSapGui).Capability(cap)
             .Description("Menü çubuğunda metin yoluyla gezinip menü öğesi seçer (Sistem/Liste/Yazdır).")
             .Input("menuPath", "string", description: "'/' ile ayrılmış menü metni yolu.");
 
         b.Activity("Sap.Gui.GridRead").DisplayName("SAP GUI ALV Oku").Category(CatSapGui).Capability(cap)
             .Description("ALV grid içeriğini DataTable olarak okur.")
-            .Input("gridElementId", "string", pickerKind: "sap").Output("data", "DataTable");
+            .Input("gridId", "string", pickerKind: "sap")
+            .Input("columns", "JSON", required: false,
+                description: "Tasarım anında okunan kolon adları — eksik kolon null, fazlası yok sayılır.")
+            .Input("outputVariable", "string", required: false, defaultValue: "gridSatirlari",
+                description: "Satır listesinin atanacağı workflow değişkeni")
+            .Output("rows", "JSON");
 
         b.Activity("Sap.Gui.Screenshot").DisplayName("SAP GUI Ekran Görüntüsü").Category(CatSapGui).Capability(cap)
             .Description("Aktif SAP penceresinin görüntüsünü alır.")
-            .Output("path", "string");
+            .Output("screenshot", "JSON", description: "PNG ekran görüntüsü (bayt dizisi).");
     }
 
     // ---- SAP NCo ----
@@ -230,7 +241,7 @@ public static class ActivityRegistry
                 description: "Tarayıcıyı görünmez modda çalıştır").Output("session", "JSON");
 
         b.Activity("Web.Goto").DisplayName("Adrese Git").Category(CatWeb).Capability(cap)
-            .Description("Verilen URL'ye gider.").Input("url", "string");
+            .Description("Verilen URL'ye gider.").Input("url", "string").Output("session", "JSON");
 
         b.Activity("Web.Click").DisplayName("Web Tıkla").Category(CatWeb).Capability(cap)
             .Description("Selector ile elemente tiklar veya hover yapar; acilir menu icin sonraki selector'u bekleyebilir.")
@@ -271,7 +282,8 @@ public static class ActivityRegistry
 
         b.Activity("Web.FrameSwitch").DisplayName("Frame/Sekme Geç").Category(CatWeb).Capability(cap)
             .Description("iframe veya sekme bağlamına geçer.")
-            .Input("frameSelector", "string", required: false).Input("tabIndex", "int", required: false);
+            .Input("frameSelector", "string", required: false).Input("tabIndex", "int", required: false)
+            .Output("session", "JSON");
     }
 
     // ---- API ----
@@ -285,6 +297,7 @@ public static class ActivityRegistry
             .Input("body", "JSON", required: false)
             .Input("authType", "string", required: false)
             .Input("credentialName", "Credential", required: false)
+            .Input("timeoutSeconds", "int", required: false, defaultValue: 30)
             .Output("statusCode", "int").Output("responseBody", "JSON")
             .ExceptionClassification("StatusCode>=500", ExceptionType.System);
     }
@@ -344,7 +357,9 @@ public static class ActivityRegistry
 
         b.Activity("Email.DownloadAttachment").DisplayName("Ek İndir").Category(CatEmail).Capability(cap)
             .Description("E-posta ekini diske indirir.")
-            .Input("messageId", "string").Input("targetFolder", "string").Output("paths", "JSON");
+            .Input("credentialName", "string").Input("messageId", "string")
+            .Input("folder", "string", required: false, defaultValue: "INBOX")
+            .Input("targetFolder", "string").Output("paths", "JSON");
     }
 
     // ---- OTP ----
@@ -378,7 +393,9 @@ public static class ActivityRegistry
 
         b.Activity("File.List").DisplayName("Dosya Listele").Category(CatFile).Capability(cap)
             .Description("Klasördeki dosyaları listeler (pattern).")
-            .Input("folder", "string").Input("pattern", "string", required: false, defaultValue: "*")
+            .Input("folder", "string", pickerKind: "folder")
+            .Input("pattern", "string", required: false, defaultValue: "*", description: "Dosya adı deseni — birden çok uzantı için ; veya , ile ayır (örn. *.pdf;*.xlsx)")
+            .Input("outputVariable", "string", required: false, defaultValue: "dosyalar", description: "Dosya listesinin atanacağı değişken")
             .Output("files", "JSON");
 
         b.Activity("File.Zip").DisplayName("Sıkıştır (Zip)").Category(CatFile).Capability(cap)

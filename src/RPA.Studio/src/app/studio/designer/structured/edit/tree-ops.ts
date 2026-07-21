@@ -47,6 +47,46 @@ export function moveItem(tree: StructuredSequence, path: Path, delta: number): S
   });
 }
 
+/**
+ * Öğeyi (konteynerse tüm lane içerikleriyle birlikte) derin kopyalar; her adım node'una TAZE id
+ * verir. Props/keystroke gibi iç yapılar JSON ile klonlanır — böylece kopya ile özgün node
+ * birbirinin değerlerini paylaşmaz (birinde yapılan düzenleme diğerine sızmaz).
+ */
+export function cloneItem(
+  item: StructuredItem, idGen: () => string = () => crypto.randomUUID(),
+): StructuredItem {
+  if (item.kind === 'step') {
+    return { kind: 'step', node: { ...structuredClone(item.node), id: idGen() } };
+  }
+  const lanes: ContainerItem['lanes'] = {};
+  for (const lane of lanesFor(item.type)) {
+    const seq = item.lanes[lane];
+    if (seq) { lanes[lane] = seq.map((child) => cloneItem(child, idGen)); }
+  }
+  return { kind: 'container', type: item.type, props: structuredClone(item.props), lanes };
+}
+
+/** Öğenin kopyasını hemen ardına ekler; eklenen kopyayı da döndürür (seçim/odak için). */
+export function duplicateItem(
+  tree: StructuredSequence, path: Path, idGen?: () => string,
+): { tree: StructuredSequence; copy: StructuredItem } | null {
+  const original = itemAt(tree, path);
+  if (!original) { return null; }
+  const copy = cloneItem(original, idGen);
+  return { tree: insertItem(tree, path.steps, path.index + 1, copy), copy };
+}
+
+/** Path'in gösterdiği öğe (yoksa null). */
+export function itemAt(tree: StructuredSequence, path: Path): StructuredItem | null {
+  let seq = tree;
+  for (const s of path.steps) {
+    const item = seq[s.index];
+    if (!item || item.kind !== 'container') { return null; }
+    seq = item.lanes[s.lane] ?? [];
+  }
+  return seq[path.index] ?? null;
+}
+
 /** Öğeyi referans eşitliğiyle ağaçta arar; path'ini döndürür (yoksa null). */
 export function findPath(tree: StructuredSequence, target: StructuredItem): Path | null {
   const walk = (seq: StructuredSequence, steps: PathStep[]): Path | null => {
@@ -153,11 +193,35 @@ export function updateItemAt(
 }
 
 /** Öğenin parametrelerini değiştirir: adım → node.properties; konteyner → props. */
+/**
+ * Öğenin okunabilir adını (`label`) değiştirir. Adım için node üzerinde, konteyner için
+ * props üzerinde tutulur — her ikisi de düz grafa node alanı olarak yazılır. Boş ad alanı siler.
+ */
+export function setItemLabel(
+  tree: StructuredSequence, path: Path, label: string,
+): StructuredSequence {
+  const trimmed = label.trim();
+  return updateItemAt(tree, path, (item) => {
+    if (item.kind === 'step') {
+      const node = { ...item.node };
+      if (trimmed) { node.label = trimmed; } else { delete node.label; }
+      return { ...item, node };
+    }
+    const props = { ...item.props };
+    if (trimmed) { props['label'] = trimmed; } else { delete props['label']; }
+    return { ...item, props };
+  });
+}
+
 export function setItemProps(
   tree: StructuredSequence, path: Path, props: Record<string, unknown>,
 ): StructuredSequence {
   return updateItemAt(tree, path, (item) =>
     item.kind === 'step'
       ? { ...item, node: { ...item.node, properties: props } }
-      : { ...item, props });
+      // Konteyner props'u bütün olarak değişir; `label` özellik panelinin alanı değildir,
+      // panelden gelen sözlükte yoksa korunur (aksi halde ad düzenlemede silinirdi).
+      : { ...item, props: item.props['label'] !== undefined && props['label'] === undefined
+        ? { ...props, label: item.props['label'] }
+        : props });
 }

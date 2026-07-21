@@ -34,7 +34,7 @@
         <div
           class="structured-view__canvas"
           data-testid="structured-view-tree"
-          [style.transform]="'scale(' + zoom() + ')'"
+          [style.zoom]="zoom()"
           cdkDropListGroup
           (click)="clearSelection()"
         >

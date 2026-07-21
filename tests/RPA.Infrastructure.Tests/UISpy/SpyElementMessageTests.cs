@@ -18,6 +18,18 @@ public class SpyElementMessageTests
     }
 
     [Fact]
+    public void FromFolder_SetsKindAndPath()
+    {
+        var sid = Guid.NewGuid();
+        var msg = SpyElementMessage.FromFolder(@"C:\Faturalar\Gelen", sid);
+
+        Assert.Equal("folder", msg.Kind);
+        Assert.Equal(sid, msg.SessionId);
+        Assert.Equal(@"C:\Faturalar\Gelen", msg.ElementId);
+        Assert.Equal(@"C:\Faturalar\Gelen", msg.Selector);
+    }
+
+    [Fact]
     public void FromTextOffset_SetsKindAndFields()
     {
         var sid = Guid.NewGuid();

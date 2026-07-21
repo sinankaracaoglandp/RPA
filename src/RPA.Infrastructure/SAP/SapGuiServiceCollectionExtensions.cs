@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.SAP;
+﻿namespace RPA.Infrastructure.SAP;
 
 using Microsoft.Extensions.DependencyInjection;
 using RPA.Domain.Interfaces;
@@ -33,6 +33,7 @@ public static class SapGuiServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, SapGuiSetTextActivity>("Sap.Gui.SetText");
         services.AddKeyedTransient<IActivity, SapGuiGetTextActivity>("Sap.Gui.GetText");
         services.AddKeyedTransient<IActivity, SapGuiSelectTabActivity>("Sap.Gui.SelectTab");
+        services.AddKeyedTransient<IActivity, SapGuiSendVKeyActivity>("Sap.Gui.SendVKey");
         services.AddKeyedTransient<IActivity, SapGuiSelectMenuActivity>("Sap.Gui.SelectMenu");
         services.AddKeyedTransient<IActivity, SapGuiGridReadActivity>("Sap.Gui.GridRead");
         services.AddKeyedTransient<IActivity, SapGuiScreenshotActivity>("Sap.Gui.Screenshot");

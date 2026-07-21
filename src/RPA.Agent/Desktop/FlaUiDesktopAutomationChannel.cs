@@ -104,6 +104,11 @@ public sealed class FlaUiDesktopAutomationChannel : IDesktopAutomationChannel, I
                 catch { /* aşağıda genel hata fırlatılır */ }
             }
 
+            // Excel/Word gibi tek-örnekli uygulamalar: exe ikinci kez başlatılınca mevcut
+            // örneğe devredip yeni pencere AÇMADAN çıkar. Bu durumda (ya da uygulama zaten
+            // açıksa) aynı görüntü adına ait ZATEN AÇIK ana pencereye bağlanırız.
+            window ??= TryAttachExistingByImage(path);
+
             if (window is null)
             {
                 throw new SystemException($"Uygulama başlatıldı ama pencere bulunamadı ({path}).");
@@ -116,6 +121,44 @@ public sealed class FlaUiDesktopAutomationChannel : IDesktopAutomationChannel, I
         catch (Exception ex) when (ex is not SystemException)
         {
             throw new SystemException($"Uygulama başlatılamadı ({path}): {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Verilen exe yoluna ait ZATEN ÇALIŞAN bir örneğin ana penceresine bağlanır (yoksa null).
+    /// Excel/Word gibi tek-örnekli uygulamalar ikinci kez başlatılınca yeni pencere açmaz;
+    /// mevcut örneğe devreder. Süreç görüntü adına göre eşleşip attach ederiz.
+    /// </summary>
+    private Window? TryAttachExistingByImage(string path)
+    {
+        try
+        {
+            var imageName = System.IO.Path.GetFileNameWithoutExtension(path);
+            if (string.IsNullOrWhiteSpace(imageName))
+            {
+                return null;
+            }
+
+            var process = System.Diagnostics.Process.GetProcessesByName(imageName)
+                .Where(p => { try { return p.MainWindowHandle != IntPtr.Zero; } catch { return false; } })
+                .OrderByDescending(p => { try { return p.StartTime; } catch { return DateTime.MinValue; } })
+                .FirstOrDefault();
+            if (process is null)
+            {
+                return null;
+            }
+
+            var app = Application.Attach(process);
+            var window = app.GetMainWindow(_automation);
+            if (window is not null)
+            {
+                _app = app;
+            }
+            return window;
+        }
+        catch
+        {
+            return null;
         }
     }
 

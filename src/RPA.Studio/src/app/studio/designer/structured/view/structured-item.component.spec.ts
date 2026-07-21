@@ -126,3 +126,44 @@ describe('StructuredItemComponent', () => {
     expect(f.nativeElement.querySelector('.cdk-drag')).toBeTruthy();
   });
 });
+
+describe('StructuredItemComponent — kullanıcı adı (label)', () => {
+  beforeEach(() => TestBed.configureTestingModule({ imports: [StructuredItemComponent] }));
+
+  it('shows the user label as the step title and keeps the activity id visible', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', step({
+      id: 'n1', type: 'activity', activity: 'Web.Fill', label: 'Fatura no girişi',
+    }));
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="item-title"]')!.textContent).toContain('Fatura no girişi');
+    expect(el.textContent).toContain('Web.Fill');
+  });
+
+  it('shows the user label on a container header alongside its type', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', container('forEach', { items: '${a}', label: 'Faturaları gez' }, { body: [] }));
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).querySelector('[data-testid="item-title"]')!.textContent)
+      .toContain('Faturaları gez');
+  });
+
+  it('emits a rename action with the typed label', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    const item = step({ id: 's', type: 'activity', activity: 'A' });
+    f.componentRef.setInput('item', item);
+    f.componentRef.setInput('editable', true);
+    f.detectChanges();
+    const events: StructuredAction[] = [];
+    f.componentInstance.action.subscribe((e) => events.push(e));
+
+    (f.nativeElement.querySelector('[data-testid="item-rename"]') as HTMLButtonElement).click();
+    f.detectChanges();
+    const input = f.nativeElement.querySelector('[data-testid="item-rename-input"]') as HTMLInputElement;
+    input.value = 'Fatura tarihi girişi';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(events[0]).toEqual({ kind: 'rename', target: item, label: 'Fatura tarihi girişi' });
+  });
+});

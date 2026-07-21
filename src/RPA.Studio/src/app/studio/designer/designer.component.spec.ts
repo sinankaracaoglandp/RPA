@@ -238,6 +238,27 @@ describe('draft persistence (Paket B)', () => {
     }));
   });
 
+  it('binds the File.List output variable schema in the structural view', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Dosyalar', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+
+    component.structuredView.set(true);
+    component.selectedActivityType.set('File.List');
+    component.onPropertiesChange({ outputVariable: 'dosyalar' });
+
+    expect(component.variables()).toContainEqual(expect.objectContaining({
+      name: 'dosyalar',
+      type: 'list<object>',
+      schema: expect.objectContaining({ type: 'array' }),
+    }));
+  });
+
   it('sets saveState to error when the save fails', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({
@@ -259,6 +280,8 @@ describe('draft persistence (Paket B)', () => {
 
     expect(component.saveState()).toBe('error');
     expect(component.dirty()).toBe(true);
+    // Backend'in 400 gövdesindeki mesaj kullanıcıya yüzeye çıkmalı (kör "başarısız" değil).
+    expect(component.saveErrorMessage()).toBe('şema hatası');
   });
 
   it('saves the draft before queuing a run', async () => {
@@ -452,24 +475,22 @@ describe('DesignerComponent — structured view toggle', () => {
     (TestBed.inject(HttpTestingController)).match('/api/activities').forEach((r) => r.flush([]));
   });
 
-  it('toggles between canvas and structured view', () => {
+  it('defaults to the structured view and toggles to the canvas', () => {
     const fixture = TestBed.createComponent(DesignerComponent);
     const cmp = fixture.componentInstance;
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('app-canvas')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('app-structured-view')).toBeFalsy();
+    expect(fixture.nativeElement.querySelector('app-structured-view')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('app-canvas')).toBeFalsy();
 
     cmp.toggleStructuredView();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('app-structured-view')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('app-canvas')).toBeFalsy();
+    expect(fixture.nativeElement.querySelector('app-canvas')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('app-structured-view')).toBeFalsy();
   });
 
   it('feeds the properties panel from a structured selection and routes changes back', () => {
     const fixture = TestBed.createComponent(DesignerComponent);
     const cmp = fixture.componentInstance;
-    fixture.detectChanges();
-    cmp.toggleStructuredView();
     fixture.detectChanges();
     cmp.onStructuredSelect({ activityType: 'Logic.ForEach', properties: { items: '${a}' } });
     expect(cmp.selectedActivityType()).toBe('Logic.ForEach');
@@ -483,7 +504,6 @@ describe('DesignerComponent — structured view toggle', () => {
     const fixture = TestBed.createComponent(DesignerComponent);
     const cmp = fixture.componentInstance;
     fixture.detectChanges();
-    cmp.toggleStructuredView();
     cmp.variables.set([{ name: 'faturalar', type: 'list<object>' }]);
     cmp.onStructuredSelect({ activityType: 'X', properties: {}, variables: [{ name: 'fatura', type: 'object' }] });
     expect(cmp.panelVariables().map((v) => v.name).sort()).toEqual(['fatura', 'faturalar']);
@@ -533,6 +553,7 @@ describe('DesignerComponent — ForEach item variable injection', () => {
       ],
     });
 
+    cmp.structuredView.set(false); // graf-tabanlı enjeksiyon yolu
     cmp.selectedNodeId.set('a');
 
     expect(cmp.panelVariables().map((v) => v.name).sort()).toEqual(['fatura', 'faturalar']);
@@ -548,5 +569,35 @@ describe('DesignerComponent — ForEach item variable injection', () => {
     });
     cmp.selectedNodeId.set('x');
     expect(cmp.panelVariables()).toEqual([]);
+  });
+
+  it('grid seçiminde kolonlardan şemalı list<object> değişkeni üretir', () => {
+    // 🎯 ile ALV grid seçildiğinde kolonlar tasarım anında okunur ve satır şemasına dönüşür;
+    // çalışma anında süreç tasarlanamayacağı için bu bilgi tasarım anında oluşmalıdır.
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    component.onGridReadPropertiesChange({
+      outputVariable: 'stokSatirlari',
+      columns: JSON.stringify(['MATNR', 'LGORT', 'LABST']),
+    });
+
+    const variable = component.variables().find((v) => v.name === 'stokSatirlari');
+    expect(variable).toBeTruthy();
+    expect(variable!.type).toBe('list<object>');
+    expect(Object.keys((variable!.schema as any).items.properties)).toEqual(['MATNR', 'LGORT', 'LABST']);
+  });
+
+  it('kolon bilgisi yoksa şemasız list<object> değişkeni üretir', () => {
+    const fixture = TestBed.createComponent(DesignerComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    component.onGridReadPropertiesChange({ outputVariable: 'satirlar' });
+
+    const variable = component.variables().find((v) => v.name === 'satirlar');
+    expect(variable!.type).toBe('list<object>');
+    expect(variable!.schema).toBeUndefined();
   });
 });

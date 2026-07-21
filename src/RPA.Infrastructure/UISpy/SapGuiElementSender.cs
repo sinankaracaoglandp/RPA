@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.UISpy;
+﻿namespace RPA.Infrastructure.UISpy;
 
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
@@ -51,6 +51,9 @@ public sealed record SpyElementMessage
     public int? Dx { get; init; }
     public int? Dy { get; init; }
 
+    /// <summary>ALV grid seçildiyse tasarım anındaki teknik kolon adları (grid dışı: null).</summary>
+    public IReadOnlyList<string>? Columns { get; init; }
+
     /// <summary>Bir <see cref="SapGuiElement"/>'ten mesaj oluşturur.</summary>
     public static SpyElementMessage From(SapGuiElement element) => From(element, Guid.Empty);
 
@@ -68,6 +71,7 @@ public sealed record SpyElementMessage
             Changeable = element.Changeable,
             X = element.X,
             Y = element.Y,
+            Columns = element.Columns,
         };
     }
 
@@ -126,6 +130,22 @@ public sealed record SpyElementMessage
             ImageBase64 = imageBase64,
             Region = regionJson,
             Selector = imageBase64 ?? regionJson,
+            Enabled = true,
+            Changeable = true,
+        };
+    }
+
+    /// <summary>🎯 klasör picker'dan (agent'ta native klasör seçim diyaloğu) mesaj oluşturur.</summary>
+    public static SpyElementMessage FromFolder(string folderPath, Guid sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folderPath);
+        return new SpyElementMessage
+        {
+            SessionId = sessionId,
+            Kind = "folder",
+            ElementId = folderPath,
+            Selector = folderPath,
+            Text = folderPath,
             Enabled = true,
             Changeable = true,
         };

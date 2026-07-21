@@ -51,8 +51,9 @@
           {{ 'designer.run' | translate }}
         </button>
         @if (saveState() === 'error') {
-          <span class="designer__save-error text-red-600" data-testid="designer-save-error">
-            {{ 'designer.saveError' | translate }}
+          <span class="designer__save-error text-red-600" data-testid="designer-save-error"
+            [title]="saveErrorMessage() ?? ''">
+            {{ 'designer.saveError' | translate }}{{ saveErrorMessage() ? ': ' + saveErrorMessage() : '' }}
           </span>
         }
         @if (runState() === 'queued') {

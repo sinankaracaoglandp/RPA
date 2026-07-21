@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.UISpy;
+﻿namespace RPA.Infrastructure.UISpy;
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -17,6 +17,15 @@ public interface INativeWindowApi
 
     /// <summary>Verilen ekran noktasındaki pencerenin sınıf adını döner (yoksa null).</summary>
     string? GetWindowClassAt(int x, int y);
+
+    /// <summary>
+    /// Verilen ekran noktasındaki pencerenin KÖK (top-level) sınıf adını döner.
+    /// <para><c>WindowFromPoint</c> noktanın altındaki ALT kontrolü verir; SAP metin alanının
+    /// üzerindeyken dönen sınıf <c>SAP_FRONTEND*</c> DEĞİLDİR. SAP penceresi tespiti bu yüzden
+    /// kök pencereye bakmalıdır.</para>
+    /// Varsayılan implementasyon geriye uyumluluk için alt pencere sınıfına düşer.
+    /// </summary>
+    string? GetRootWindowClassAt(int x, int y) => GetWindowClassAt(x, y);
 }
 
 /// <summary>
@@ -28,6 +37,32 @@ public interface ISapGuiElementResolver
 {
     /// <summary>Verilen ekran noktasındaki SAP elementini döner (SAP dışıysa veya bulunamazsa null).</summary>
     SapGuiElement? ResolveAt(int x, int y);
+
+    /// <summary>
+    /// Verilen noktadaki elementi kullanıcıya görsel olarak vurgular (UI Spy hover geri bildirimi).
+    /// Varsayılan olarak işlemsizdir — vurgu opsiyonel bir konfordur, seçim doğruluğunu etkilemez.
+    /// </summary>
+    void Highlight(int x, int y) { }
+
+    /// <summary>
+    /// Son çizilen vurgu çerçevesini kaldırır. SAP'ın <c>Visualize(true)</c> çerçevesi kendiliğinden
+    /// silinmez; kapatılmazsa gezinirken ekranda çerçeveler birikir.
+    /// </summary>
+    void ClearHighlight() { }
+
+    /// <summary>
+    /// Son çözümleme hatasının açıklaması (yoksa null). UI Spy tanılaması için: element
+    /// bulunamadığında sebebin (COM attach / scripting izni / nokta SAP dışı) kullanıcıya
+    /// bildirilebilmesi gerekir.
+    /// </summary>
+    string? LastError => null;
+
+    /// <summary>
+    /// İmleç konumundan BAĞIMSIZ bağlantı öz-testi: SAP'a attach olunabiliyor mu, kaç oturum var,
+    /// ana pencere (wnd[0]) okunabiliyor mu ve ekranda hangi dikdörtgeni kaplıyor?
+    /// Picker başlangıcında loglanır — kullanıcı fareyi SAP'tan çekmeden sorunu görebilsin diye.
+    /// </summary>
+    string SelfTest() => "öz-test bu çözücüde desteklenmiyor";
 }
 
 /// <summary>
@@ -72,13 +107,13 @@ public sealed class SapGuiElementDetector
     /// <summary>Belirli bir ekran noktasındaki SAP GUI elementini döner (on-demand tespit).</summary>
     public SapGuiElement? DetectElementAt(int x, int y)
     {
-        var windowClass = _nativeApi.GetWindowClassAt(x, y);
-        if (!IsSapWindow(windowClass))
-        {
-            _logger.LogDebug("UI Spy: ({X},{Y}) noktası SAP penceresi değil (sınıf: {Class}).", x, y, windowClass ?? "<null>");
-            return null;
-        }
-
+        // Pencere sınıfına bakarak "burası SAP mi?" diye karar VERMİYORUZ. WindowFromPoint en
+        // derin child'ı verir; SAP ekranında bu bir alt kontrol ('Edit'), açık bir menü ('#32768')
+        // veya popup olabilir ve hiçbiri 'SAP_FRONTEND*' değildir. Sınıf kapısı bu yüzden sürekli
+        // YANLIŞ NEGATİF üretiyordu (picker hiçbir zaman element bulamıyordu).
+        //
+        // Doğru otorite SAP'ın kendisidir: FindByPosition bir bileşen döndürüyorsa nokta zaten
+        // SAP oturumundadır. Sınıf bilgisi yalnızca tanılamada (Diagnose) kullanılır.
         var element = _resolver.ResolveAt(x, y);
         if (element is null)
         {
@@ -91,6 +126,37 @@ public sealed class SapGuiElementDetector
         _logger.LogDebug("UI Spy: element tespit edildi {ElementId} ({Type}) @ ({X},{Y}).", located.Id, located.Type, x, y);
         return located;
     }
+
+    /// <summary>
+    /// Verilen noktada element bulunamamasının SEBEBİNİ insan-okur biçimde döner (tanılama).
+    /// Picker, seçim yapılamadığında bunu loglar — aksi halde kullanıcı "hiçbir şey olmuyor"
+    /// dışında bir bilgi alamaz.
+    /// </summary>
+    public string Diagnose(int x, int y)
+    {
+        var childClass = _nativeApi.GetWindowClassAt(x, y);
+        var rootClass = _nativeApi.GetRootWindowClassAt(x, y);
+        var isSap = IsSapWindow(childClass) || IsSapWindow(rootClass);
+
+        var windows = $"child: '{childClass ?? "<null>"}', kök: '{rootClass ?? "<null>"}'" +
+                      (isSap ? " (SAP penceresi)" : string.Empty);
+
+        var error = _resolver.LastError;
+        return error is null
+            ? $"({x},{y}) bu noktada SAP elementi yok — {windows}. " +
+              "İmleç SAP oturum penceresinin DIŞINDAYSA bu normaldir. SAP ekranının üzerindeyken de " +
+              "oluyorsa nokta hiçbir SAP penceresinin dikdörtgenine düşmüyor demektir."
+            : $"({x},{y}) element çözülemedi: {error} — {windows}";
+    }
+
+    /// <summary>SAP bağlantı öz-testi (imleçten bağımsız) — picker başlangıcında loglanır.</summary>
+    public string SelfTest() => _resolver.SelfTest();
+
+    /// <summary>UI Spy hover geri bildirimi: verilen noktadaki SAP elementini vurgular (best-effort).</summary>
+    public void HighlightAt(int x, int y) => _resolver.Highlight(x, y);
+
+    /// <summary>Ekranda kalan son vurgu çerçevesini kaldırır.</summary>
+    public void ClearHighlight() => _resolver.ClearHighlight();
 
     /// <summary>Pencere sınıf adının bir SAP GUI penceresine ait olup olmadığını belirler.</summary>
     public static bool IsSapWindow(string? windowClass)
@@ -127,8 +193,23 @@ public sealed class Win32NativeWindowApi : INativeWindowApi
     }
 
     public string? GetWindowClassAt(int x, int y)
+        => ClassNameOf(WindowFromPoint(new POINT { X = x, Y = y }));
+
+    public string? GetRootWindowClassAt(int x, int y)
     {
         var hWnd = WindowFromPoint(new POINT { X = x, Y = y });
+        if (hWnd == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        // GA_ROOT (2): alt kontrolden top-level pencereye çık.
+        var root = GetAncestor(hWnd, 2);
+        return ClassNameOf(root == IntPtr.Zero ? hWnd : root);
+    }
+
+    private static string? ClassNameOf(IntPtr hWnd)
+    {
         if (hWnd == IntPtr.Zero)
         {
             return null;
@@ -138,6 +219,9 @@ public sealed class Win32NativeWindowApi : INativeWindowApi
         var length = GetClassName(hWnd, buffer, buffer.Length);
         return length > 0 ? new string(buffer, 0, length) : null;
     }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT

@@ -90,6 +90,39 @@ describe('VariablesPanelComponent', () => {
     ]);
   });
 
+  it('preserves the schema and description when the type is changed', () => {
+    const schema = {
+      type: 'array',
+      items: { type: 'object', properties: { name: { type: 'string' } } },
+    };
+    fixture.componentRef.setInput('variables', [
+      { name: 'dosyalar', type: 'list<object>', scope: 'global', schema, description: 'File.List dosya listesi' },
+    ]);
+    let emitted: any;
+    component.variablesChange.subscribe((value) => (emitted = value));
+    fixture.detectChanges();
+
+    const typeSelect = fixture.nativeElement.querySelector('[data-testid="variable-type-0"]') as HTMLSelectElement;
+    typeSelect.value = 'JSON';
+    typeSelect.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(emitted[0].schema).toEqual(schema);
+    expect(emitted[0].description).toBe('File.List dosya listesi');
+  });
+
+  it('renders the current type as an option even when outside the base type list', () => {
+    fixture.componentRef.setInput('variables', [
+      { name: 'dosyalar', type: 'list<object>', scope: 'global' },
+    ]);
+    fixture.detectChanges();
+
+    const typeSelect = fixture.nativeElement.querySelector('[data-testid="variable-type-0"]') as HTMLSelectElement;
+    expect(Array.from(typeSelect.options).map((o) => o.value)).toContain('list<object>');
+    fixture.detectChanges();
+    expect(typeSelect.value).toBe('list<object>');
+  });
+
   it('offers collection item fields inside foreach from schema-aware variables', () => {
     fixture.componentRef.setInput('variables', [
       {

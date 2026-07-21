@@ -3,7 +3,9 @@
     <p class="ks__empty">{{ 'keystroke.empty' | translate }}</p>
   }
 
-  @for (step of steps; track $index) {
+  <!-- stepIndex: iç içe @for'larda $index en yakın döngüye ait olduğundan adım index'i
+       açıkça takma adla taşınır (modifier döngüsü içinde $index modifier sırasıdır). -->
+  @for (step of steps; track $index; let stepIndex = $index) {
     <div class="ks__step" [attr.data-testid]="'ks-step-' + $index">
       <div class="ks__step-head">
         <span class="ks__badge">{{ $index + 1 }}</span>
@@ -41,9 +43,9 @@
               <label class="ks__modifier">
                 <input
                   type="checkbox"
-                  [attr.data-testid]="'ks-mod-' + $index + '-' + mod"
+                  [attr.data-testid]="'ks-mod-' + stepIndex + '-' + mod"
                   [checked]="hasModifier(step, mod)"
-                  (change)="toggleModifier($index, mod)"
+                  (change)="toggleModifier(stepIndex, mod)"
                 />
                 <span>{{ modifierLabels[mod] }}</span>
               </label>
@@ -72,9 +74,17 @@
             <input
               type="text"
               [attr.data-testid]="'ks-text-' + $index"
+              [class.ks__input--invalid]="isEmptyText(step)"
               [ngModel]="step.text"
               (ngModelChange)="setText($index, $event)"
             />
+            @if (isEmptyText(step)) {
+              <!-- Boş metin adımı çalışma anında BusinessException'a yol açar; tasarım
+                   anında görünür olsun (kullanıcı 'adım ekle' deyip doldurmayı unutabiliyor). -->
+              <small class="ks__error" [attr.data-testid]="'ks-text-empty-' + $index">
+                {{ 'keystroke.textRequired' | translate }}
+              </small>
+            }
           </label>
         }
 

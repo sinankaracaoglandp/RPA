@@ -130,10 +130,25 @@ export class VariablesPanelComponent {
     return candidate;
   }
 
+  /**
+   * Bu satır için tip seçeneklerini döndürür. Değişkenin mevcut tipi temel listede yoksa
+   * (ör. `File.List` çıktısının `list<object>` tipi) seçenek olarak eklenir; aksi halde
+   * `<select>` eşleşen `<option>` bulamaz ve tip boş görünürdü.
+   */
+  typeOptions(variable: WorkflowVariable): string[] {
+    const base = [...VARIABLE_TYPES] as string[];
+    if (variable.type && !base.includes(variable.type)) {
+      return [...base, variable.type];
+    }
+    return base;
+  }
+
   private normalizeVariable(variable: WorkflowVariable): WorkflowVariable {
     const type = variable.type || 'string';
+    // `...variable` ile şema/açıklama korunur — aksi halde tip/ad/varsayılan değişince
+    // (ör. File.List çıktısının alan şeması) silinirdi.
     return {
-      name: variable.name,
+      ...variable,
       type,
       scope: variable.scope ?? 'global',
       default: this.parseDefault(type, this.defaultValue(variable)),

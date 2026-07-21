@@ -91,7 +91,7 @@
               [value]="collectionScopeXPath" (input)="collectionScopeXPath = $any($event.target).value" placeholder="//cac:InvoiceLine" />
             <p class="einvoice-mapping__hint">Ağaçta tekrar eden bir öğeye (×N) tıklarsan scope otomatik dolar.</p>
             <button type="button" data-testid="add-collection"
-              (click)="addCollectionFromDraft(); newCollectionOpen = false; draftTarget = collections.length ? collections[collections.length - 1].name : 'root'">
+              (click)="addCollectionFromDraft(); newCollectionOpen = false">
               Satır dizisi oluştur
             </button>
           </div>
@@ -124,6 +124,10 @@
         @for (collection of collections; track collection.name) {
           <h5 class="einvoice-mapping__group-title">
             {{ collection.name }} <span class="einvoice-mapping__scope">{{ collection.scopeXPath }}</span>
+            <button type="button" class="einvoice-mapping__collection-delete"
+              [attr.data-testid]="'einvoice-remove-collection-' + collection.name"
+              [attr.aria-label]="collection.name + ' dizisini tamamen sil'"
+              (click)="confirmRemoveCollection(collection.name)">Diziyi sil</button>
           </h5>
           <ul class="einvoice-mapping__field-list" aria-label="Satır alanları">
             @if (!collection.fields.length) {

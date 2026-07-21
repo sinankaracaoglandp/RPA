@@ -162,6 +162,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
       this.editingIndex = null;
       this.editingCollection = null;
       this.editingFieldName = null;
+      this.draftTarget = 'root';
       this.draft = { ...this.draft, name: '', source: 'XPath', type: 'string', required: false, multiple: false };
       this.fieldDialogOpen = true;
     }
@@ -275,9 +276,24 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.editingIndex = null;
     this.editingCollection = null;
     this.editingFieldName = null;
+    this.draftTarget = 'root';
     this.draft = { name: '', source: 'XPath', valueXPath: this.draft.valueXPath ?? '', type: 'string', required: false, multiple: false };
     this.fieldDialogOpen = true;
     this.cdr?.markForCheck();
+  }
+
+  /** "Diziyi sil" düğmesi: yanlışlıkla silmeye karşı onay ister. */
+  confirmRemoveCollection(name: string): void {
+    if (typeof confirm === 'function' && !confirm(`"${name}" satır dizisi ve içindeki tüm alanlar silinsin mi?`)) return;
+    this.removeCollection(name);
+  }
+
+  /** Bir satır dizisini (koleksiyonu) bütünüyle kaldırır. */
+  removeCollection(name: string): void {
+    this.collections = this.collections.filter(collection => collection.name !== name);
+    if (this.selectedCollectionName === name) this.selectedCollectionName = '';
+    if (this.draftTarget === name) this.draftTarget = 'root';
+    this.emitProfileDefinition();
   }
 
   closeFieldDialog(): void {

@@ -1,4 +1,4 @@
-namespace RPA.Domain.Interfaces;
+﻿namespace RPA.Domain.Interfaces;
 
 /// <summary>
 /// SAP GUI Scripting (fallback) kanalı — programatik arayüzü (NCo) olmayan ekranlar için
@@ -58,6 +58,16 @@ public interface ISapGuiChannel
     /// </summary>
     /// <param name="menuPath">"/" ile ayrılmış menü metni yolu (örn. "Sistem/Liste/Yazdır")</param>
     Task SelectMenuAsync(string menuPath);
+
+    /// <summary>
+    /// Ekrana sanal tuş (VKey) gönderir — F8 (Çalıştır), F3 (Geri), F4 (Arama yardımı),
+    /// F12 (İptal), Enter gibi. SAP'ta buton ID'siyle tıklamaktan daha sağlamdır: ekran
+    /// düzeni değişse de tuş çalışır ve odaktan bağımsızdır.
+    /// </summary>
+    /// <param name="vKey">SAP VKey numarası (0=Enter, 1–12=F1–F12, 13–24=Shift+F1–F12,
+    /// 25–36=Ctrl+F1–F12, 37–48=Ctrl+Shift+F1–F12)</param>
+    /// <param name="windowId">Tuşun gönderileceği pencere (varsayılan ana ekran; popup için "wnd[1]")</param>
+    Task SendVKeyAsync(int vKey, string windowId = "wnd[0]");
 
     /// <summary>
     /// ALV grid oku (SAP listeyi otomatik al).

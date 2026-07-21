@@ -72,7 +72,7 @@ describe('SpyService', () => {
     await flushPromises();
 
     expect(connection.started).toBe(true);
-    // Non-image kind → options JSON null (StartSpy her zaman 3 argümanla çağrılır).
+    // Seçenek verilmediyse null gider (StartSpy her zaman 3 argümanla çağrılır).
     expect(connection.invoked[0]).toEqual({ method: 'StartSpy', args: ['session-1', 'sap', null] });
 
     connection.emit('DetectedElement', {
@@ -85,6 +85,43 @@ describe('SpyService', () => {
       kind: 'sap',
       elementId: 'wnd[0]/usr/btn[OK]',
     });
+  });
+
+  it('passes sap picker options as JSON to the hub', async () => {
+    // Regresyon: 'sap' seçenek gönderen türler listesinde YOKTU; Studio'da Ctrl+T seçilse bile
+    // ajana null gidiyor, ajan varsayılana (F2) düşüyordu — kullanıcı seçtiği tuşu kullanamıyordu.
+    const promise = service.pick('sap', {
+      captureMode: 'f2',
+      delaySeconds: 5,
+      hotKey: 'T',
+      ctrl: true,
+      shift: false,
+      alt: false,
+    });
+    await flushPromises();
+
+    expect(connection.invoked[0]).toEqual({
+      method: 'StartSpy',
+      args: [
+        'session-1',
+        'sap',
+        JSON.stringify({
+          captureMode: 'f2',
+          delaySeconds: 5,
+          hotKey: 'T',
+          ctrl: true,
+          shift: false,
+          alt: false,
+        }),
+      ],
+    });
+
+    connection.emit('DetectedElement', {
+      sessionId: 'session-1',
+      kind: 'sap',
+      elementId: 'wnd[0]/usr/ctxtX',
+    });
+    await promise;
   });
 
   it('passes image capture options as JSON to the hub', async () => {
@@ -115,7 +152,9 @@ describe('SpyService', () => {
       elementId: 'wnd[0]/usr/btn[WRONG]',
     });
     const assertion = expect(promise).rejects.toThrow('timed out');
-    await vi.advanceTimersByTimeAsync(1000);
+    // 'sap' elle hazırlık gerektiren türlerdendir → timeout en az 360 sn'ye yükseltilir
+    // (kullanıcı hedef SAP ekranını açıp tuşla seçimi başlatana kadar Studio pes etmemeli).
+    await vi.advanceTimersByTimeAsync(360000);
 
     await assertion;
     expect(connection.invoked.at(-1)).toEqual({ method: 'StopSpy', args: ['session-1'] });

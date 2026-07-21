@@ -1,9 +1,6 @@
-namespace RPA.Infrastructure.SAP;
+﻿namespace RPA.Infrastructure.SAP;
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using SystemException = RPA.Domain.Exceptions.SystemException;
@@ -315,53 +312,22 @@ public sealed class ComSapGuiSessionFactory : ISapGuiSessionFactory
         return GetFirstCollectionItem(sessions);
     }
 
+    // COM koleksiyon erişimi ve SAPGUI attach yolu UI Spy element çözücüsüyle paylaşılır
+    // (tek kaynak: SapGuiAutomation); aşağıdakiler yalnızca yönlendiricidir.
     private static int GetCollectionCount(object? collection)
-    {
-        if (collection is null)
-        {
-            return 0;
-        }
-
-        try
-        {
-            return Convert.ToInt32(SapCom.Get(collection, "Count") ?? 0);
-        }
-        catch
-        {
-            return 0;
-        }
-    }
+        => SapGuiAutomation.GetCollectionCount(collection);
 
     private static object? GetCollectionItem(object collection, int index)
-    {
-        try { return SapCom.Get(collection, "Item", index); } catch { }
-        try { return SapCom.Invoke(collection, "Item", index); } catch { }
-        try { return SapCom.Invoke(collection, "ElementAt", index); } catch { }
-        return null;
-    }
+        => SapGuiAutomation.GetCollectionItem(collection, index);
 
     private static object? GetIndexedProperty(object target, string propertyName, int index)
-    {
-        try { return SapCom.Get(target, propertyName, index); } catch { }
-        try { return SapCom.Invoke(target, propertyName, index); } catch { }
-        return null;
-    }
+        => SapGuiAutomation.GetIndexedProperty(target, propertyName, index);
 
     private static object? GetFirstCollectionItem(object? collection)
-    {
-        if (collection is null || GetCollectionCount(collection) <= 0)
-        {
-            return null;
-        }
-
-        return GetCollectionItem(collection, 0);
-    }
+        => SapGuiAutomation.GetFirstCollectionItem(collection);
 
     private static object? TryGetProperty(object target, string propertyName)
-    {
-        try { return SapCom.Get(target, propertyName); } catch { }
-        return null;
-    }
+        => SapGuiAutomation.TryGetProperty(target, propertyName);
 
     private static object? WaitForElement(object session, string elementId, TimeSpan timeout)
     {
@@ -404,175 +370,8 @@ public sealed class ComSapGuiSessionFactory : ISapGuiSessionFactory
         }
     }
 
-    private static object AttachEngine()
-    {
-        var sapGuiAuto = GetSapGuiAutomationObject(out var progIdError, out var monikerError);
-        if (sapGuiAuto is null)
-        {
-            StartSapLogonIfNeeded();
-            sapGuiAuto = WaitForSapGuiAutomationObject(out progIdError, out monikerError);
-        }
+    private static object AttachEngine() => SapGuiAutomation.AttachEngine();
 
-        if (sapGuiAuto is null)
-        {
-            throw new SystemException(
-                "SAP GUI otomasyon nesnesi alinamadi. SAP Logon baslatilamadi veya automation nesnesini yayinlamadi. " +
-                "Agent interaktif kullanici oturumunda calismali, " +
-                "Agent/SAP Logon ayni yetki seviyesinde calismali ve GUI Scripting etkin olmali. " +
-                $"ProgID sonucu: {progIdError?.Message ?? "uygun kayit yok"}. " +
-                $"ROT sonucu: {monikerError?.Message ?? "SAPGUI nesnesi bulunamadi"}.");
-        }
-
-        object? engine;
-        try
-        {
-            engine = SapCom.Invoke(sapGuiAuto, "GetScriptingEngine");
-        }
-        catch (Exception ex)
-        {
-            throw new SystemException(
-                "SAP GUI Scripting motoru alınamadı. SAP Logon > Options > Accessibility & Scripting > Scripting etkin olmalı.", ex);
-        }
-
-        if (engine is null)
-        {
-            throw new SystemException("SAP GUI Scripting devre dışı (istemci veya sunucu tarafında).");
-        }
-
-        return engine;
-    }
-
-    // ---- COM interop (Running Object Table üzerinden SAPGUI'ye bağlan) ----
-
-    private static object? WaitForSapGuiAutomationObject(out Exception? progIdError, out Exception? monikerError)
-    {
-        progIdError = null;
-        monikerError = null;
-
-        var deadline = DateTime.UtcNow.AddSeconds(15);
-        do
-        {
-            var sapGuiAuto = GetSapGuiAutomationObject(out progIdError, out monikerError);
-            if (sapGuiAuto is not null)
-            {
-                return sapGuiAuto;
-            }
-
-            Thread.Sleep(500);
-        }
-        while (DateTime.UtcNow < deadline);
-
-        return null;
-    }
-
-    private static void StartSapLogonIfNeeded()
-    {
-        if (Process.GetProcessesByName("saplogon").Length > 0 ||
-            Process.GetProcessesByName("saplgpad").Length > 0)
-        {
-            return;
-        }
-
-        var path = FindSapLogonPath();
-        if (path is null)
-        {
-            return;
-        }
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = path,
-            UseShellExecute = true,
-        });
-    }
-
-    private static string? FindSapLogonPath()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SAP", "FrontEnd", "SAPGUI", "saplogon.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SAP", "FrontEnd", "SAPGUI", "saplogon.exe"),
-        };
-
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
-    private static object? GetSapGuiAutomationObject(out Exception? progIdError, out Exception? monikerError)
-    {
-        var fromProgId = TryGetActiveObjectByProgId("SAPGUI", out progIdError);
-        if (fromProgId is not null)
-        {
-            monikerError = null;
-            return fromProgId;
-        }
-
-        // VBScript GetObject("SAPGUI") esdegeri. SAP GUI 8.x kurulumlarinda
-        // SAPGUI ProgID kaydi olmayabilir; calisan nesne ROT display-name ile yayinlanir.
-        return TryFindRunningObject("SAPGUI", out monikerError);
-    }
-
-    private static object? TryGetActiveObjectByProgId(string progId, out Exception? error)
-    {
-        error = null;
-        try
-        {
-            if (CLSIDFromProgID(progId, out var clsid) != 0)
-            {
-                return null;
-            }
-
-            GetActiveObject(ref clsid, IntPtr.Zero, out var activeObject);
-            return activeObject;
-        }
-        catch (Exception ex)
-        {
-            error = ex;
-            return null;
-        }
-    }
-
-    private static object? TryFindRunningObject(string displayName, out Exception? error)
-    {
-        error = null;
-        try
-        {
-            GetRunningObjectTable(0, out var rot);
-            CreateBindCtx(0, out var bindCtx);
-            rot.EnumRunning(out var enumMoniker);
-
-            var monikers = new IMoniker[1];
-            while (enumMoniker.Next(1, monikers, IntPtr.Zero) == 0)
-            {
-                monikers[0].GetDisplayName(bindCtx, null, out var currentName);
-                if (string.Equals(currentName, displayName, StringComparison.OrdinalIgnoreCase) ||
-                    currentName.EndsWith(displayName, StringComparison.OrdinalIgnoreCase))
-                {
-                    rot.GetObject(monikers[0], out var runningObject);
-                    return runningObject;
-                }
-            }
-
-            return null;
-        }
-        catch (Exception ex)
-        {
-            error = ex;
-            return null;
-        }
-    }
-
-    [DllImport("oleaut32.dll", PreserveSig = false)]
-    private static extern void GetActiveObject(
-        ref Guid rclsid, IntPtr pvReserved, [MarshalAs(UnmanagedType.IUnknown)] out object ppunk);
-
-    [DllImport("ole32.dll")]
-    private static extern int CLSIDFromProgID([MarshalAs(UnmanagedType.LPWStr)] string lpszProgID, out Guid lpclsid);
-
-    [DllImport("ole32.dll", PreserveSig = false)]
-    private static extern void CreateBindCtx(int reserved, out IBindCtx bindCtx);
-
-    [DllImport("ole32.dll", PreserveSig = false)]
-    private static extern void GetRunningObjectTable(int reserved, out IRunningObjectTable runningObjectTable);
 }
 
 /// <summary>

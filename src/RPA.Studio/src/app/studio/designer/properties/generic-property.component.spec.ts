@@ -122,7 +122,14 @@ describe('GenericPropertyComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(spy.pick).toHaveBeenCalledWith('sap', undefined);
+    expect(spy.pick).toHaveBeenCalledWith('sap', {
+      captureMode: 'f2',
+      delaySeconds: 5,
+      hotKey: 'T',
+      ctrl: true,
+      shift: false,
+      alt: false,
+    });
     expect((fixture.nativeElement.querySelector('[data-testid="prop-elementId"]') as HTMLInputElement).value)
       .toBe('wnd[0]/usr/btn[OK]');
     expect(emitted.at(-1)).toEqual({ elementId: 'wnd[0]/usr/btn[OK]' });
@@ -165,6 +172,103 @@ describe('GenericPropertyComponent', () => {
     fixture.detectChanges();
 
     expect(emitted.at(-1)).toEqual({ browser: 'edge' });
+  });
+
+  it('outputVariable: hiç değişken yokken bile ilk tuşta değil, yalnız commit ile yayınlar', () => {
+    component.activityType = 'File.List';
+    component.properties = {};
+    component.variables = []; // hiç değişken yok — ilk-tuş senaryosu
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/File.List').flush({
+      activityId: 'File.List',
+      displayName: 'Dosya Listele',
+      inputs: [{ name: 'outputVariable', type: 'string', required: false }],
+    });
+    fixture.detectChanges();
+
+    const field = fixture.nativeElement.querySelector('[data-testid="prop-outputVariable"]') as HTMLInputElement;
+    // Değişken yokken bile <input> (combobox) olmalı, <select> değil.
+    expect(field.tagName).toBe('INPUT');
+
+    // İlk tuş dahil hiçbir input olayı YAYINLAMAMALI — "F" için çöp değişken oluşmasın.
+    field.value = 'F';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(emitted.length).toBe(0);
+
+    field.value = 'FtrList';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(emitted.length).toBe(0);
+
+    // Yalnız commit (change/blur/Enter) tek seferde yayınlar.
+    field.value = 'FtrList';
+    field.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(emitted.length).toBe(1);
+    expect(emitted.at(-1)?.['outputVariable']).toBe('FtrList');
+  });
+
+  it('seeds metadata default values into node properties (e.g. sourceMode) on load', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { filePath: '{{_satir.path}}' };
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe((value) => (emitted = value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'sourceMode', type: 'string', defaultValue: 'XmlContent', options: ['FilePath', 'XmlContent'] },
+        { name: 'filePath', type: 'string' },
+        { name: 'outputVariable', type: 'string', defaultValue: 'fatura' },
+      ],
+    });
+    http.expectOne('/api/projects').flush([]);
+    fixture.detectChanges();
+
+    // Varsayılanı olan ve node'da bulunmayan alanlar tohumlanmalı; girilen filePath korunur.
+    expect(emitted?.['sourceMode']).toBe('XmlContent');
+    expect(emitted?.['outputVariable']).toBe('fatura');
+    expect(emitted?.['filePath']).toBe('{{_satir.path}}');
+  });
+
+  it('SendKeys: modifier checkbox edits the clicked step (nested @for index regression)', () => {
+    component.activityType = 'Desktop.SendKeys';
+    component.properties = {
+      keys: JSON.stringify([
+        { type: 'text', text: 'A1', waitMs: 0 },
+        { type: 'chord', modifiers: [], key: 'Enter', waitMs: 0 },
+        { type: 'text', text: 'X', waitMs: 0 },
+        { type: 'chord', modifiers: [], key: 'Tab', waitMs: 0 },
+        { type: 'chord', modifiers: [], key: 'S', waitMs: 0 },
+      ]),
+    };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/Desktop.SendKeys').flush({
+      activityId: 'Desktop.SendKeys',
+      displayName: 'Tuş Gönder',
+      inputs: [{ name: 'keys', type: 'string', pickerKind: 'keystroke-sequence' }],
+    });
+    fixture.detectChanges();
+
+    // 5. adımın (index 4) Ctrl kutucuğu — data-testid adım index'ini taşımalı.
+    const ctrl = fixture.nativeElement.querySelector('[data-testid="ks-mod-4-ctrl"]') as HTMLInputElement;
+    expect(ctrl).toBeTruthy();
+    ctrl.click();
+    fixture.detectChanges();
+
+    const saved = JSON.parse(String(emitted.at(-1)?.['keys']));
+    expect(saved[4].modifiers).toEqual(['ctrl']); // tıklanan adım
+    expect(saved[1].modifiers).toEqual([]);       // diğer chord adımlar bozulmamalı
+    expect(saved[3].modifiers).toEqual([]);
   });
 
   it('routes an einvoice mapping picker before generic property branches', () => {

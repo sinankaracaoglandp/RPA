@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.Tests.SAP;
+﻿namespace RPA.Infrastructure.Tests.SAP;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -32,6 +32,13 @@ public class SapGuiChannelTests
     }
 
     private static IActivityExecutionContext Ctx() => new TestActivityExecutionContext();
+
+    /// <summary>
+    /// Kanalın gerçekten oturuma ilettiği son sanal tuş. Stub oturum kaydettiği için kanal →
+    /// oturum yolu (yalnız kanalın kendi doğrulaması değil) uçtan uca doğrulanabilir.
+    /// </summary>
+    private static (int VKey, string WindowId)? LastVKeyOf(ISapGuiSessionManager manager)
+        => ((StubSapGuiSession)manager.ActiveSessions.Single()).LastSentVKey;
 
     // =============================================================== Domain artefacts
 
@@ -439,6 +446,103 @@ public class SapGuiChannelTests
         channel.Verify(c => c.SelectMenuAsync("Sistem/Liste/Yazdır"), Times.Once);
     }
 
+    // =============================================================== SendVKey (F8/F3/F4…)
+
+    [Fact]
+    public async Task Channel_SendVKey_ForwardsKeyAndWindowToSession()
+    {
+        var manager = NewManager();
+        var channel = NewChannel(manager);
+        await channel.ConnectAsync("DEV", "100", "TESTUSER", "pw", "TR");
+
+        await channel.SendVKeyAsync(8); // F8 — Çalıştır
+
+        // Varsayılan hedef ana ekrandır.
+        Assert.Equal((8, "wnd[0]"), LastVKeyOf(manager));
+    }
+
+    [Fact]
+    public async Task Channel_SendVKey_TargetsGivenPopupWindow()
+    {
+        var manager = NewManager();
+        var channel = NewChannel(manager);
+        await channel.ConnectAsync("DEV", "100", "TESTUSER", "pw", "TR");
+
+        await channel.SendVKeyAsync(0, "wnd[1]"); // iletişim kutusunda Enter
+
+        Assert.Equal((0, "wnd[1]"), LastVKeyOf(manager));
+    }
+
+    [Fact]
+    public async Task Channel_SendVKey_BlankWindow_FallsBackToMainScreen()
+    {
+        var manager = NewManager();
+        var channel = NewChannel(manager);
+        await channel.ConnectAsync("DEV", "100", "TESTUSER", "pw", "TR");
+
+        await channel.SendVKeyAsync(3, "   ");
+
+        Assert.Equal((3, "wnd[0]"), LastVKeyOf(manager));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(49)]
+    public async Task Channel_SendVKey_OutOfRange_ThrowsBusinessException(int vKey)
+    {
+        var channel = await NewConnectedChannel();
+        await Assert.ThrowsAsync<BusinessException>(() => channel.SendVKeyAsync(vKey));
+    }
+
+    [Theory]
+    [InlineData("F8", 8)]
+    [InlineData("F3", 3)]
+    [InlineData("F4", 4)]
+    [InlineData("Enter", 0)]
+    [InlineData("Shift+F3", 15)]
+    public async Task SendVKeyActivity_TranslatesKeyNameAndCallsChannel(string key, int expected)
+    {
+        var channel = new Mock<ISapGuiChannel>();
+        var activity = new SapGuiSendVKeyActivity(channel.Object);
+        var ctx = Ctx();
+        ctx.SetVariable("key", key);
+
+        await activity.ExecuteAsync(ctx);
+
+        channel.Verify(c => c.SendVKeyAsync(expected, "wnd[0]"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendVKeyActivity_UsesGivenWindowId()
+    {
+        var channel = new Mock<ISapGuiChannel>();
+        var activity = new SapGuiSendVKeyActivity(channel.Object);
+        var ctx = Ctx();
+        ctx.SetVariable("key", "Enter");
+        ctx.SetVariable("windowId", "wnd[1]");
+
+        await activity.ExecuteAsync(ctx);
+
+        channel.Verify(c => c.SendVKeyAsync(0, "wnd[1]"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendVKeyActivity_MissingKey_ThrowsBusinessException()
+    {
+        var activity = new SapGuiSendVKeyActivity(Mock.Of<ISapGuiChannel>());
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(Ctx()));
+    }
+
+    [Fact]
+    public async Task SendVKeyActivity_UnknownKey_ThrowsBusinessException()
+    {
+        var activity = new SapGuiSendVKeyActivity(Mock.Of<ISapGuiChannel>());
+        var ctx = Ctx();
+        ctx.SetVariable("key", "Alt+F4"); // SAP VKey tablosunda yok
+
+        await Assert.ThrowsAsync<BusinessException>(() => activity.ExecuteAsync(ctx));
+    }
+
     [Fact]
     public async Task SelectMenuActivity_MissingMenuPath_ThrowsBusinessException()
     {
@@ -512,5 +616,134 @@ public class SapGuiChannelTests
     public void Activities_NullChannel_ThrowsArgumentNull()
     {
         Assert.Throws<ArgumentNullException>(() => new SapGuiClickActivity(null!));
+    }
+
+    // =============================================================== GridRead çıktı değişkeni
+
+    [Fact]
+    public async Task GridReadActivity_BindsRowsToChosenOutputVariable()
+    {
+        var rows = new List<Dictionary<string, object?>>
+        {
+            new() { ["MATNR"] = "100-100", ["LGORT"] = "0001" },
+        };
+        var channel = new Mock<ISapGuiChannel>();
+        channel.Setup(c => c.ReadGridAsync("wnd[0]/usr/cntlGRID1/shellcont/shell")).ReturnsAsync(rows);
+
+        var activity = new SapGuiGridReadActivity(channel.Object);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+        ctx.SetVariable("outputVariable", "stokSatirlari");
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        // Sonraki node'lar {{stokSatirlari}} ile erişebilmeli.
+        Assert.Same(rows, ctx.GetVariable<List<Dictionary<string, object?>>>("stokSatirlari"));
+        Assert.Same(rows, outputs["stokSatirlari"]);
+        // Sabit "rows" çıktısı geriye uyumluluk için korunur.
+        Assert.Same(rows, outputs["rows"]);
+    }
+
+    [Fact]
+    public async Task GridReadActivity_WithoutOutputVariable_StillReturnsRows()
+    {
+        var rows = new List<Dictionary<string, object?>> { new() { ["MATNR"] = "X" } };
+        var channel = new Mock<ISapGuiChannel>();
+        channel.Setup(c => c.ReadGridAsync(It.IsAny<string>())).ReturnsAsync(rows);
+
+        var activity = new SapGuiGridReadActivity(channel.Object);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        Assert.Same(rows, outputs["rows"]);
+        Assert.Single(outputs);
+    }
+
+    // =============================================================== GridRead kolon sözleşmesi
+
+    private static SapGuiGridReadActivity NewGridActivity(List<Dictionary<string, object?>> rows)
+    {
+        var channel = new Mock<ISapGuiChannel>();
+        channel.Setup(c => c.ReadGridAsync(It.IsAny<string>())).ReturnsAsync(rows);
+        return new SapGuiGridReadActivity(channel.Object);
+    }
+
+    [Fact]
+    public async Task GridReadActivity_ColumnHiddenAtRuntime_IsFilledWithNull()
+    {
+        // Tasarımda MATNR + LGORT seçildi; çalışma anında MATNR gizlenmiş.
+        var activity = NewGridActivity([new() { ["LGORT"] = "0001" }]);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+        ctx.SetVariable("columns", """["MATNR","LGORT"]""");
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        var row = ((List<Dictionary<string, object?>>)outputs["rows"]!).Single();
+        Assert.True(row.ContainsKey("MATNR"));
+        Assert.Null(row["MATNR"]);
+        Assert.Equal("0001", row["LGORT"]);
+    }
+
+    [Fact]
+    public async Task GridReadActivity_ExtraRuntimeColumn_IsIgnored()
+    {
+        // Tasarımda LGORT yoktu; çalışma anında geldi → sözleşme dışıdır, yok sayılır.
+        var activity = NewGridActivity([new() { ["MATNR"] = "100-100", ["LGORT"] = "0001" }]);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+        ctx.SetVariable("columns", """["MATNR"]""");
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        var row = ((List<Dictionary<string, object?>>)outputs["rows"]!).Single();
+        Assert.Equal("100-100", row["MATNR"]);
+        Assert.False(row.ContainsKey("LGORT"));
+    }
+
+    [Fact]
+    public async Task GridReadActivity_WithoutColumnContract_KeepsAllRuntimeColumns()
+    {
+        var activity = NewGridActivity([new() { ["MATNR"] = "X", ["LGORT"] = "0001" }]);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        var row = ((List<Dictionary<string, object?>>)outputs["rows"]!).Single();
+        Assert.Equal(2, row.Count);
+    }
+
+    [Fact]
+    public async Task GridReadActivity_BrokenColumnContract_FallsBackToAllColumns()
+    {
+        // Bozuk JSON sessizce satırları BOŞALTMAMALI (veri kaybı) — sözleşmesiz davranılır.
+        var activity = NewGridActivity([new() { ["MATNR"] = "X" }]);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+        ctx.SetVariable("columns", "{bozuk-json");
+
+        var outputs = await activity.ExecuteAsync(ctx);
+
+        var row = ((List<Dictionary<string, object?>>)outputs["rows"]!).Single();
+        Assert.Equal("X", row["MATNR"]);
+    }
+
+    [Fact]
+    public async Task GridReadActivity_ColumnContract_AppliesToBoundOutputVariable()
+    {
+        var activity = NewGridActivity([new() { ["LGORT"] = "0001" }]);
+        var ctx = Ctx();
+        ctx.SetVariable("gridId", "wnd[0]/usr/cntlGRID1/shellcont/shell");
+        ctx.SetVariable("columns", """["MATNR","LGORT"]""");
+        ctx.SetVariable("outputVariable", "stok");
+
+        await activity.ExecuteAsync(ctx);
+
+        var bound = ctx.GetVariable<List<Dictionary<string, object?>>>("stok")!.Single();
+        Assert.True(bound.ContainsKey("MATNR"));
+        Assert.Null(bound["MATNR"]);
     }
 }

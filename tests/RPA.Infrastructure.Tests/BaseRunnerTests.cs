@@ -901,6 +901,34 @@ public class BaseRunnerTests
     }
 
     [Fact]
+    public void ExpressionEvaluator_ResolvesNestedDictionaryFieldInsideJsonPayload()
+    {
+        // Desktop.SendKeys senaryosu: 'keys' yapısal JSON'dur ve içinde {{fatura.FaturaNo}} geçer.
+        // E-Fatura çıktısı OrdinalIgnoreCase bir Dictionary'dir.
+        var invoice = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["FaturaNo"] = "NSE2026000000332",
+            ["BosAlan"] = null,
+        };
+        var scope = new VariableScope();
+        scope.SetGlobalVariable("fatura", invoice);
+        var eval = new ExpressionEvaluator(scope);
+
+        var keys = """[{"type":"text","text":"{{fatura.FaturaNo}}","waitMs":0}]""";
+        Assert.Equal(
+            """[{"type":"text","text":"NSE2026000000332","waitMs":0}]""",
+            eval.EvaluateString(keys));
+
+        // Farklı harf düzeni de çözülür (sözlük OrdinalIgnoreCase).
+        Assert.Equal("NSE2026000000332", eval.EvaluateString("{{fatura.faturano}}"));
+
+        // Alan VAR ama değeri null ise sonuç boş string olur — kullanıcının gördüğü belirti budur.
+        Assert.Equal("", eval.EvaluateString("{{fatura.BosAlan}}"));
+        // Alan hiç yoksa da boş string.
+        Assert.Equal("", eval.EvaluateString("{{fatura.YokAlan}}"));
+    }
+
+    [Fact]
     public void ExpressionEvaluator_Comparison_And_Template()
     {
         var scope = new VariableScope();

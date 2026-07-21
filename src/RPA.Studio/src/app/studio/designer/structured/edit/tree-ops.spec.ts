@@ -1,8 +1,8 @@
 import {
   insertItem, removeItem, moveItem, findPath, newStep, newContainer,
-  findSeqPath, reorderInSeq, moveAcross, updateItemAt, setItemProps,
+  findSeqPath, reorderInSeq, moveAcross, updateItemAt, setItemProps, setItemLabel, duplicateItem,
 } from './tree-ops';
-import { step, container, StructuredSequence } from '../structured-model';
+import { step, container, StructuredSequence, StepItem, ContainerItem } from '../structured-model';
 import { WorkflowNode } from '../../../../shared/models/workflow.model';
 
 const n = (id: string): WorkflowNode => ({ id, type: 'activity', activity: 'X' });
@@ -123,5 +123,73 @@ describe('tree-ops — props editing', () => {
     const out = updateItemAt(tree, { steps: [], index: 1 },
       (it) => ({ ...(it as { kind: 'step'; node: WorkflowNode }), node: { ...(it as { node: WorkflowNode }).node, id: 'B2' } } as never));
     expect((out[1] as { node: WorkflowNode }).node.id).toBe('B2');
+  });
+});
+
+describe('setItemLabel', () => {
+  it('writes the label onto a step node and clears it when blank', () => {
+    const tree = [step({ id: 'a', type: 'activity', activity: 'A' })];
+    const named = setItemLabel(tree, { steps: [], index: 0 }, '  Fatura no girişi  ');
+    expect((named[0] as StepItem).node.label).toBe('Fatura no girişi');
+    const cleared = setItemLabel(named, { steps: [], index: 0 }, '   ');
+    expect((cleared[0] as StepItem).node.label).toBeUndefined();
+  });
+
+  it('writes the label onto container props', () => {
+    const tree = [container('forEach', { items: '${a}' }, { body: [] })];
+    const named = setItemLabel(tree, { steps: [], index: 0 }, 'Faturaları gez');
+    expect((named[0] as ContainerItem).props['label']).toBe('Faturaları gez');
+  });
+
+  it('keeps the container label when the properties panel writes props back', () => {
+    const tree = setItemLabel(
+      [container('forEach', { items: '${a}' }, { body: [] })], { steps: [], index: 0 }, 'Faturaları gez',
+    );
+    const edited = setItemProps(tree, { steps: [], index: 0 }, { items: '${b}' });
+    expect((edited[0] as ContainerItem).props['label']).toBe('Faturaları gez');
+  });
+});
+
+describe('duplicateItem', () => {
+  let seq = 0;
+  const ids = () => `copy-${++seq}`;
+  beforeEach(() => { seq = 0; });
+
+  it('inserts the copy right after the original with a fresh node id', () => {
+    const tree = [step({ id: 'a', type: 'activity', activity: 'A' }), step(n('z'))];
+    const r = duplicateItem(tree, { steps: [], index: 0 }, ids)!;
+    expect(r.tree).toHaveLength(3);
+    expect((r.tree[1] as StepItem).node.id).toBe('copy-1');
+    expect((r.tree[1] as StepItem).node.activity).toBe('A');
+    expect((r.tree[2] as StepItem).node.id).toBe('z');
+  });
+
+  it('deep-copies properties so editing the copy does not touch the original', () => {
+    const tree = [step({
+      id: 'a', type: 'activity', activity: 'Desktop.SendKeys',
+      properties: { keys: JSON.stringify([{ type: 'Text', text: 'x' }]), selector: '/Window' },
+    })];
+    const r = duplicateItem(tree, { steps: [], index: 0 }, ids)!;
+    const copy = (r.tree[1] as StepItem).node;
+    (copy.properties as Record<string, unknown>)['selector'] = '/Other';
+    expect(((r.tree[0] as StepItem).node.properties as Record<string, unknown>)['selector']).toBe('/Window');
+  });
+
+  it('copies a container with all lane children, each child getting a fresh id', () => {
+    const tree = [container('forEach', { items: '${xs}' }, {
+      body: [step({ id: 'b1', type: 'activity', activity: 'A' }), step({ id: 'b2', type: 'activity', activity: 'B' })],
+    })];
+    const r = duplicateItem(tree, { steps: [], index: 0 }, ids)!;
+    const copy = r.tree[1] as ContainerItem;
+    expect(copy.props['items']).toBe('${xs}');
+    expect((copy.lanes.body as StructuredSequence).map((c) => (c as StepItem).node.id))
+      .toEqual(['copy-1', 'copy-2']);
+  });
+
+  it('duplicates an item nested inside a lane in place', () => {
+    const tree = [container('forEach', { items: '${xs}' }, { body: [step(n('b1'))] })];
+    const r = duplicateItem(tree, { steps: [{ lane: 'body', index: 0 }], index: 0 }, ids)!;
+    const body = (r.tree[0] as ContainerItem).lanes.body as StructuredSequence;
+    expect(body.map((c) => (c as StepItem).node.id)).toEqual(['b1', 'copy-1']);
   });
 });

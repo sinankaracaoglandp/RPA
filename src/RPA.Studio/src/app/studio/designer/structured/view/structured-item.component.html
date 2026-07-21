@@ -5,11 +5,27 @@
     @if (!first) { <span class="structured-port structured-port--in" aria-hidden="true"></span> }
     @if (!last) { <span class="structured-port structured-port--out" aria-hidden="true"></span> }
     <span class="structured-step__icon" aria-hidden="true">▸</span>
-    <span class="structured-step__title">{{ stepTitle() }}</span>
-    <span class="structured-step__type">{{ item.node.type }}</span>
+    @if (renaming) {
+      <input
+        #renameInput
+        class="structured-item__rename-input"
+        data-testid="item-rename-input"
+        [value]="labelOf()"
+        [placeholder]="'structured.renamePlaceholder' | translate"
+        (click)="$event.stopPropagation()"
+        (keydown.enter)="commitRename(renameInput.value)"
+        (keydown.escape)="cancelRename()"
+        (blur)="commitRename(renameInput.value)"
+      />
+    } @else {
+      <span class="structured-step__title" data-testid="item-title" (dblclick)="startRename($event)">{{ stepTitle() }}</span>
+    }
+    <span class="structured-step__type">{{ item.node.activity ?? item.node.type }}</span>
     @if (editable) {
       <span class="structured-item__controls">
-        <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
+        <button type="button" data-testid="item-rename" [title]="'structured.rename' | translate" (click)="startRename($event)">✎</button>
+        <button type="button" data-testid="item-duplicate" [title]="'structured.duplicate' | translate" (click)="emitAction('duplicate', $event)">⧉</button>
+          <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
         <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down', $event)">↓</button>
         <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete', $event)">✕</button>
       </span>
@@ -22,12 +38,31 @@
     @if (!last) { <span class="structured-port structured-port--out" aria-hidden="true"></span> }
     <header class="structured-container__header" (click)="onSelect($event)">
       <span class="structured-container__icon" data-testid="container-icon" aria-hidden="true">{{ containerIcon(container.type) }}</span>
-      <span class="structured-container__label">{{ 'structured.type.' + container.type | translate }}</span>
+      @if (renaming) {
+        <input
+          #renameInput
+          class="structured-item__rename-input"
+          data-testid="item-rename-input"
+          [value]="labelOf()"
+          [placeholder]="'structured.renamePlaceholder' | translate"
+          (click)="$event.stopPropagation()"
+          (keydown.enter)="commitRename(renameInput.value)"
+          (keydown.escape)="cancelRename()"
+          (blur)="commitRename(renameInput.value)"
+        />
+      } @else if (labelOf()) {
+        <span class="structured-container__label" data-testid="item-title" (dblclick)="startRename($event)">{{ labelOf() }}</span>
+        <span class="structured-container__kind">{{ 'structured.type.' + container.type | translate }}</span>
+      } @else {
+        <span class="structured-container__label" data-testid="item-title" (dblclick)="startRename($event)">{{ 'structured.type.' + container.type | translate }}</span>
+      }
       @if (summary(container)) {
         <code class="structured-container__summary">{{ summary(container) }}</code>
       }
       @if (editable) {
         <span class="structured-item__controls">
+          <button type="button" data-testid="item-rename" [title]="'structured.rename' | translate" (click)="startRename($event)">✎</button>
+          <button type="button" data-testid="item-duplicate" [title]="'structured.duplicate' | translate" (click)="emitAction('duplicate', $event)">⧉</button>
           <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
           <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down', $event)">↓</button>
           <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete', $event)">✕</button>

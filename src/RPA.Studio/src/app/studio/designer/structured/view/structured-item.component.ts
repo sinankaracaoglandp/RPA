@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Output, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CdkDrag, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
@@ -7,7 +7,8 @@ import { StructuredAddMenuComponent } from './structured-add-menu.component';
 
 /** Yapısal editör düzenleme olayı; öğe referansı taşır (path `findPath` ile host'ta çıkar). */
 export type StructuredAction =
-  | { kind: 'delete' | 'up' | 'down'; target: StructuredItem }
+  | { kind: 'delete' | 'up' | 'down' | 'duplicate'; target: StructuredItem }
+  | { kind: 'rename'; target: StructuredItem; label: string }
   | { kind: 'add'; container: ContainerItem; lane: LaneName; item: StructuredItem };
 
 /**
@@ -81,10 +82,35 @@ export class StructuredItemComponent {
 
   stepTitle(): string {
     if (this.item.kind !== 'step') { return ''; }
-    return this.item.node.activity ?? this.item.node.type;
+    return this.item.node.label?.trim() || (this.item.node.activity ?? this.item.node.type);
   }
 
-  emitAction(kind: 'delete' | 'up' | 'down', event?: Event): void {
+  /** Öğenin kullanıcı adı (yoksa boş) — konteyner başlığında tip etiketinin yerini alır. */
+  labelOf(item: StructuredItem = this.item): string {
+    const raw = item.kind === 'step' ? item.node.label : item.props['label'];
+    return typeof raw === 'string' ? raw.trim() : '';
+  }
+
+  // ---- Satır-içi yeniden adlandırma ----
+  renaming = false;
+  private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+
+  startRename(event?: Event): void {
+    event?.stopPropagation();
+    if (!this.editable) { return; }
+    this.renaming = true;
+    setTimeout(() => this.renameInput()?.nativeElement.select());
+  }
+
+  commitRename(value: string): void {
+    this.renaming = false;
+    if (value.trim() === this.labelOf()) { return; }
+    this.action.emit({ kind: 'rename', target: this.item, label: value });
+  }
+
+  cancelRename(): void { this.renaming = false; }
+
+  emitAction(kind: 'delete' | 'up' | 'down' | 'duplicate', event?: Event): void {
     event?.stopPropagation();
     this.action.emit({ kind, target: this.item });
   }

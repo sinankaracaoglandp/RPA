@@ -137,6 +137,11 @@ export class KeystrokeSequenceEditorComponent {
     this.emit();
   }
 
+  /** Metin adımı boş mu? (Çalışma anında "Metin adımında 'text' boş olamaz" hatası verir.) */
+  isEmptyText(step: KeystrokeStep): boolean {
+    return step.type === 'text' && step.text.trim().length === 0;
+  }
+
   previewOf(step: KeystrokeStep): string {
     if (step.type === 'text') {
       return step.text;

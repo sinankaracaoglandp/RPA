@@ -85,7 +85,8 @@ export class DesignerComponent implements OnDestroy {
   readonly debugMode = signal(false);
 
   /** Salt-okunur yapısal görünüm açık mı (serbest-graf canvas yerine iç içe kutular). */
-  readonly structuredView = signal(false);
+  // Varsayılan görünüm: yapısal (serbest-graf canvas'a düğmeyle geçilir).
+  readonly structuredView = signal(true);
   toggleStructuredView(): void { this.structuredView.update((v) => !v); }
 
   /**
@@ -134,6 +135,8 @@ export class DesignerComponent implements OnDestroy {
   readonly workflowId = signal<string | null>(null);
   readonly dirty = signal(false);
   readonly saveState = signal<'idle' | 'saving' | 'error'>('idle');
+  /** Son kaydetme hatasının backend mesajı (400 gövdesindeki { error }); yoksa null. */
+  readonly saveErrorMessage = signal<string | null>(null);
   readonly runState = signal<'idle' | 'saving' | 'queued' | 'error'>('idle');
   readonly lastQueueItemId = signal<string | null>(null);
   readonly lastQueueId = signal<string | null>(null);
@@ -217,16 +220,128 @@ export class DesignerComponent implements OnDestroy {
     if (this.structuredView()) {
       this.selectedProperties.set(properties);
       this.structuredViewRef()?.updateSelectedProps(properties);
+      this.bindOutputVariableSchema(this.selectedActivityType(), properties);
       return;
     }
     const nodeId = this.selectedNodeId();
     if (nodeId) {
       this.canvas()?.updateNodeProperties(nodeId, properties);
       this.selectedProperties.set(properties);
-      const activity = this.selectedActivityType();
-      if (activity === 'EInvoice.ReadProfile' || activity === 'EInvoice.ReadProfileBatch') {
-        this.onProfileActivityPropertiesChange(activity, properties);
-      }
+      this.bindOutputVariableSchema(this.selectedActivityType(), properties);
+    }
+  }
+
+  /**
+   * Çıktı-şeması üreten aktivitelerin (`File.List`, `EInvoice.ReadProfile*`) seçilen çıktı
+   * değişkenini şemalı bir workflow değişkenine bağlar. Hem klasik hem yapısal görünümde
+   * çalışır (yapısal görünüm daha önce erken `return` ile bunu atlıyordu).
+   */
+  private bindOutputVariableSchema(activity: string | undefined, properties: Record<string, unknown>): void {
+    if (activity === 'EInvoice.ReadProfile' || activity === 'EInvoice.ReadProfileBatch') {
+      this.onProfileActivityPropertiesChange(activity, properties);
+    }
+    if (activity === 'File.List') {
+      this.onFileListPropertiesChange(properties);
+    }
+    if (activity === 'Sap.Gui.GridRead') {
+      this.onGridReadPropertiesChange(properties);
+    }
+  }
+
+  /**
+   * Sap.Gui.GridRead çıktısını (ALV satır listesi) seçilen `outputVariable` adında bir
+   * `list<object>` workflow değişkenine bağlar; sonraki node'lar (ör. Logic.ForEach) listeyi
+   * görebilsin diye.
+   *
+   * <p>File.List'ten farkı: ALV kolonları çalışma anında belirlenir (hangi transaction/layout
+   * kullanıldığına bağlı), bu yüzden sabit bir alan şeması ÜRETİLEMEZ. Değişken şemasız
+   * `list<object>` olarak tanımlanır; satır alanlarına ALV teknik kolon adıyla erişilir.</p>
+   */
+  onGridReadPropertiesChange(properties: Record<string, unknown>): void {
+    const outputVariable = String(properties['outputVariable'] ?? '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable)) {
+      return;
+    }
+    // Kolonlar 🎯 ile grid seçildiğinde SAP'tan okunup 'columns' alanına yazılır. Varsa satır
+    // şeması bunlardan üretilir → sonraki node'larda {{satir.MATNR}} autocomplete çalışır.
+    const columns = this.parseGridColumns(properties['columns']);
+    const schema = columns.length
+      ? {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: Object.fromEntries(columns.map((c) => [c, { type: 'string' }])),
+          },
+        }
+      : undefined;
+    const nextVariable: WorkflowVariable = {
+      name: outputVariable,
+      type: 'list<object>',
+      scope: 'global',
+      schema,
+      description: columns.length
+        ? `Sap.Gui.GridRead satır listesi (${columns.length} kolon)`
+        : 'Sap.Gui.GridRead satır listesi (kolonlar çalışma anında belirlenir)',
+    };
+    const variables = this.variables();
+    const next = variables.some((variable) => variable.name === outputVariable)
+      ? variables.map((variable) => (variable.name === outputVariable ? { ...variable, ...nextVariable } : variable))
+      : [...variables, nextVariable];
+    this.onVariablesChange(next);
+  }
+
+  /**
+   * File.List çıktısını (dosya listesi) seçilen `outputVariable` adında bir `list<object>`
+   * workflow değişkenine bağlar; böylece sonraki node'lar (ör. Logic.ForEach) dosya alanlarına
+   * ({{...name}}, {{...path}}) şema autocomplete ile erişebilir.
+   */
+  onFileListPropertiesChange(properties: Record<string, unknown>): void {
+    const outputVariable = String(properties['outputVariable'] ?? '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable)) {
+      return;
+    }
+    const schema = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          path: { type: 'string' },
+          size: { type: 'number' },
+          createdAt: { type: 'string' },
+          modifiedAt: { type: 'string' },
+        },
+      },
+    };
+    const nextVariable: WorkflowVariable = {
+      name: outputVariable,
+      type: 'list<object>',
+      scope: 'global',
+      schema,
+      description: 'File.List dosya listesi',
+    };
+    const variables = this.variables();
+    const next = variables.some((variable) => variable.name === outputVariable)
+      ? variables.map((variable) => (variable.name === outputVariable ? { ...variable, ...nextVariable } : variable))
+      : [...variables, nextVariable];
+    this.onVariablesChange(next);
+  }
+
+  /** 'columns' alanındaki JSON kolon dizisini okur (boş/bozuk → boş liste). */
+  private parseGridColumns(raw: unknown): string[] {
+    if (Array.isArray(raw)) {
+      return raw.filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
+    }
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+        : [];
+    } catch {
+      return [];
     }
   }
 
@@ -284,7 +399,9 @@ export class DesignerComponent implements OnDestroy {
     if (!id) {
       return; // yeni-taslak modu: kalıcı hedef yok (Projelerim'den açılır)
     }
-    const serialized = this.canvas()?.serialize() ?? this.currentGraph();
+    // Yapısal görünümde canvas yoktur; henüz düzenleme yapılmadıysa currentGraph de boştur —
+    // bu durumda yüklenen taslak grafı kaydedilir (aksi halde kaydet sessizce hiçbir şey yapmazdı).
+    const serialized = this.canvas()?.serialize() ?? this.currentGraph() ?? this.workflow();
     const graph = serialized ? { ...serialized, variables: this.variables() } : undefined;
     if (!graph) {
       return;
@@ -299,14 +416,32 @@ export class DesignerComponent implements OnDestroy {
         next: () => {
           this.dirty.set(false);
           this.saveState.set('idle');
+          this.saveErrorMessage.set(null);
           resolve();
         },
-        error: () => {
+        error: (err: unknown) => {
+          const message = this.extractSaveError(err);
+          this.saveErrorMessage.set(message);
+          this.log.error(`Kaydetme başarısız: ${message}`);
           this.saveState.set('error');
           resolve();
         },
       });
     });
+  }
+
+  /** HTTP hata gövdesinden ({ error: "..." }) okunabilir bir mesaj çıkarır. */
+  private extractSaveError(err: unknown): string {
+    const body = (err as { error?: unknown })?.error;
+    if (typeof body === 'string' && body.trim()) {
+      return body;
+    }
+    const inner = (body as { error?: unknown })?.error;
+    if (typeof inner === 'string' && inner.trim()) {
+      return inner;
+    }
+    const message = (err as { message?: unknown })?.message;
+    return typeof message === 'string' && message.trim() ? message : 'Bilinmeyen hata';
   }
 
   /** Kaydedilmiş taslağı Agent kuyruğuna alır. */

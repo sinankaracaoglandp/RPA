@@ -20,11 +20,10 @@
           <select
             class="variables-panel__type"
             [attr.data-testid]="'variable-type-' + $index"
-            [value]="variable.type"
             (change)="updateVariable($index, { type: $any($event.target).value })"
           >
-            @for (type of variableTypes; track type) {
-              <option [value]="type">{{ type }}</option>
+            @for (type of typeOptions(variable); track type) {
+              <option [value]="type" [selected]="type === variable.type">{{ type }}</option>
             }
           </select>
           <input

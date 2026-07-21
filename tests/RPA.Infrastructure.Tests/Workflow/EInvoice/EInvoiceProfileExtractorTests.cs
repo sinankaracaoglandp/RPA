@@ -47,6 +47,32 @@ public sealed class EInvoiceProfileExtractorTests
     }
 
     [Fact]
+    public void Extract_ResolvesUnprefixedDefaultNamespaceSegments_LikeTheStudioPreview()
+    {
+        // Studio eşleme editörü XPath'leri belgenin kendi etiket adlarından üretir; UBL kökü
+        // VARSAYILAN namespace'te olduğu için segment öneksizdir (/Invoice/...). Tasarım-anı
+        // önizlemesi (TS) bunu local-name() ile çözer; runtime da aynı sonucu vermelidir.
+        var definition = new EInvoiceProfileDefinition
+        {
+            Fields = [new() { Name = "FaturaNo", Source = "XPath", ValueXPath = "/Invoice/cbc:ID" }],
+            Collections =
+            [
+                new()
+                {
+                    Name = "invoiceLine", ScopeXPath = "/Invoice/cac:InvoiceLine",
+                    Fields = [new() { Name = "Aciklama", Source = "XPath", ValueXPath = "cac:Item/cbc:Name" }]
+                }
+            ]
+        };
+
+        var result = new EInvoiceProfileExtractor().Extract(Xml, definition);
+
+        Assert.Equal("FAT-42", result["FaturaNo"]);
+        var line = Assert.Single(Assert.IsType<List<Dictionary<string, object?>>>(result["invoiceLine"]));
+        Assert.Equal("Kalem", line["Aciklama"]);
+    }
+
+    [Fact]
     public void Extract_RejectsDtdAndRequiredMissingField()
     {
         var extractor = new EInvoiceProfileExtractor();

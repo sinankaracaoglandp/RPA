@@ -282,3 +282,67 @@ describe('StructuredViewComponent', () => {
     expect(bodyItems).toHaveLength(2);
   });
 });
+
+describe('StructuredViewComponent — geç gelen taslak', () => {
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [StructuredViewComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  }));
+
+  it('seeds from the workflow that arrives after the initial null binding', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', null); // taslak henüz yüklenmedi
+    f.detectChanges();
+    expect(f.componentInstance.mode()).toBe('empty');
+
+    f.componentRef.setInput('workflow', {
+      schemaVersion: '1.0', id: 'w1', name: 'W', version: '1.0.0',
+      nodes: [{ id: 'a', type: 'activity', activity: 'Web.Click' }],
+      connections: [],
+    });
+    f.detectChanges();
+
+    expect(f.componentInstance.mode()).toBe('tree');
+    expect(f.componentInstance.tree()).toHaveLength(1);
+  });
+});
+
+describe('StructuredViewComponent — kopyala', () => {
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [StructuredViewComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  }));
+
+  it('duplicates a step, emits the new graph and selects the copy', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    const original = step({
+      id: 'a', type: 'activity', activity: 'Desktop.SendKeys', properties: { keys: '[]' },
+    });
+    f.componentRef.setInput('workflow', treeToWorkflow([original]));
+    f.detectChanges();
+
+    const emitted: unknown[] = [];
+    f.componentInstance.graphChanged.subscribe((g) => emitted.push(g));
+    const seeded = f.componentInstance.tree()[0];
+    f.componentInstance.onAction({ kind: 'duplicate', target: seeded });
+
+    const tree = f.componentInstance.tree();
+    expect(tree).toHaveLength(2);
+    const a = (tree[0] as { node: WorkflowNode }).node;
+    const b = (tree[1] as { node: WorkflowNode }).node;
+    expect(b.activity).toBe('Desktop.SendKeys');
+    expect(b.id).not.toBe(a.id);
+    expect(emitted).toHaveLength(1);
+    expect(f.componentInstance.selected()).toBe(tree[1]);
+  });
+
+  it('makes the duplicate undoable', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', treeToWorkflow([step(n('a'))]));
+    f.detectChanges();
+    f.componentInstance.onAction({ kind: 'duplicate', target: f.componentInstance.tree()[0] });
+    expect(f.componentInstance.tree()).toHaveLength(2);
+    f.componentInstance.undo();
+    expect(f.componentInstance.tree()).toHaveLength(1);
+  });
+});

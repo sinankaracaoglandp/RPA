@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.SAP;
+﻿namespace RPA.Infrastructure.SAP;
 
 using System.Runtime.Versioning;
 using SystemException = RPA.Domain.Exceptions.SystemException;
@@ -62,6 +62,13 @@ public sealed class ComSapGuiSession : ISapGuiSession
     {
         var el = Find(elementId);
         SapCom.Invoke(el, "Select");
+    });
+
+    public Task SendVKeyAsync(int vKey, string windowId) => Run(() =>
+    {
+        // sendVKey PENCERE (GuiFrameWindow) uzerinde cagrilir, element uzerinde degil.
+        var window = Find(windowId);
+        SapCom.Invoke(window, "sendVKey", vKey);
     });
 
     public Task SelectMenuAsync(IReadOnlyList<string> menuTexts) => Run(() =>
@@ -134,7 +141,9 @@ public sealed class ComSapGuiSession : ISapGuiSession
         int rowCount = Convert.ToInt32(SapCom.Get(grid, "RowCount"));
         var columnOrder = SapCom.Get(grid, "ColumnOrder")
             ?? throw new SystemException($"SAP GUI grid kolon listesi alinamadi: '{gridId}'.");
-        int colCount = Convert.ToInt32(SapCom.Get(columnOrder, "Count"));
+        // SAP koleksiyonları eleman sayısını sürüme/tipe göre Count VEYA Length ile yayınlar;
+        // yalnız "Count" okumak UI Spy tarafında sessiz başarısızlığa yol açmıştı (2026-07-21).
+        var colCount = SapGuiAutomation.GetCollectionCount(columnOrder);
 
         var columns = new List<string>(colCount);
         for (var c = 0; c < colCount; c++)

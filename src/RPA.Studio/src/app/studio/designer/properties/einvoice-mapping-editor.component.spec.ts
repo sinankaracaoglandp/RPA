@@ -469,6 +469,71 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.collections[0].fields.length).toBe(0);
   });
 
+  it('alan diyaloğu açılınca hedef her zaman kök fatura alanına döner', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.draftTarget = 'satirlar';
+
+    component.openFieldDialog();
+
+    expect(component.draftTarget).toBe('root');
+  });
+
+  it('yaprak öğeye tıklayınca hedef kök fatura alanına döner', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.draftTarget = 'satirlar';
+
+    component.selectNode(component.findFirst('cbc:ID')!);
+
+    expect(component.draftTarget).toBe('root');
+  });
+
+  it('satır dizisi oluşturunca hedef koleksiyona sabitlenmez, kökte kalır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.collectionName = 'satirlar';
+    component.collectionScopeXPath = '//cac:InvoiceLine';
+
+    component.addCollectionFromDraft();
+
+    expect(component.draftTarget).toBe('root');
+  });
+
+  it('koleksiyon başlığındaki "Diziyi sil" onaydan sonra diziyi kaldırır', () => {
+    const component = fixture.componentInstance;
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.setStep(2);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('[data-testid="einvoice-remove-collection-satirlar"]') as HTMLButtonElement;
+    expect(button).toBeTruthy();
+
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+    button.click();
+    expect(component.collections.length).toBe(1);
+
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    button.click();
+    expect(component.collections.length).toBe(0);
+  });
+
+  it('tanımlı satır dizisi bütünüyle silinebilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    const emitted: string[] = [];
+    component.profileDefinitionChange.subscribe(value => emitted.push(value));
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+    component.draftTarget = 'satirlar';
+    component.selectedCollectionName = 'satirlar';
+
+    component.removeCollection('satirlar');
+
+    expect(component.collections.length).toBe(0);
+    expect(component.draftTarget).toBe('root');
+    expect(component.selectedCollectionName).toBe('');
+    expect(JSON.parse(emitted.at(-1)!).collections).toEqual([]);
+  });
+
   it('örnek XML yüklenince otomatik 2. adıma geçer', () => {
     const component = new EInvoiceMappingEditorComponent();
     expect(component.activeStep).toBe(1);

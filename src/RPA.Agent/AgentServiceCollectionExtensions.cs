@@ -115,10 +115,14 @@ public static class AgentServiceCollectionExtensions
             services.AddOptions<UiSpyOptions>()
                 .Bind(configuration.GetSection(UiSpyOptions.SectionName));
 
-            // Native P/Invoke + SAP COM resolver (stub — SAP GUI kurulu makinede gerçek COM resolver ile değişir).
+            // Native P/Invoke + SAP GUI Scripting (COM) element çözücüsü — 🎯 SAP picker'ının
+            // element ID'yi gerçekten üretmesini sağlar (önceden NullSapGuiElementResolver'dı,
+            // her noktada null dönüyordu → SAP alanları elle doldurulmak zorundaydı).
             services.AddSingleton<INativeWindowApi, Win32NativeWindowApi>();
-            services.AddSingleton<ISapGuiElementResolver, NullSapGuiElementResolver>();
+            services.AddSingleton<ISapGuiElementResolver, ComSapGuiElementResolver>();
             services.AddSingleton<SapGuiElementDetector>();
+            // Picker'ların tek-ekran davranışı (öndeki pencereyi küçült/geri getir).
+            services.AddSingleton<IPickerWindowManager, Win32PickerWindowManager>();
 
             // SignalR köprüsü (agent → Studio) + gönderici + orkestrasyon servisi.
             services.AddSingleton<ISpyElementTransport, SignalRSpyElementTransport>();
@@ -135,6 +139,8 @@ public static class AgentServiceCollectionExtensions
             services.AddSingleton<IImageRegionPicker, GdiImageRegionPicker>();
             // Text-offset picker: capa+ofset secimi. Koordinator kind:"text-offset" icin kullanir.
             services.AddSingleton<ITextOffsetPicker, GdiTextOffsetPicker>();
+            // Klasor picker: native FolderBrowserDialog. Koordinator kind:"folder" icin kullanir.
+            services.AddSingleton<IFolderPicker, WinFormsFolderPicker>();
             services.AddSingleton<ISpySessionCoordinator, SpySessionCoordinator>();
             services.AddSingleton<ISpyCommandConnection, SignalRSpyCommandConnection>();
 

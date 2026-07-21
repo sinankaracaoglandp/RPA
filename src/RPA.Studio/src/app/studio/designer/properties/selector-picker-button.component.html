@@ -1,5 +1,6 @@
-@if (isImage) {
+@if (showKeyControls) {
   <span class="selector-picker__capture" data-testid="selector-picker-capture">
+    @if (showCaptureMode) {
     <select
       class="selector-picker__mode"
       data-testid="selector-picker-mode"
@@ -8,9 +9,10 @@
       (ngModelChange)="onModeChange($event)"
       [title]="'picker.captureMode' | translate"
     >
-      <option value="f2">{{ 'picker.modeF2' | translate }}</option>
-      <option value="timer">{{ 'picker.modeTimer' | translate }}</option>
+      <option value="f2">{{ (isSap ? 'picker.modeKeyConfirm' : 'picker.modeF2') | translate }}</option>
+      <option value="timer">{{ (isSap ? 'picker.modeTimerSap' : 'picker.modeTimer') | translate }}</option>
     </select>
+    }
     @if (captureMode() === 'timer') {
       <input
         type="number"
@@ -21,11 +23,11 @@
         [disabled]="state() === 'picking'"
         [ngModel]="delaySeconds()"
         (ngModelChange)="onDelayChange($event)"
-        [title]="'picker.delaySeconds' | translate"
+        [title]="(isSap ? 'picker.countdownSeconds' : 'picker.delaySeconds') | translate"
       />
       <span class="selector-picker__unit">{{ 'picker.seconds' | translate }}</span>
     }
-    @if (captureMode() === 'f2') {
+    @if (!showCaptureMode || captureMode() === 'f2') {
       <label class="selector-picker__mod" [title]="'picker.ctrl' | translate">
         <input type="checkbox" data-testid="selector-picker-ctrl"
           [disabled]="state() === 'picking'"
@@ -47,7 +49,7 @@
         [disabled]="state() === 'picking'"
         [ngModel]="hotKey()"
         (ngModelChange)="onHotKeyChange($event)"
-        [title]="'picker.freezeKey' | translate"
+        [title]="(isSap ? 'picker.confirmKey' : 'picker.freezeKey') | translate"
       >
         @for (k of hotKeys; track k) {
           <option [value]="k">{{ k }}</option>
@@ -73,7 +75,11 @@
   </span>
 }
 @if (state() === 'error') {
-  <span class="selector-picker__status selector-picker__status--error" data-testid="selector-picker-error">
-    {{ 'picker.failed' | translate }}
+  <span
+    class="selector-picker__status selector-picker__status--error"
+    data-testid="selector-picker-error"
+    [title]="errorMessage()"
+  >
+    {{ 'picker.failed' | translate }}{{ errorMessage() ? ': ' + errorMessage() : '' }}
   </span>
 }

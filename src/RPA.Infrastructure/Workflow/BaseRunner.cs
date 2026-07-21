@@ -740,13 +740,41 @@ public sealed class BaseRunner : IWorkflowRunner
         {
             return null;
         }
-        var text = value as string ?? value.ToString();
+        var text = Stringify(value);
         if (text is null)
         {
             return null;
         }
         const int max = 200;
         return text.Length > max ? string.Concat(text.AsSpan(0, max), "…") : text;
+    }
+
+    /// <summary>
+    /// Değeri konsol önizlemesi için metne çevirir. Skalerler <c>ToString()</c> ile;
+    /// koleksiyon/sözlük gibi bileşik değerler JSON olarak serileştirilir — aksi halde
+    /// <c>ToString()</c> yalnızca tip adını basıyordu (ör. e-fatura çıktısı için
+    /// "System.Collections.Generic.Dictionary`2[...]") ve alan değerleri görünmüyordu.
+    /// </summary>
+    private static string? Stringify(object value) => value switch
+    {
+        string text => text,
+        JToken token => token.ToString(Newtonsoft.Json.Formatting.None),
+        bool or char or decimal or double or float or int or long or short
+            or uint or ulong or ushort or byte or sbyte => value.ToString(),
+        DateTime or DateTimeOffset or TimeSpan or Guid or Enum => value.ToString(),
+        _ => TrySerialize(value),
+    };
+
+    private static string? TrySerialize(object value)
+    {
+        try
+        {
+            return Newtonsoft.Json.JsonConvert.SerializeObject(value);
+        }
+        catch
+        {
+            return value.ToString();
+        }
     }
 
     private async Task ExecuteComponentCallAsync(WorkflowNode node, ExecutionState state)

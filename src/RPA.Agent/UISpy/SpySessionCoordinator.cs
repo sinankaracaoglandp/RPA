@@ -1,4 +1,4 @@
-namespace RPA.Agent.UISpy;
+﻿namespace RPA.Agent.UISpy;
 
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
@@ -6,9 +6,14 @@ using Microsoft.Extensions.Options;
 using RPA.Domain.ValueObjects;
 using RPA.Infrastructure.UISpy;
 
+/// <summary>
+/// SAP GUI tek-seçim picker'ı. Onay, kullanıcının seçtiği tuş kombinasyonuyla verilir
+/// (<see cref="ImagePickerOptions.HotKey"/> + Ctrl/Shift/Alt) — SAP ekranında fare tıklaması
+/// alanı/butonu tetikleyeceği için seçim tıklamayla onaylanmaz.
+/// </summary>
 public interface ISapGuiSinglePicker
 {
-    Task<SapGuiElement?> DetectOnceAsync(CancellationToken cancellationToken = default);
+    Task<SapGuiElement?> DetectOnceAsync(ImagePickerOptions options, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Masaüstü (UIA/FlaUI) tek-seçim picker'ı — imleç altındaki elementi onayla.</summary>
@@ -21,6 +26,12 @@ public interface IDesktopSinglePicker
 public interface IWebSinglePicker
 {
     Task<WebUiElement?> DetectOnceAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>🎯 klasör picker'ı — agent makinesinde native klasör seçim diyaloğu açar, seçilen yolu döndürür (iptal → null).</summary>
+public interface IFolderPicker
+{
+    Task<string?> DetectOnceAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>🎯 image bölge picker'ı — ekranda dikdörtgen çiz, PNG/koordinat döndür.</summary>
@@ -57,6 +68,12 @@ public sealed record ImagePickerOptions(
     public const string ModeTimer = "timer";
     public const string DefaultHotKey = "F2";
 
+    /// <summary>
+    /// Caps Lock — SAP için önerilen onay tuşu: SAP'ta F1–F12'nin tamamı transaction kısayoludur,
+    /// Caps Lock ise hiçbir SAP fonksiyonunu tetiklemez.
+    /// </summary>
+    public const string CapsLockKey = "CapsLock";
+
     public static ImagePickerOptions Default { get; } = new(ModeF2, 5, DefaultHotKey, false, false, false);
 
     /// <summary>Studio'dan gelen JSON ({captureMode, delaySeconds, hotKey, ctrl, shift, alt}); null/bozuk ise varsayılan.</summary>
@@ -86,7 +103,11 @@ public sealed record ImagePickerOptions(
     private static bool Flag(System.Text.Json.JsonElement root, string name)
         => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
 
-    /// <summary>F1–F12 dışını (veya null) varsayılana (F2) indirger.</summary>
+    /// <summary>
+    /// F1–F12, CapsLock ve tek harf (A–Z) dışını (veya null) varsayılana (F2) indirger.
+    /// <para>Harf tuşları Ctrl/Shift/Alt ile birlikte kullanılmak içindir (örn. Ctrl+T): SAP'ta
+    /// F1–F12 doludur, harf kombinasyonları ise serbesttir.</para>
+    /// </summary>
     private static string NormalizeHotKey(string? key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -94,15 +115,46 @@ public sealed record ImagePickerOptions(
             return DefaultHotKey;
         }
         key = key.Trim().ToUpperInvariant();
+        if (key is "CAPSLOCK" or "CAPS_LOCK" or "CAPS")
+        {
+            return CapsLockKey;
+        }
         if (key.Length >= 2 && key[0] == 'F' && int.TryParse(key.AsSpan(1), out var n) && n is >= 1 and <= 12)
         {
             return $"F{n}";
         }
+        if (key.Length == 1 && key[0] is >= 'A' and <= 'Z')
+        {
+            return key;
+        }
         return DefaultHotKey;
     }
 
-    /// <summary>Windows sanal-tuş kodu (F1=0x70 … F12=0x7B).</summary>
-    public uint VirtualKey => 0x70u + (uint)(FunctionKeyNumber - 1);
+    /// <summary>
+    /// Windows sanal-tuş kodu (CapsLock=0x14; A–Z=0x41–0x5A; F1=0x70 … F12=0x7B).
+    /// </summary>
+    public uint VirtualKey
+    {
+        get
+        {
+            if (IsCapsLock)
+            {
+                return 0x14u;
+            }
+
+            // Harf tuşlarının sanal-tuş kodu büyük harfin ASCII değeridir.
+            if (IsLetter)
+            {
+                return HotKey[0];
+            }
+
+            return 0x70u + (uint)(FunctionKeyNumber - 1);
+        }
+    }
+
+    private bool IsCapsLock => string.Equals(HotKey, CapsLockKey, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsLetter => HotKey.Length == 1 && HotKey[0] is >= 'A' and <= 'Z';
 
     private int FunctionKeyNumber => int.TryParse(HotKey.AsSpan(1), out var n) && n is >= 1 and <= 12 ? n : 2;
 
@@ -145,6 +197,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
     private readonly IWebSinglePicker? _webPicker;
     private readonly IImageRegionPicker? _imagePicker;
     private readonly ITextOffsetPicker? _textOffsetPicker;
+    private readonly IFolderPicker? _folderPicker;
     private readonly object _gate = new();
     private Guid _activeSessionId;
     private CancellationTokenSource? _activeCts;
@@ -157,7 +210,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         IDesktopSinglePicker? desktopPicker = null,
         IWebSinglePicker? webPicker = null,
         IImageRegionPicker? imagePicker = null,
-        ITextOffsetPicker? textOffsetPicker = null)
+        ITextOffsetPicker? textOffsetPicker = null,
+        IFolderPicker? folderPicker = null)
     {
         _sapPicker = sapPicker ?? throw new ArgumentNullException(nameof(sapPicker));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -167,6 +221,7 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         _webPicker = webPicker;
         _imagePicker = imagePicker;
         _textOffsetPicker = textOffsetPicker;
+        _folderPicker = folderPicker;
     }
 
     public async Task StartAsync(Guid sessionId, string kind, string? optionsJson = null, CancellationToken cancellationToken = default)
@@ -181,7 +236,8 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
         var isWeb = string.Equals(kind, "web", StringComparison.OrdinalIgnoreCase);
         var isImage = string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase);
         var isTextOffset = string.Equals(kind, "text-offset", StringComparison.OrdinalIgnoreCase);
-        if (!isSap && !isDesktop && !isWeb && !isImage && !isTextOffset)
+        var isFolder = string.Equals(kind, "folder", StringComparison.OrdinalIgnoreCase);
+        if (!isSap && !isDesktop && !isWeb && !isImage && !isTextOffset && !isFolder)
         {
             throw new InvalidOperationException($"Desteklenmeyen spy tipi: {kind}");
         }
@@ -206,6 +262,11 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
             throw new InvalidOperationException("Metin-ofset picker bu ortamda kayıtlı değil (yalnız Windows).");
         }
 
+        if (isFolder && _folderPicker is null)
+        {
+            throw new InvalidOperationException("Klasör picker bu ortamda kayıtlı değil (yalnız Windows).");
+        }
+
         CancellationTokenSource linkedCts;
         lock (_gate)
         {
@@ -224,7 +285,9 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
             // Image picker'da kullanıcı hedef menüyü/pencereyi elle açtığı için (F2/zamanlayıcı ile
             // dondurma) daha uzun süre gerekir; diğer picker'lar için normal timeout uygulanır.
             var timeoutSeconds = Math.Max(1, _options.TimeoutSeconds);
-            if (isImage || isTextOffset)
+            // SAP seçiminde de kullanıcı hedef ekrana elle gider (transaction açar, sayfa gezer);
+            // 60 sn'lik varsayılan yetmez.
+            if (isImage || isTextOffset || isFolder || isSap)
             {
                 timeoutSeconds = Math.Max(timeoutSeconds, 300);
             }
@@ -253,9 +316,15 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
                 var pick = await _textOffsetPicker!.DetectOnceAsync(pickerOptions, linkedCts.Token);
                 message = pick is null ? null : SpyElementMessage.FromTextOffset(pick.AnchorText, pick.Dx, pick.Dy, pick.PreviewBase64, sessionId);
             }
+            else if (isFolder)
+            {
+                var folderPath = await _folderPicker!.DetectOnceAsync(linkedCts.Token);
+                message = string.IsNullOrWhiteSpace(folderPath) ? null : SpyElementMessage.FromFolder(folderPath, sessionId);
+            }
             else
             {
-                var element = await _sapPicker.DetectOnceAsync(linkedCts.Token);
+                    var pickerOptions = ImagePickerOptions.Parse(optionsJson);
+                var element = await _sapPicker.DetectOnceAsync(pickerOptions, linkedCts.Token);
                 message = element is null ? null : SpyElementMessage.From(element, sessionId);
             }
 
@@ -330,19 +399,249 @@ public sealed class SpySessionCoordinator : ISpySessionCoordinator
     }
 }
 
+/// <summary>
+/// SAP GUI tek-seçim picker'ı — masaüstü picker'ıyla (<c>FlaUiDesktopSinglePicker</c>) birebir aynı
+/// kullanıcı deneyimi: tasarımcı penceresi küçültülür, imleç SAP alanları üzerinde gezinirken element
+/// vurgulanır, sol tıklama seçimi onaylar, <c>Esc</c> iptal eder.
+/// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SapGuiSinglePicker : ISapGuiSinglePicker
 {
-    private readonly SapGuiElementDetector _detector;
+    private const int VkLButton = 0x01;
+    private const int VkEscape = 0x1B;
+    private const int VkShift = 0x10;
+    private const int VkControl = 0x11;
+    private const int VkMenu = 0x12; // Alt
 
-    public SapGuiSinglePicker(SapGuiElementDetector detector)
+    private readonly SapGuiElementDetector _detector;
+    private readonly IPickerWindowManager _windows;
+    private readonly ILogger<SapGuiSinglePicker> _logger;
+
+    public SapGuiSinglePicker(
+        SapGuiElementDetector detector,
+        IPickerWindowManager windows,
+        ILogger<SapGuiSinglePicker> logger)
     {
         _detector = detector ?? throw new ArgumentNullException(nameof(detector));
+        _windows = windows ?? throw new ArgumentNullException(nameof(windows));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<SapGuiElement?> DetectOnceAsync(CancellationToken cancellationToken = default)
+    public async Task<SapGuiElement?> DetectOnceAsync(
+        ImagePickerOptions options,
+        CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(_detector.DetectElementUnderCursor());
+        ArgumentNullException.ThrowIfNull(options);
+
+        // AKIŞ (her iki modda da aynı): hazırlık → seçim turu → sol tıkla seç.
+        //
+        // Hazırlık aşaması kullanıcının hedef SAP ekranını açması içindir; seçim turu ancak
+        // bittikten sonra başlar. Bitiş sinyali moda göre değişir:
+        //   "timer" → geri sayım dolar,
+        //   "f2"    → kullanıcı seçtiği tuş kombinasyonuna basar (varsayılan Ctrl+T).
+        //
+        // Seçim SOL TIKLAMA ile alınır. SAP'ta F1–F12 transaction kısayolu olduğundan tuşu
+        // "onay" olarak kullanmak güvenilir değildi; tuş yalnızca süreci BAŞLATIR.
+        var useTimer = string.Equals(
+            options.CaptureMode, ImagePickerOptions.ModeTimer, StringComparison.OrdinalIgnoreCase);
+
+        // Tek ekran kullanımı: öndeki pencere (tasarımcı tarayıcısı) SAP penceresini kapatır.
+        var restore = _windows.MinimizeForeground();
+
+        try
+        {
+            if (useTimer)
+            {
+                _logger.LogInformation(
+                    "SAP UI Spy: {Seconds} sn hazırlık — hedef SAP ekranını açın; süre bitince seçim başlayacak.",
+                    options.DelaySeconds);
+
+                if (!await WaitForCountdownAsync(options.DelaySeconds, cancellationToken))
+                {
+                    _logger.LogDebug("SAP UI Spy: geri sayım sırasında Esc ile iptal edildi.");
+                    return null;
+                }
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "SAP UI Spy: hazırlık — hedef SAP ekranını açın, sonra {Combo} tuşuna basın; Esc iptal.",
+                    options.DisplayCombo);
+
+                if (!await WaitForHotKeyAsync(options, cancellationToken))
+                {
+                    _logger.LogDebug("SAP UI Spy: tuş beklenirken Esc ile iptal edildi.");
+                    return null;
+                }
+            }
+
+            _logger.LogInformation(
+                "SAP UI Spy: seçim başladı — hedef alanın üzerine gelin (kırmızı çerçeve), sol tıklayın; Esc iptal.");
+
+            // Hazırlık sırasındaki tıklamalar (🎯 düğmesi, SAP'ta gezinme) seçim sanılmasın:
+            // sol buton serbest bırakılmış halde başlanmalı.
+            while (IsKeyDown(VkLButton))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Delay(20, cancellationToken);
+            }
+            GetAsyncKeyState(VkLButton);
+
+            return await RunSelectionLoopAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        finally
+        {
+            // Seçim bitti/iptal edildi: ekranda vurgu çerçevesi bırakma.
+            _detector.ClearHighlight();
+            restore();
+        }
+    }
+
+    /// <summary>
+    /// Hazırlık geri sayımı. Kullanıcı bu sürede hedef SAP ekranına gider. <c>false</c> = Esc ile
+    /// iptal edildi.
+    /// </summary>
+    private async Task<bool> WaitForCountdownAsync(int seconds, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(Math.Max(1, seconds));
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (IsKeyDown(VkEscape))
+            {
+                return false;
+            }
+
+            await Task.Delay(50, cancellationToken);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Kullanıcının seçim sürecini başlatan tuş kombinasyonuna basmasını bekler (süre sınırsız —
+    /// oturum zaman aşımına kadar). <c>false</c> = Esc ile iptal edildi.
+    /// </summary>
+    private async Task<bool> WaitForHotKeyAsync(ImagePickerOptions options, CancellationToken cancellationToken)
+    {
+        // Tuş serbest bırakılmış halde başlamalı (🎯'e basarken sızan tuş anında tetiklemesin).
+        while (IsKeyDown((int)options.VirtualKey))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(20, cancellationToken);
+        }
+        GetAsyncKeyState((int)options.VirtualKey); // birikmiş "basıldı" bitini temizle
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (IsKeyDown(VkEscape))
+            {
+                return false;
+            }
+
+            // 0x8000 = şu an basılı, 0x0001 = son okumadan bu yana basıldı (kısa basış
+            // yoklama araları arasına düşüp kaçırılmasın). Modifier'lar basış ANINDA okunur.
+            var keyState = GetAsyncKeyState((int)options.VirtualKey);
+            if (((keyState & 0x8000) != 0 || (keyState & 0x0001) != 0) && ModifiersHeld(options))
+            {
+                return true;
+            }
+
+            await Task.Delay(30, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Seçim turu: imleç altındaki element kırmızı çerçeveyle vurgulanır, seçim SOL TIKLAMA ile
+    /// alınır. <c>null</c> = Esc ile iptal.
+    /// </summary>
+    private async Task<SapGuiElement?> RunSelectionLoopAsync(CancellationToken cancellationToken)
+    {
+        string? lastHighlightedId = null;
+        var nextDiagnosticAt = DateTime.UtcNow.AddSeconds(2);
+        var samples = 0;
+        var resolved = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (IsKeyDown(VkEscape))
+            {
+                // Özet, "hiç mi çözülemedi yoksa onay mı alınamadı" ayrımını netleştirir.
+                _logger.LogInformation(
+                    "SAP UI Spy: Esc ile iptal edildi — {Samples} örnek alındı, {Resolved} tanesinde SAP elementi çözüldü.",
+                    samples, resolved);
+                return null;
+            }
+
+            var (x, y) = CursorPosition();
+            var element = _detector.DetectElementAt(x, y);
+            samples++;
+            if (element is not null)
+            {
+                resolved++;
+            }
+
+            if (element is not null && element.Id != lastHighlightedId)
+            {
+                // Kullanıcı neyin seçileceğini görsün (SAP'ın kendi kırmızı çerçevesi).
+                _detector.HighlightAt(x, y);
+                lastHighlightedId = element.Id;
+            }
+            else if (element is null && DateTime.UtcNow >= nextDiagnosticAt)
+            {
+                // Sessiz başarısızlık olmasın: element çözülemiyorsa SEBEBİNİ düzenli olarak
+                // görünür seviyede logla (kullanıcı "hiçbir şey olmuyor" ile baş başa kalmasın).
+                nextDiagnosticAt = DateTime.UtcNow.AddSeconds(2);
+                _logger.LogWarning("SAP UI Spy: element bulunamadı — {Reason}", _detector.Diagnose(x, y));
+            }
+
+            // Onay durumunu tur başına TEK kez oku: 0x8000 = şu an basılı, 0x0001 = son okumadan
+            // bu yana basıldı (hızlı tık/basış aksi halde 40 ms yoklama araları arasına düşüp
+            // kaçırılır).
+            var button = GetAsyncKeyState(VkLButton);
+            var clicked = (button & 0x8000) != 0 || (button & 0x0001) != 0;
+
+            if (clicked && element is not null)
+            {
+                _logger.LogInformation("SAP UI Spy: element seçildi {ElementId} ({Type}).", element.Id, element.Type);
+                return element;
+            }
+
+            await Task.Delay(40, cancellationToken);
+        }
+    }
+
+    private static (int X, int Y) CursorPosition()
+        => GetCursorPos(out var p) ? (p.X, p.Y) : (0, 0);
+
+    private static bool IsKeyDown(int vKey) => (GetAsyncKeyState(vKey) & 0x8000) != 0;
+
+    /// <summary>Seçenekte istenen modifier'lar (Ctrl/Shift/Alt) şu an basılı mı?</summary>
+    private static bool ModifiersHeld(ImagePickerOptions options)
+        => (!options.Ctrl || IsKeyDown(VkControl))
+           && (!options.Shift || IsKeyDown(VkShift))
+           && (!options.Alt || IsKeyDown(VkMenu));
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out PickerPoint lpPoint);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct PickerPoint
+    {
+        public int X;
+        public int Y;
     }
 }

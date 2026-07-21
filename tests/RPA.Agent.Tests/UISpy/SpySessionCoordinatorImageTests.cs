@@ -1,4 +1,4 @@
-namespace RPA.Agent.Tests.UISpy;
+﻿namespace RPA.Agent.Tests.UISpy;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -63,5 +63,75 @@ public class SpySessionCoordinatorImageTests
         // Geçersiz tuş → varsayılan F2.
         var bad = ImagePickerOptions.Parse("{\"hotKey\":\"F42\"}");
         Assert.Equal("F2", bad.HotKey);
+    }
+
+    // =============================================================== Onay tuşu: CapsLock
+
+    [Theory]
+    [InlineData("CapsLock")]
+    [InlineData("capslock")]
+    [InlineData("Caps")]
+    [InlineData("CAPS_LOCK")]
+    public void Parse_AcceptsCapsLock_AsConfirmKey(string key)
+    {
+        // SAP'ta F1–F12'nin tamamı transaction kısayoludur; Caps Lock hiçbir SAP fonksiyonunu
+        // tetiklemediği için SAP picker'ının önerilen onay tuşudur.
+        var options = ImagePickerOptions.Parse($$"""{"hotKey":"{{key}}"}""");
+
+        Assert.Equal(ImagePickerOptions.CapsLockKey, options.HotKey);
+        Assert.Equal(0x14u, options.VirtualKey); // VK_CAPITAL
+        Assert.Equal("CapsLock", options.DisplayCombo);
+    }
+
+    [Fact]
+    public void Parse_CapsLockWithModifiers_KeepsBothInDisplayCombo()
+    {
+        var options = ImagePickerOptions.Parse("""{"hotKey":"CapsLock","ctrl":true}""");
+
+        Assert.Equal(0x14u, options.VirtualKey);
+        Assert.Equal("Ctrl+CapsLock", options.DisplayCombo);
+    }
+
+    [Fact]
+    public void Parse_FunctionKeysStillWork()
+    {
+        var options = ImagePickerOptions.Parse("""{"hotKey":"F8"}""");
+
+        Assert.Equal("F8", options.HotKey);
+        Assert.Equal(0x77u, options.VirtualKey); // F1=0x70 → F8=0x77
+    }
+
+    [Fact]
+    public void Parse_UnknownKey_FallsBackToDefault()
+    {
+        var options = ImagePickerOptions.Parse("""{"hotKey":"Tab"}""");
+
+        Assert.Equal(ImagePickerOptions.DefaultHotKey, options.HotKey);
+    }
+
+    [Theory]
+    [InlineData("T", 0x54u)]
+    [InlineData("t", 0x54u)]
+    [InlineData("A", 0x41u)]
+    [InlineData("Z", 0x5Au)]
+    public void Parse_AcceptsLetterKeys(string key, uint expectedVirtualKey)
+    {
+        // SAP'ta F1–F12 doludur; harf + modifier kombinasyonları (Ctrl+T) serbesttir.
+        var options = ImagePickerOptions.Parse($$"""{"hotKey":"{{key}}","ctrl":true}""");
+
+        Assert.Equal(key.ToUpperInvariant(), options.HotKey);
+        Assert.Equal(expectedVirtualKey, options.VirtualKey);
+        Assert.Equal($"Ctrl+{key.ToUpperInvariant()}", options.DisplayCombo);
+    }
+
+    [Theory]
+    [InlineData("TT")]   // iki harf
+    [InlineData("1")]    // rakam
+    [InlineData("+")]
+    public void Parse_RejectsNonLetterSingleTokens(string key)
+    {
+        var options = ImagePickerOptions.Parse($$"""{"hotKey":"{{key}}"}""");
+
+        Assert.Equal(ImagePickerOptions.DefaultHotKey, options.HotKey);
     }
 }

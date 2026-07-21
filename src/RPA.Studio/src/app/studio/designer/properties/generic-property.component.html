@@ -161,29 +161,38 @@
                 </div>
               }
               <div class="generic-property__input-row">
-                @if (isVariableField(port) && variables.length > 0) {
-                  <select
+                @if (isVariableField(port)) {
+                  <!-- Değişken adı alanı: serbest yazılabilir combobox (input + datalist).
+                       Önceden <select>'ti; ad tanımlanırken (File.List çıktısı gibi) değişken
+                       oluşup liste dolunca alan aniden dropdown'a dönüşüp yazmayı kilitliyordu. -->
+                  <!-- Değeri her tuşta değil, yalnız Enter'a basınca veya alandan çıkınca
+                       (change/blur) yayınla → değişken adı yazılırken her harf için ayrı
+                       (çöp) değişken oluşmaz; ad tamamlanınca tek seferde tanımlanır. -->
+                  <input
                     [id]="'prop-' + port.name"
                     [value]="value(port)"
                     (change)="onValueChange(port, $any($event.target).value)"
+                    (keydown.enter)="onValueChange(port, $any($event.target).value); $any($event.target).blur()"
+                    [attr.list]="'prop-' + port.name + '-vars'"
+                    [placeholder]="port.name"
                     class="generic-property__input"
                     [attr.data-testid]="'prop-' + port.name"
-                  >
-                    <option value="">{{ port.name }}</option>
+                    autocomplete="off"
+                  />
+                  <datalist [id]="'prop-' + port.name + '-vars'">
                     @for (variable of variables; track variable.name) {
-                      <option [value]="variable.name">{{ variable.name }}</option>
+                      <option [value]="variable.name"></option>
                     }
-                  </select>
+                  </datalist>
                 } @else if ((port.options?.length ?? 0) > 0) {
                   <select
                     [id]="'prop-' + port.name"
-                    [value]="value(port)"
                     (change)="onValueChange(port, $any($event.target).value)"
                     class="generic-property__input"
                     [attr.data-testid]="'prop-' + port.name"
                   >
                     @for (option of port.options ?? []; track option) {
-                      <option [value]="option">{{ option }}</option>
+                      <option [value]="option" [selected]="option === value(port)">{{ option }}</option>
                     }
                   </select>
                 } @else if (showModeSelector(port) && fieldMode(port) === 'variable') {
@@ -289,6 +298,14 @@
                 <div class="generic-property__examples" data-testid="prop-condition-examples">
                   <span class="generic-property__examples-title">Ornekler</span>
                   @for (example of expressionExamples(port); track example) {
+                    <code class="generic-property__example">{{ example }}</code>
+                  }
+                </div>
+              }
+              @if (showPatternExamples(port)) {
+                <div class="generic-property__examples" data-testid="prop-pattern-examples">
+                  <span class="generic-property__examples-title">Örnek filtreler (birden çok uzantı için ; veya , kullan)</span>
+                  @for (example of patternExamples(port); track example) {
                     <code class="generic-property__example">{{ example }}</code>
                   }
                 </div>
