@@ -420,6 +420,36 @@ describe('StructuredViewComponent — kopyala', () => {
     expect(cmp.tree()).toHaveLength(2);
   });
 
+  it('inserts into the lane the user selected (if → false)', () => {
+    const wf = treeToWorkflow(
+      [container('if', { condition: '${x}' }, { true: [], false: [step(n('e'))] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    cmp.onSelectLane({ container: cmp.tree()[0] as never, lane: 'false' });
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const lanes = (cmp.tree()[0] as { lanes: Record<string, unknown[]> }).lanes;
+    expect(lanes['false']).toHaveLength(2);
+    expect((lanes['false'][1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+    expect(lanes['true']).toHaveLength(0); // ilk lane'e düşmez
+  });
+
+  it('selecting a step clears the lane selection', () => {
+    const cmp = seededView().componentInstance;
+    cmp.onSelectLane({ container: cmp.tree()[1] as never, lane: 'body' });
+    cmp.onSelect(cmp.tree()[0]);
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const t = cmp.tree();
+    expect(t).toHaveLength(3); // kökte, seçili adımın ardında
+    expect((t[1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+  });
+
   it('undoes a palette add', () => {
     const cmp = seededView().componentInstance;
     cmp.addFromPalette(newStep('Web.Click'));

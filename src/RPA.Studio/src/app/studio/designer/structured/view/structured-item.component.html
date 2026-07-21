@@ -74,6 +74,8 @@
         <section
           class="structured-container__lane"
           [attr.data-testid]="'lane-' + lane"
+          [class.structured-container__lane--selected]="isLaneSelected(container, lane)"
+          (click)="onLaneClick(container, lane, $event)"
           cdkDropList
           [cdkDropListData]="laneItems(container, lane)"
           [cdkDropListDisabled]="!editable"
@@ -85,6 +87,8 @@
               [item]="child"
               [editable]="editable"
               [selectedRef]="selectedRef"
+              [selectedLaneRef]="selectedLaneRef"
+              (selectLane)="selectLane.emit($event)"
               [first]="$first"
               [last]="$last"
               cdkDrag

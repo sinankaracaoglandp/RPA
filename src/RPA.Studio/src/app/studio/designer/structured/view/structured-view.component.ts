@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, Input, 
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { WorkflowVariable, WorkflowVersion } from '../../../../shared/models/workflow.model';
-import { ContainerType, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
+import { ContainerItem, ContainerType, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
@@ -107,6 +107,8 @@ export class StructuredViewComponent {
 
   /**
    * Paletten/toolbox'tan tıklayarak ekleme. Yerleştirme kuralı:
+   * - **bir lane seçili → o lane'in sonuna** (kullanıcı `if`in "değilse" panelini tıkladıysa
+   *   öğe oraya gider; lane seçimi konteyner seçiminden önceliklidir),
    * - seçim yok → kökün sonuna,
    * - adım seçili → onun hemen ardına (aynı dizide),
    * - **konteyner seçili → İÇİNE, ilk lane'inin sonuna** (while/forEach/for → `body`,
@@ -116,6 +118,18 @@ export class StructuredViewComponent {
    */
   addFromPalette(item: StructuredItem): void {
     const t = this.tree();
+    const lane = this.selectedLane();
+    if (lane) {
+      const cp = findPath(t, lane.container);
+      if (!cp) { return; }
+      const steps = [...cp.steps, { lane: lane.lane, index: cp.index }];
+      const index = (lane.container.lanes[lane.lane] ?? []).length;
+      const next = insertItem(t, steps, index, item);
+      this.commit(next);
+      const added = this.itemAtIndex(next, steps, index);
+      if (added) { this.onSelect(added); }
+      return;
+    }
     const sel = this.selected();
     const p = sel ? findPath(t, sel) : null;
     let steps = p ? p.steps : [];
@@ -146,17 +160,32 @@ export class StructuredViewComponent {
 
   // ---- Seçim + özellik düzenleme ----
   readonly selected = signal<StructuredItem | null>(null);
+  /**
+   * Seçili lane (konteyner paneli). Öğe seçiminden AYRI tutulur: lane bir node değildir,
+   * özellik paneli açmaz — yalnız "eklenen node buraya gelsin" hedefidir.
+   */
+  readonly selectedLane = signal<{ container: ContainerItem; lane: LaneName } | null>(null);
   @Output() readonly nodeSelect = new EventEmitter<StructuredSelection | null>();
 
   onSelect(item: StructuredItem): void {
     this.propsEditing = false;
+    this.selectedLane.set(null);
     this.selected.set(item);
     this.nodeSelect.emit(this.selectionOf(item));
+  }
+
+  /** Konteyner lane'inin boş alanına tıklama — ekleme hedefini o lane'e sabitler. */
+  onSelectLane(target: { container: ContainerItem; lane: LaneName }): void {
+    this.propsEditing = false;
+    this.selected.set(null);
+    this.selectedLane.set(target);
+    this.nodeSelect.emit(null);
   }
 
   clearSelection(): void {
     this.propsEditing = false;
     this.selected.set(null);
+    this.selectedLane.set(null);
     this.nodeSelect.emit(null);
   }
 

@@ -40,12 +40,22 @@ node eklemek en sık istenen akış ve C bunu konteynerin ARDINA koyuyordu. **Y�
 
 | Seçili olan | Yeni öğe nereye |
 |---|---|
+| **Bir lane** (panel tıklanmış) | **O lane'in sonuna** — en yüksek öncelik |
 | Yok | Kökün sonuna |
 | Bir adım | Aynı dizide, `p.index + 1` |
 | Bir konteyner | **İÇİNE, ilk lane'inin sonuna** — `while`/`forEach`/`for` → `body`, `if` → `true`, `tryCatch` → `success` |
 | Konteyner lane'i içindeki bir adım | O lane içinde, `p.index + 1` |
 
-Çok lane'li konteynerlerde ilk lane seçilir; yanlış lane'e düşen öğe sürüklenerek taşınır.
+### Lane seçimi (2026-07-21 eki)
+
+Konteyner panelinin boş alanına tıklamak o lane'i **ekleme hedefi** yapar (`selectedLane`
+signal'i; kesikli vurgu). Lane bir node değildir: özellik paneli açmaz, `nodeSelect` `null`
+yayar ve `selected` temizlenir; tersine bir kart seçmek lane seçimini temizler.
+
+Anlamlı olduğu yerler yalnız **çok lane'li** konteynerlerdir: `if` (ise / değilse),
+`tryCatch` (**üç** lane: dene / yakala / sonunda). Tek lane'li `while`/`for`/`forEach`'te
+lane seçimi konteyner seçimiyle aynı sonucu verir (zararsız, tutarlılık için açık bırakıldı).
+Başka bir kullanım yeri yoktur — lane kavramı yalnız konteynerlerde vardır.
 
 Ayrıca: soldaki toolbox'tan eklenen **kontrol aktiviteleri** (`Logic.If`/`ForEach`/…) düz adım
 değil, konteyner bloğu olarak eklenir (`CONTAINER_OF_ACTIVITY` ters eşlemesi) — `structured-add-menu`

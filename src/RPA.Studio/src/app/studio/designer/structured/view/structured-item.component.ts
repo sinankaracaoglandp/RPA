@@ -35,6 +35,18 @@ export class StructuredItemComponent {
   @Output() readonly action = new EventEmitter<StructuredAction>();
   @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
   @Output() readonly select = new EventEmitter<StructuredItem>();
+  @Input() selectedLaneRef: { container: ContainerItem; lane: LaneName } | null = null;
+  @Output() readonly selectLane = new EventEmitter<{ container: ContainerItem; lane: LaneName }>();
+
+  isLaneSelected(c: ContainerItem, lane: LaneName): boolean {
+    return this.selectedLaneRef?.container === c && this.selectedLaneRef?.lane === lane;
+  }
+
+  /** Lane'in boş alanına tıklama; çocuk kartlar kendi tıklamalarını zaten durdurur. */
+  onLaneClick(c: ContainerItem, lane: LaneName, event: Event): void {
+    event.stopPropagation();
+    this.selectLane.emit({ container: c, lane });
+  }
 
   get isSelected(): boolean { return this.item === this.selectedRef; }
 

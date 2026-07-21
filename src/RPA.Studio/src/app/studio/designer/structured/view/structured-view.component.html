@@ -42,6 +42,8 @@
             [items]="tree()"
             [editable]="editable"
             [selectedRef]="selected()"
+            [selectedLaneRef]="selectedLane()"
+            (selectLane)="onSelectLane($event)"
             (action)="onAction($event)"
             (drop)="onDrop($event)"
             (select)="onSelect($event)"
