@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, OnInit, Output, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CdkDrag, CdkDropList } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
@@ -26,6 +26,7 @@ interface ControlChip extends Chip { type: ContainerType; }
 })
 export class StructuredPaletteComponent implements OnInit {
   private readonly catalog = inject(ActivityCatalogService);
+  private readonly cdr = inject(ChangeDetectorRef);
   readonly filter = inject(StructuredPaletteFilter);
 
   private readonly controlTypes: ContainerType[] = ['if', 'forEach', 'for', 'while', 'tryCatch'];
@@ -35,16 +36,39 @@ export class StructuredPaletteComponent implements OnInit {
   }));
   activityChips: Chip[] = [];
 
+  /**
+   * Sürüklemeden ekleme: çipe çift tık ya da çipin `+` düğmesi. Palet yalnız "hangi node"
+   * bilgisini yayınlar; yerleştirme mantığı StructuredViewComponent'e aittir (kural C).
+   */
+  @Output() readonly add = new EventEmitter<StructuredItem>();
+
+  emitAdd(chip: Chip): void {
+    this.add.emit(chip.factory());
+  }
+
+  /** `+` düğmesine basmak cdkDrag'i başlatmamalı (aksi halde tıklama kaybolur). */
+  onAddPointerDown(event: Event): void {
+    event.stopPropagation();
+  }
+
   ngOnInit(): void {
+    // Katalog yanıtı OnPush görünümünü kendiliğinden kirletmez — markForCheck olmadan
+    // aktivite çipleri hiç render edilmez (yalnız başka bir olay CD tetiklerse görünürler).
     this.catalog.getActivities().subscribe({
-      next: (list) => (this.activityChips = list
-        .filter((a) => !CONTROL_ACTIVITY_IDS.has(a.activityId))
-        .map((a) => ({
-          label: a.displayName || a.activityId,
-          category: a.category || 'Diğer',
-          factory: () => newStep(a.activityId),
-        }))),
-      error: () => (this.activityChips = []),
+      next: (list) => {
+        this.activityChips = list
+          .filter((a) => !CONTROL_ACTIVITY_IDS.has(a.activityId))
+          .map((a) => ({
+            label: a.displayName || a.activityId,
+            category: a.category || 'Diğer',
+            factory: () => newStep(a.activityId),
+          }));
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.activityChips = [];
+        this.cdr.markForCheck();
+      },
     });
   }
 

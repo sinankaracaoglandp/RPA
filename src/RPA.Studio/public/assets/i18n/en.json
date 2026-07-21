@@ -106,6 +106,7 @@
     "activity": "Activity",
     "pickActivity": "Pick activity…",
     "palette": "Palette",
+    "addChip": "Add to flow (double-click also adds)",
     "undo": "Undo",
     "redo": "Redo",
     "fallbackReason": "Reason",

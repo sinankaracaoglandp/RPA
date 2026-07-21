@@ -13,10 +13,20 @@
 
 .palette__chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; }
 .palette__chip {
-  padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;
+  position: relative;
+  padding: 4px 18px 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;
   cursor: grab; font-size: 12px;
 
   &--control { font-weight: 600; border-color: #b6c1d2; background: #f8fafc; }
+
+  &:hover .palette__add, .palette__add:focus-visible { opacity: 1; }
+}
+.palette__add {
+  position: absolute; top: -6px; right: -6px;
+  width: 16px; height: 16px; padding: 0; line-height: 14px;
+  border: 1px solid #cbd5e1; border-radius: 50%; background: #fff;
+  color: #334155; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .12s;
 }
 .palette__empty { font-size: 12px; color: #94a3b8; align-self: center; }
 
@@ -27,4 +37,5 @@
   .palette__cat--active { background: #e7ecf3; border-color: #e7ecf3; color: #151b25; }
   .palette__chip { background: #151b25; border-color: #2a3444; color: #e7ecf3; }
   .palette__chip--control { background: #1b2330; }
+  .palette__add { background: #151b25; border-color: #2a3444; color: #e7ecf3; }
 }

@@ -16,10 +16,42 @@
 
   <div class="palette__chips" cdkDropList [cdkDropListSortingDisabled]="true" [cdkDropListData]="'__palette__'">
     @for (c of visibleControlChips; track c.type) {
-      <div class="palette__chip palette__chip--control" cdkDrag [cdkDragData]="{ factory: c.factory }">{{ c.label | translate }}</div>
+      <div
+        class="palette__chip palette__chip--control"
+        [attr.data-testid]="'palette-chip-' + (c.label | translate)"
+        cdkDrag
+        [cdkDragData]="{ factory: c.factory }"
+        (dblclick)="emitAdd(c)"
+      >
+        {{ c.label | translate }}
+        <button
+          type="button"
+          class="palette__add"
+          [attr.data-testid]="'palette-add-' + c.type"
+          [title]="'structured.addChip' | translate"
+          (mousedown)="onAddPointerDown($event)"
+          (click)="emitAdd(c)"
+        >+</button>
+      </div>
     }
     @for (c of visibleActivityChips; track c.label) {
-      <div class="palette__chip" cdkDrag [cdkDragData]="{ factory: c.factory }">{{ c.label }}</div>
+      <div
+        class="palette__chip"
+        [attr.data-testid]="'palette-chip-' + c.label"
+        cdkDrag
+        [cdkDragData]="{ factory: c.factory }"
+        (dblclick)="emitAdd(c)"
+      >
+        {{ c.label }}
+        <button
+          type="button"
+          class="palette__add"
+          [attr.data-testid]="'palette-add-' + c.label"
+          [title]="'structured.addChip' | translate"
+          (mousedown)="onAddPointerDown($event)"
+          (click)="emitAdd(c)"
+        >+</button>
+      </div>
     }
     @if (visibleControlChips.length === 0 && visibleActivityChips.length === 0) {
       <span class="palette__empty">{{ 'structured.paletteEmpty' | translate }}</span>
