@@ -7,7 +7,10 @@
   @if (isSimpleMode()) {
     <app-simplified-toolbox [canvas]="canvas()"></app-simplified-toolbox>
   } @else {
-    <app-toolbox [canvas]="canvas()"></app-toolbox>
+    <app-toolbox
+      [canvas]="canvas()"
+      (activityAdded)="onToolboxActivityAdded($event)"
+    ></app-toolbox>
   }
   <app-variables-panel
     [variables]="variables()"

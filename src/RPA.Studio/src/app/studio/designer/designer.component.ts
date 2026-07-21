@@ -22,6 +22,7 @@ import { ExecutionLogService } from '../../shared/services/execution-log.service
 import { RunLogService } from '../../shared/services/run-log.service';
 import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema';
 import { StructuredViewComponent } from './structured/view/structured-view.component';
+import { newStep } from './structured/edit/tree-ops';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -188,6 +189,17 @@ export class DesignerComponent implements OnDestroy {
   /** Invoked by the toolbox to drop an activity onto the canvas. */
   async addActivity(activityId: string): Promise<void> {
     await this.canvas()?.addNode(activityId);
+  }
+
+  /**
+   * Toolbox'ta çift tık / `+` ile eklenen aktivite. Toolbox kendi ekleme yolunu `canvas`
+   * varlığına bağlar; yapısal görünümde `app-canvas` render edilmediğinden o yol ölüdür ve
+   * eylem sessizce kaybolurdu. Yapısal görünümdeyken ekleme ağaca yönlendirilir (kural C:
+   * seçilinin ardına).
+   */
+  onToolboxActivityAdded(event: { activityId: string }): void {
+    if (!this.structuredView()) { return; }
+    this.structuredViewRef()?.addFromPalette(newStep(event.activityId));
   }
 
   onNodeSelect(nodeId: string | null): void {

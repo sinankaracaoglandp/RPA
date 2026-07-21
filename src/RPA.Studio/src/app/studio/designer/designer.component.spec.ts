@@ -259,6 +259,29 @@ describe('draft persistence (Paket B)', () => {
     }));
   });
 
+  it('adds a toolbox activity to the structural tree when there is no canvas', async () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Akış', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+    component.structuredView.set(true);
+    fixture.detectChanges();
+
+    // Yapısal görünümde app-canvas yoktur → toolbox'ın canvas yolu ölüdür.
+    expect(component.canvas()).toBeUndefined();
+
+    component.onToolboxActivityAdded({ activityId: 'Web.Click' });
+    fixture.detectChanges();
+
+    expect(component.structuredViewRef()!.tree()).toHaveLength(1);
+    expect(component.structuredViewRef()!.tree()[0])
+      .toEqual(expect.objectContaining({ kind: 'step' }));
+  });
+
   it('sets saveState to error when the save fails', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({
