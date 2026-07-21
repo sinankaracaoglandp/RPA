@@ -20,7 +20,7 @@
         <button type="button" data-testid="structured-zoom-in" (click)="zoomIn()">+</button>
       </div>
       @if (editable) {
-        <app-structured-palette></app-structured-palette>
+        <app-structured-palette (add)="addFromPalette($event)"></app-structured-palette>
       }
       <div
         #scroll

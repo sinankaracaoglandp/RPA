@@ -345,4 +345,67 @@ describe('StructuredViewComponent — kopyala', () => {
     f.componentInstance.undo();
     expect(f.componentInstance.tree()).toHaveLength(1);
   });
+
+  function seededView() {
+    const wf = treeToWorkflow([
+      step(n('a')),
+      container('forEach', { items: '${xs}', itemVariable: 'x' }, { body: [step(n('b'))] }),
+    ], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    return f;
+  }
+
+  it('appends to the root when nothing is selected', () => {
+    const cmp = seededView().componentInstance;
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const t = cmp.tree();
+    expect(t).toHaveLength(3);
+    expect((t[2] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+  });
+
+  it('inserts right after the selected step', () => {
+    const cmp = seededView().componentInstance;
+    cmp.onSelect(cmp.tree()[0]);
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const t = cmp.tree();
+    expect(t).toHaveLength(3);
+    expect((t[1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+  });
+
+  it('inserts AFTER a selected container, not inside it (rule C)', () => {
+    const cmp = seededView().componentInstance;
+    expect(cmp.tree()[1].kind).toBe('container');
+    cmp.onSelect(cmp.tree()[1]);
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const t = cmp.tree();
+    expect(t).toHaveLength(3);
+    expect((t[2] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+    // konteyner gövdesi dokunulmadan kalır
+    expect((t[1] as { lanes: Record<string, unknown[]> }).lanes['body']).toHaveLength(1);
+  });
+
+  it('stays inside the lane when a step inside a container is selected', () => {
+    const cmp = seededView().componentInstance;
+    const body = (cmp.tree()[1] as { lanes: Record<string, unknown[]> }).lanes['body'];
+    cmp.onSelect(body[0] as never);
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const nextBody = (cmp.tree()[1] as { lanes: Record<string, unknown[]> }).lanes['body'];
+    expect(nextBody).toHaveLength(2);
+    expect((nextBody[1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+    expect(cmp.tree()).toHaveLength(2);
+  });
+
+  it('undoes a palette add', () => {
+    const cmp = seededView().componentInstance;
+    cmp.addFromPalette(newStep('Web.Click'));
+    expect(cmp.tree()).toHaveLength(3);
+    cmp.undo();
+    expect(cmp.tree()).toHaveLength(2);
+  });
 });

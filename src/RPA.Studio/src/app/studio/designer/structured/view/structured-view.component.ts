@@ -105,6 +105,37 @@ export class StructuredViewComponent {
     this.commit(insertItem(this.tree(), [], this.tree().length, item));
   }
 
+  /**
+   * Paletten tıklayarak ekleme (kural C — "seçilinin ardına"): seçim bir imleç konumu gibi
+   * davranır ve asla kendiliğinden bir konteynerin içine atlamaz. Konteyner seçiliyken yeni
+   * öğe onun İÇİNE değil ARDINA girer; içine ekleme lane'deki `+` menüsü ya da sürükleme ile
+   * yapılır. Yeni öğe seçili gelir → art arda tıklayarak lineer akış kurulabilir.
+   */
+  addFromPalette(item: StructuredItem): void {
+    const t = this.tree();
+    const sel = this.selected();
+    const p = sel ? findPath(t, sel) : null;
+    const steps = p ? p.steps : [];
+    const index = p ? p.index + 1 : t.length;
+    const next = insertItem(t, steps, index, item);
+    this.commit(next);
+    const added = this.itemAtIndex(next, steps, index);
+    if (added) { this.onSelect(added); }
+  }
+
+  /** `commit` sonrası taze ağaçtan eklenen öğeyi çeker (seçim referans eşitliğine dayanır). */
+  private itemAtIndex(
+    tree: StructuredSequence, steps: { lane: string; index: number }[], index: number,
+  ): StructuredItem | null {
+    let seq = tree;
+    for (const s of steps) {
+      const it = seq[s.index];
+      if (it.kind !== 'container') { return null; }
+      seq = it.lanes[s.lane as LaneName] ?? [];
+    }
+    return seq[index] ?? null;
+  }
+
   // ---- Seçim + özellik düzenleme ----
   readonly selected = signal<StructuredItem | null>(null);
   @Output() readonly nodeSelect = new EventEmitter<StructuredSelection | null>();
