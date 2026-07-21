@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, Input, 
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { WorkflowVariable, WorkflowVersion } from '../../../../shared/models/workflow.model';
-import { ContainerType, LaneName, StructuredItem, StructuredSequence } from '../structured-model';
+import { ContainerType, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
 import { treeToWorkflow } from '../tree-to-workflow';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
@@ -106,17 +106,25 @@ export class StructuredViewComponent {
   }
 
   /**
-   * Paletten tıklayarak ekleme (kural C — "seçilinin ardına"): seçim bir imleç konumu gibi
-   * davranır ve asla kendiliğinden bir konteynerin içine atlamaz. Konteyner seçiliyken yeni
-   * öğe onun İÇİNE değil ARDINA girer; içine ekleme lane'deki `+` menüsü ya da sürükleme ile
-   * yapılır. Yeni öğe seçili gelir → art arda tıklayarak lineer akış kurulabilir.
+   * Paletten/toolbox'tan tıklayarak ekleme. Yerleştirme kuralı:
+   * - seçim yok → kökün sonuna,
+   * - adım seçili → onun hemen ardına (aynı dizide),
+   * - **konteyner seçili → İÇİNE, ilk lane'inin sonuna** (while/forEach/for → `body`,
+   *   if → `true`, tryCatch → `success`). Seçili bloğu doldurmak en sık istenen davranıştır;
+   *   yanlış lane'e düşerse öğe sürüklenerek taşınır.
+   * Yeni öğe seçili gelir → art arda tıklayarak akış kurulabilir.
    */
   addFromPalette(item: StructuredItem): void {
     const t = this.tree();
     const sel = this.selected();
     const p = sel ? findPath(t, sel) : null;
-    const steps = p ? p.steps : [];
-    const index = p ? p.index + 1 : t.length;
+    let steps = p ? p.steps : [];
+    let index = p ? p.index + 1 : t.length;
+    if (p && sel && sel.kind === 'container') {
+      const lane = lanesFor(sel.type)[0];
+      steps = [...p.steps, { lane, index: p.index }];
+      index = (sel.lanes[lane] ?? []).length;
+    }
     const next = insertItem(t, steps, index, item);
     this.commit(next);
     const added = this.itemAtIndex(next, steps, index);

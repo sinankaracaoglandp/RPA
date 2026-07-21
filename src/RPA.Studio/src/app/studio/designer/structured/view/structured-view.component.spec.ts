@@ -376,17 +376,36 @@ describe('StructuredViewComponent — kopyala', () => {
     expect((t[1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
   });
 
-  it('inserts AFTER a selected container, not inside it (rule C)', () => {
+  it('inserts INTO a selected container, at the end of its first lane', () => {
     const cmp = seededView().componentInstance;
     expect(cmp.tree()[1].kind).toBe('container');
     cmp.onSelect(cmp.tree()[1]);
     cmp.addFromPalette(newStep('Web.Click'));
 
     const t = cmp.tree();
-    expect(t).toHaveLength(3);
-    expect((t[2] as { node: { activity: string } }).node.activity).toBe('Web.Click');
-    // konteyner gövdesi dokunulmadan kalır
-    expect((t[1] as { lanes: Record<string, unknown[]> }).lanes['body']).toHaveLength(1);
+    expect(t).toHaveLength(2); // kök büyümez
+    const body = (t[1] as { lanes: Record<string, unknown[]> }).lanes['body'];
+    expect(body).toHaveLength(2);
+    expect((body[1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+  });
+
+  it('inserts into the first lane of a multi-lane container (if → true)', () => {
+    const wf = treeToWorkflow(
+      [container('if', { condition: '${x}' }, { true: [], false: [step(n('e'))] })],
+      { idGen: ids() },
+    );
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    cmp.onSelect(cmp.tree()[0]);
+    cmp.addFromPalette(newStep('Web.Click'));
+
+    const lanes = (cmp.tree()[0] as { lanes: Record<string, unknown[]> }).lanes;
+    expect(lanes['true']).toHaveLength(1);
+    expect((lanes['true'][0] as { node: { activity: string } }).node.activity).toBe('Web.Click');
+    expect(lanes['false']).toHaveLength(1); // dokunulmaz
   });
 
   it('stays inside the lane when a step inside a container is selected', () => {
