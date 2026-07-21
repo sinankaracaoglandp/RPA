@@ -519,6 +519,33 @@ describe('StructuredViewComponent — kopyala', () => {
     expect(body).toHaveLength(2);
   });
 
+  it('drags a selected group below the last container within the same list', () => {
+    // [a, b, c, if] → a,b,c seçili, if'in ALTINA sürükleniyor.
+    // CDK aynı liste içinde currentIndex'i "sürüklenen öğe çıkarılmış" listeye göre verir:
+    // [b, c, if] içinde sona bırakma → currentIndex 3.
+    const wf = treeToWorkflow([
+      step(n('a')), step(n('b')), step(n('c')),
+      container('if', { condition: '${x}' }, { true: [], false: [] }),
+    ], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    const [a, b, c] = cmp.tree();
+    cmp.onSelect(a); cmp.onSelect(b, true); cmp.onSelect(c, true);
+
+    // CDK aynı-liste sürüklemede previousContainer ile container için AYNI nesneyi verir.
+    const list = { data: cmp.tree() };
+    cmp.onDrop({
+      previousContainer: list, container: list,
+      previousIndex: 0, currentIndex: 3, item: { data: a },
+    } as never);
+
+    expect(cmp.tree().map((i) => (i as { node?: { id: string } }).node?.id ?? 'IF'))
+      .toEqual(['IF', 'a', 'b', 'c']);
+  });
+
   it('undoes a palette add', () => {
     const cmp = seededView().componentInstance;
     cmp.addFromPalette(newStep('Web.Click'));

@@ -220,7 +220,7 @@ describe('duplicateItem', () => {
     const box = container('while', {}, { body: [step(n('x'))] });
     const tree: StructuredSequence = [a, b, box];
 
-    const out = moveItemsAcross(tree, [a, b], [{ lane: 'body', index: 2 }], 1);
+    const out = moveItemsAcross(tree, [a, b], [{ lane: 'body', index: 2 }], null);
 
     expect(out).toHaveLength(1); // kökte yalnız konteyner kalır
     const body = (out[0] as ContainerItem).lanes.body as StructuredSequence;
@@ -233,9 +233,39 @@ describe('duplicateItem', () => {
     const tree: StructuredSequence = [step(n('a')), box];
 
     // box'ı kendi gövdesine taşımaya çalış
-    const out = moveItemsAcross(tree, [box], [{ lane: 'body', index: 1 }], 0);
+    const out = moveItemsAcross(tree, [box], [{ lane: 'body', index: 1 }], null);
 
     expect(out).toBe(tree);
+  });
+
+  it('moveItemsAcross places the group before the anchor item', () => {
+    const a = step(n('a')); const b = step(n('b'));
+    const c = step(n('c')); const box = container('if', {}, { true: [], false: [] });
+    const tree: StructuredSequence = [a, b, c, box];
+
+    // a,b,c'yi if'in ALTINA taşı → çapa yok (sonuna ekle)
+    const out = moveItemsAcross(tree, [a, b, c], [], null);
+
+    expect(out.map((i) => (i as StepItem).node?.id ?? 'IF')).toEqual(['IF', 'a', 'b', 'c']);
+  });
+
+  it('moveItemsAcross before an anchor keeps the group ordered', () => {
+    const a = step(n('a')); const b = step(n('b')); const c = step(n('c'));
+    const tree: StructuredSequence = [a, b, c];
+
+    const out = moveItemsAcross(tree, [b, c], [], a); // a'nın önüne
+
+    expect(out.map((i) => (i as StepItem).node.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('moveItemsAcross finds a CONTAINER anchor (rebuilt by the removal pass)', () => {
+    const a = step(n('a')); const b = step(n('b'));
+    const box = container('if', {}, { true: [], false: [] });
+    const tree: StructuredSequence = [a, b, box, step(n('tail'))];
+
+    const out = moveItemsAcross(tree, [a, b], [], box); // if'in ÖNÜNE
+
+    expect(out.map((i) => (i as StepItem).node?.id ?? 'IF')).toEqual(['a', 'b', 'IF', 'tail']);
   });
 
   it('duplicateItems appends the copies after the last selected item', () => {

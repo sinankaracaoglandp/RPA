@@ -294,7 +294,14 @@ export class StructuredViewComponent {
       next = insertItem(t, toSteps, event.currentIndex, data.factory());
     } else if (group.length > 1 && group.includes(dragged)) {
       // Seçili gruptan bir öğe sürüklendi → grubun tamamı taşınır (belge sırası korunur).
-      next = moveItemsAcross(t, group, toSteps, event.currentIndex);
+      // CDK'nın `currentIndex`'i AYNI liste içinde "sürüklenen öğe çıkarılmış" listeye göredir,
+      // listeler ARASINDA ise çıkarmadan. Grup taşımada indeks aritmetiği bu iki semantiği
+      // aynı anda tutturamaz → konumu çapa (bu indeksteki öğe) olarak veriyoruz.
+      const destSeq = event.container.data;
+      const base = event.previousContainer === event.container
+        ? destSeq.filter((x) => x !== dragged)
+        : destSeq;
+      next = moveItemsAcross(t, group, toSteps, base[event.currentIndex] ?? null);
     } else if (event.previousContainer === event.container) {
       next = reorderInSeq(t, toSteps, event.previousIndex, event.currentIndex);
     } else {

@@ -233,44 +233,62 @@ export function topLevelItems(
 }
 
 /**
- * Silme sonrası hedef yolunu düzeltir: her seviyede, hedef indeksinden ÖNCE silinen kardeş
- * sayısı kadar geri kaydırır. Yol üzerindeki bir ata da siliniyorsa hareket geçersizdir
- * (öğeyi kendi içine taşıma) → null.
+ * Silme sonrası hedef YOLUNU düzeltir (indeks değil): yol üzerindeki her adımı, o seviyede
+ * kendisinden önce silinen kardeş sayısı kadar geri kaydırır. Yol üzerindeki bir ata da
+ * siliniyorsa hareket geçersizdir (öğeyi kendi içine taşıma) → null.
  */
-function adjustForRemoval(
-  tree: StructuredSequence, toSteps: PathStep[], toIndex: number, removed: Set<StructuredItem>,
-): { steps: PathStep[]; index: number } | null {
+function adjustStepsForRemoval(
+  tree: StructuredSequence, toSteps: PathStep[], removed: Set<StructuredItem>,
+): PathStep[] | null {
   let seq = tree;
   const steps: PathStep[] = [];
-  const before = (s: StructuredSequence, i: number) =>
-    s.slice(0, i).filter((x) => removed.has(x)).length;
-
   for (const s of toSteps) {
     const item = seq[s.index];
     if (!item || item.kind !== 'container' || removed.has(item)) { return null; }
-    steps.push({ lane: s.lane, index: s.index - before(seq, s.index) });
+    const before = seq.slice(0, s.index).filter((x) => removed.has(x)).length;
+    steps.push({ lane: s.lane, index: s.index - before });
     seq = item.lanes[s.lane] ?? [];
   }
-  return { steps, index: toIndex - before(seq, toIndex) };
+  return steps;
 }
 
 /**
- * Seçili grubu hedef diziye (toSteps, toIndex) taşır; belge sırası korunur. Hedef, taşınan
- * bir konteynerin İÇİNDEYSE hareket geçersizdir ve ağaç değişmeden döner.
+ * Seçili grubu hedef dizide `anchor` öğesinin ÖNÜNE taşır (`anchor === null` → dizinin sonuna);
+ * belge sırası korunur. Hedef, taşınan bir konteynerin İÇİNDEYSE hareket geçersizdir ve ağaç
+ * değişmeden döner.
+ *
+ * Konum neden indeksle değil ÇAPAYLA verilir: CDK aynı liste içindeki sürüklemede
+ * `currentIndex`'i "sürüklenen öğe listeden çıkarılmış" varsayarak üretir, listeler arasında
+ * ise çıkarmadan. Grup taşımada N öğe birden silindiği için indeks aritmetiği iki farklı
+ * semantiği aynı anda tutturmak zorunda kalır ve sessizce yanlış konuma yazar. Çapa, silmeden
+ * ETKİLENMEYEN bir referans olduğu için bu sınıf hatayı tümüyle ortadan kaldırır.
  */
 export function moveItemsAcross(
   tree: StructuredSequence,
   targets: readonly StructuredItem[],
-  toSteps: PathStep[], toIndex: number,
+  toSteps: PathStep[], anchor: StructuredItem | null,
 ): StructuredSequence {
   const items = topLevelItems(tree, targets);
   if (items.length === 0) { return tree; }
 
-  const at = adjustForRemoval(tree, toSteps, toIndex, new Set(items));
-  if (!at) { return tree; }
+  const removed = new Set(items);
+  if (anchor && removed.has(anchor)) { return tree; }
+
+  const steps = adjustStepsForRemoval(tree, toSteps, removed);
+  if (!steps) { return tree; }
+
+  // Çapanın konumu ÖZGÜN ağaçta bulunur: `removeItems` konteynerleri yeniden kurduğundan
+  // (immutable güncelleme) silinmiş ağaçta referans araması konteyner çapalarını asla bulamaz
+  // ve sessizce "sona ekle"ye düşerdi.
+  const source = seqAt(tree, toSteps);
+  const anchorAt = anchor ? source.indexOf(anchor) : -1;
 
   let next = removeItems(tree, items);
-  items.forEach((item, i) => { next = insertItem(next, at.steps, at.index + i, item); });
+  const index = anchorAt >= 0
+    ? anchorAt - source.slice(0, anchorAt).filter((x) => removed.has(x)).length
+    : seqAt(next, steps).length;
+
+  items.forEach((item, i) => { next = insertItem(next, steps, index + i, item); });
   return next;
 }
 
