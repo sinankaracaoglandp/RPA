@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { StructuredItemComponent, StructuredAction } from './structured-item.component';
-import { step, container } from '../structured-model';
+import { step, container, ContainerType } from '../structured-model';
+import { newContainer } from '../edit/tree-ops';
 
 describe('StructuredItemComponent', () => {
   beforeEach(() => TestBed.configureTestingModule({ imports: [StructuredItemComponent] }));
@@ -150,6 +151,23 @@ describe('StructuredItemComponent', () => {
     // Boş lane'in bırakma hedefi düzenleme modunda da görünmeli — sürükleyip bırakılacak yer burası.
     expect(f.nativeElement.querySelectorAll('[data-testid="lane-empty"]').length).toBe(2);
   });
+
+  // Lane render'ı tüm konteyner tipleri için ORTAK koddur; her tip için ayrı ayrı doğrulanır.
+  const laneCounts: [ContainerType, number][] = [
+    ['while', 1], ['for', 1], ['forEach', 1], ['if', 2], ['tryCatch', 3],
+  ];
+  for (const [type, count] of laneCounts) {
+    it(`renders an editable drop slot for every empty lane of '${type}'`, () => {
+      const f = TestBed.createComponent(StructuredItemComponent);
+      f.componentRef.setInput('item', newContainer(type));
+      f.componentRef.setInput('editable', true);
+      f.detectChanges();
+
+      const el = f.nativeElement as HTMLElement;
+      expect(el.querySelectorAll('[data-testid="lane-empty"]').length).toBe(count);
+      expect(el.querySelectorAll('.cdk-drop-list').length).toBe(count);
+    });
+  }
 });
 
 describe('StructuredItemComponent — kullanıcı adı (label)', () => {
