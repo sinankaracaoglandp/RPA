@@ -22,7 +22,8 @@ import { ExecutionLogService } from '../../shared/services/execution-log.service
 import { RunLogService } from '../../shared/services/run-log.service';
 import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema';
 import { StructuredViewComponent } from './structured/view/structured-view.component';
-import { newStep } from './structured/edit/tree-ops';
+import { newContainer, newStep } from './structured/edit/tree-ops';
+import { CONTAINER_OF_ACTIVITY } from './structured/edit/control-activity-map';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -196,10 +197,16 @@ export class DesignerComponent implements OnDestroy {
    * varlığına bağlar; yapısal görünümde `app-canvas` render edilmediğinden o yol ölüdür ve
    * eylem sessizce kaybolurdu. Yapısal görünümdeyken ekleme ağaca yönlendirilir (kural C:
    * seçilinin ardına).
+   *
+   * Kontrol-akışı aktiviteleri (Logic.If/ForEach/...) düz adım olarak eklenemez — yapısal
+   * karşılıkları konteyner bloğudur. Toolbox bunları listesinden elemez (add-menu eler),
+   * bu yüzden dönüşüm burada yapılır; aksi halde blok yerine düz aktivite kutusu eklenir.
    */
   onToolboxActivityAdded(event: { activityId: string }): void {
     if (!this.structuredView()) { return; }
-    this.structuredViewRef()?.addFromPalette(newStep(event.activityId));
+    const containerType = CONTAINER_OF_ACTIVITY[event.activityId];
+    const item = containerType ? newContainer(containerType) : newStep(event.activityId);
+    this.structuredViewRef()?.addFromPalette(item);
   }
 
   onNodeSelect(nodeId: string | null): void {

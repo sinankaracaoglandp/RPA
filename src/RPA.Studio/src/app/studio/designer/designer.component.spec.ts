@@ -282,6 +282,26 @@ describe('draft persistence (Paket B)', () => {
       .toEqual(expect.objectContaining({ kind: 'step' }));
   });
 
+  it('adds a control activity from the toolbox as a container block, not a flat step', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Akış', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+    component.structuredView.set(true);
+    fixture.detectChanges();
+
+    component.onToolboxActivityAdded({ activityId: 'Logic.ForEach' });
+    fixture.detectChanges();
+
+    const item = component.structuredViewRef()!.tree()[0];
+    expect(item).toEqual(expect.objectContaining({ kind: 'container', type: 'forEach' }));
+    expect((item as { lanes: Record<string, unknown[]> }).lanes['body']).toEqual([]);
+  });
+
   it('sets saveState to error when the save fails', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({
