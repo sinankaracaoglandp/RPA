@@ -40,6 +40,9 @@ export class StructuredItemComponent {
   @Input() selectedLaneRef: { container: ContainerItem; lane: LaneName } | null = null;
   @Output() readonly selectLane = new EventEmitter<{ container: ContainerItem; lane: LaneName }>();
 
+  /** Sürükleme sırasında imlecin üzerinde olduğu lane (bırakma hedefi vurgusu). */
+  dragOverLane: LaneName | null = null;
+
   isLaneSelected(c: ContainerItem, lane: LaneName): boolean {
     return this.selectedLaneRef?.container === c && this.selectedLaneRef?.lane === lane;
   }

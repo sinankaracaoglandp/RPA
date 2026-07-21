@@ -140,6 +140,16 @@ describe('StructuredItemComponent', () => {
     expect(f.nativeElement.querySelector('.cdk-drop-list')).toBeTruthy();
     expect(f.nativeElement.querySelector('.cdk-drag')).toBeTruthy();
   });
+
+  it('renders a drop slot for an empty lane WHILE editable (aim target)', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    f.componentRef.setInput('item', container('if', {}, { true: [], false: [] }));
+    f.componentRef.setInput('editable', true);
+    f.detectChanges();
+
+    // Boş lane'in bırakma hedefi düzenleme modunda da görünmeli — sürükleyip bırakılacak yer burası.
+    expect(f.nativeElement.querySelectorAll('[data-testid="lane-empty"]').length).toBe(2);
+  });
 });
 
 describe('StructuredItemComponent — kullanıcı adı (label)', () => {

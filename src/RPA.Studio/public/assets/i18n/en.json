@@ -99,6 +99,7 @@
     "renamePlaceholder": "Node name (e.g. Invoice no entry)",
     "add": "Add node here",
     "controlCategory": "Control",
+    "dropHere": "Drop here",
     "paletteEmpty": "No items in this category",
     "paletteSearch": "Search palette...",
     "paletteCollapse": "Collapse palette",

@@ -75,11 +75,14 @@
           class="structured-container__lane"
           [attr.data-testid]="'lane-' + lane"
           [class.structured-container__lane--selected]="isLaneSelected(container, lane)"
+          [class.structured-container__lane--over]="dragOverLane === lane"
           (click)="onLaneClick(container, lane, $event)"
+          (cdkDropListEntered)="dragOverLane = lane"
+          (cdkDropListExited)="dragOverLane = null"
           cdkDropList
           [cdkDropListData]="laneItems(container, lane)"
           [cdkDropListDisabled]="!editable"
-          (cdkDropListDropped)="drop.emit($event)"
+          (cdkDropListDropped)="dragOverLane = null; drop.emit($event)"
         >
           <span class="structured-container__lane-label">{{ 'structured.lane.' + lane | translate }}</span>
           @for (child of laneItems(container, lane); track $index) {
@@ -100,8 +103,10 @@
               (select)="select.emit($event)"
             ></app-structured-item>
           }
-          @if (laneItems(container, lane).length === 0 && !editable) {
-            <p class="structured-container__lane-empty" data-testid="lane-empty">{{ 'structured.empty' | translate }}</p>
+          @if (laneItems(container, lane).length === 0) {
+            <p class="structured-container__lane-empty" data-testid="lane-empty">
+              {{ (editable ? 'structured.dropHere' : 'structured.empty') | translate }}
+            </p>
           }
           @if (editable) {
             <app-structured-add-menu (pick)="onLaneAdd(container, lane, $event)"></app-structured-add-menu>

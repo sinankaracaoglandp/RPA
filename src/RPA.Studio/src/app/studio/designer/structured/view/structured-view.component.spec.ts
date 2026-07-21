@@ -256,9 +256,9 @@ describe('StructuredViewComponent', () => {
 
     const falseLane = f.nativeElement.querySelector('[data-testid="lane-false"]') as HTMLElement;
     expect(falseLane).toBeTruthy();
-    // boş dalda ekleme slotu görünür, salt-okunur "boş" metni değil
+    // boş dalda hem ekleme slotu hem de sürükle-bırak hedefi görünür
     expect(falseLane.querySelector('[data-testid="add-toggle"]')).toBeTruthy();
-    expect(falseLane.querySelector('[data-testid="lane-empty"]')).toBeFalsy();
+    expect(falseLane.querySelector('[data-testid="lane-empty"]')).toBeTruthy();
   });
 
   it('adds a node into a lane when the add control is used (no drag)', () => {
@@ -544,6 +544,31 @@ describe('StructuredViewComponent — kopyala', () => {
 
     expect(cmp.tree().map((i) => (i as { node?: { id: string } }).node?.id ?? 'IF'))
       .toEqual(['IF', 'a', 'b', 'c']);
+  });
+
+  it('drags a selected group INTO an empty container lane', () => {
+    const wf = treeToWorkflow([
+      step(n('a')), step(n('b')),
+      container('if', { condition: '${x}' }, { true: [], false: [] }),
+    ], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    const [a, b, box] = cmp.tree();
+    cmp.onSelect(a); cmp.onSelect(b, true);
+
+    const trueLane = (box as { lanes: Record<string, unknown[]> }).lanes['true'];
+    cmp.onDrop({
+      previousContainer: { data: cmp.tree() },
+      container: { data: trueLane },
+      previousIndex: 0, currentIndex: 0, item: { data: a },
+    } as never);
+
+    const lanes = (cmp.tree()[0] as { lanes: Record<string, unknown[]> }).lanes;
+    expect(lanes['true'].map((i) => (i as { node: { id: string } }).node.id)).toEqual(['a', 'b']);
+    expect(cmp.tree()).toHaveLength(1);
   });
 
   it('undoes a palette add', () => {

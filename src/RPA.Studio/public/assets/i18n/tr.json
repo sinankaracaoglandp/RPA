@@ -99,6 +99,7 @@
     "renamePlaceholder": "Node adı (örn. Fatura no girişi)",
     "add": "Buraya node ekle",
     "controlCategory": "Kontrol",
+    "dropHere": "Buraya sürükleyin",
     "paletteEmpty": "Bu kategoride öğe yok",
     "paletteSearch": "Palette ara...",
     "paletteCollapse": "Paleti küçült",
