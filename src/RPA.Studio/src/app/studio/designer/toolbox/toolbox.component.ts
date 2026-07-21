@@ -40,6 +40,12 @@ export class ToolboxComponent {
     position?: { x: number; y: number };
   }>();
 
+  /**
+   * Seçilen kategori (ya da "tümü" sentineli). Yapısal görünümdeki palet buna uyar —
+   * kullanıcı iki panelde ayrı ayrı kategori seçmek zorunda kalmasın.
+   */
+  @Output() readonly categoryChanged = new EventEmitter<string>();
+
   private readonly catalog = inject(ActivityCatalogService);
 
   readonly ALL_CATEGORIES = ALL_CATEGORIES;
@@ -95,6 +101,7 @@ export class ToolboxComponent {
 
   selectCategory(category: string): void {
     this.selectedCategory.set(category);
+    this.categoryChanged.emit(category);
   }
 
   async addActivity(activityId: string, position?: { x: number; y: number }): Promise<void> {

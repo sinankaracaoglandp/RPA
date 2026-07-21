@@ -1,8 +1,11 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, OnInit, Output, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, OnInit, Output, inject, signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CdkDrag, CdkDropList } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { ActivityCatalogService } from '../../../../shared/services/activity-catalog.service';
+import { TranslationService } from '../../../../core/translation.service';
 import { ContainerType, StructuredItem } from '../structured-model';
 import { newContainer, newStep } from '../edit/tree-ops';
 import { CONTROL_ACTIVITY_IDS } from '../edit/control-activity-map';
@@ -27,7 +30,22 @@ interface ControlChip extends Chip { type: ContainerType; }
 export class StructuredPaletteComponent implements OnInit {
   private readonly catalog = inject(ActivityCatalogService);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly i18n = inject(TranslationService);
   readonly filter = inject(StructuredPaletteFilter);
+
+  /** Palet katlanabilir — tuvale yer açmak için (yalnız görünüm durumu, kalıcı değil). */
+  readonly collapsed = signal(false);
+  readonly search = signal('');
+
+  toggleCollapsed(): void { this.collapsed.update((c) => !c); }
+
+  onSearch(term: string): void { this.search.set(term); }
+
+  /** Çip adı arama terimini içeriyor mu (kontrol çiplerinde çevrilmiş ad üzerinden). */
+  private matches(label: string): boolean {
+    const term = this.search().trim().toLocaleLowerCase('tr');
+    return !term || label.toLocaleLowerCase('tr').includes(term);
+  }
 
   private readonly controlTypes: ContainerType[] = ['if', 'forEach', 'for', 'while', 'tryCatch'];
 
@@ -93,13 +111,15 @@ export class StructuredPaletteComponent implements OnInit {
   /** Seçili filtreye göre görünür kontrol çipleri (Kontrol seçili ya da filtre yokken). */
   get visibleControlChips(): ControlChip[] {
     const s = this.selected;
-    return s === null || s === CONTROL_CATEGORY ? this.controlChips : [];
+    const visible = s === null || s === CONTROL_CATEGORY ? this.controlChips : [];
+    return visible.filter((c) => this.matches(this.i18n.translate(c.label)));
   }
 
   /** Seçili filtreye göre görünür aktivite çipleri. */
   get visibleActivityChips(): Chip[] {
     const s = this.selected;
     if (s === CONTROL_CATEGORY) { return []; }
-    return s === null ? this.activityChips : this.activityChips.filter((c) => c.category === s);
+    const byCat = s === null ? this.activityChips : this.activityChips.filter((c) => c.category === s);
+    return byCat.filter((c) => this.matches(c.label));
   }
 }

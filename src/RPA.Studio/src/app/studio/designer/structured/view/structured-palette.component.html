@@ -1,5 +1,25 @@
-<div class="palette">
-  <span class="palette__title">{{ 'structured.palette' | translate }}</span>
+<div class="palette" [class.palette--collapsed]="collapsed()">
+  <div class="palette__head">
+    <button
+      type="button"
+      class="palette__toggle"
+      data-testid="palette-toggle"
+      [attr.aria-expanded]="!collapsed()"
+      [title]="(collapsed() ? 'structured.paletteExpand' : 'structured.paletteCollapse') | translate"
+      (click)="toggleCollapsed()"
+    >{{ collapsed() ? '▸' : '▾' }}</button>
+    <span class="palette__title">{{ 'structured.palette' | translate }}</span>
+  </div>
+
+  @if (!collapsed()) {
+  <input
+    type="search"
+    class="palette__search"
+    data-testid="palette-search"
+    [value]="search()"
+    [placeholder]="'structured.paletteSearch' | translate"
+    (input)="onSearch($any($event.target).value)"
+  />
 
   <div class="palette__cats" role="tablist">
     @for (cat of categories; track cat) {
@@ -57,4 +77,5 @@
       <span class="palette__empty">{{ 'structured.paletteEmpty' | translate }}</span>
     }
   </div>
+  }
 </div>

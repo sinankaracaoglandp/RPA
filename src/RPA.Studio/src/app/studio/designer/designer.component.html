@@ -10,6 +10,7 @@
     <app-toolbox
       [canvas]="canvas()"
       (activityAdded)="onToolboxActivityAdded($event)"
+      (categoryChanged)="onToolboxCategoryChanged($event)"
     ></app-toolbox>
   }
   <app-variables-panel

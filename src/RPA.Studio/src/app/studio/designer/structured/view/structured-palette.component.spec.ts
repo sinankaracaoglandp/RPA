@@ -63,6 +63,70 @@ describe('StructuredPaletteComponent', () => {
     expect(cmp.visibleActivityChips.length).toBe(2);
   });
 
+  it('filters chips by the search term (activity + control labels)', () => {
+    const f = TestBed.createComponent(StructuredPaletteComponent);
+    f.detectChanges();
+    http.match('/api/activities').forEach((r) => r.flush([
+      { activityId: 'Web.Click', displayName: 'Tıkla', category: 'Web', inputs: [], outputs: [] },
+      { activityId: 'Excel.Read', displayName: 'Excel Oku', category: 'Excel', inputs: [], outputs: [] },
+    ]));
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    cmp.onSearch('excel');
+    expect(cmp.visibleActivityChips.map((c) => c.label)).toEqual(['Excel Oku']);
+    expect(cmp.visibleControlChips).toEqual([]); // hiçbir kontrol adı eşleşmiyor
+
+    cmp.onSearch('  ');
+    expect(cmp.visibleActivityChips).toHaveLength(2); // yalnız boşluk = filtre yok
+  });
+
+  it('search and category filters combine', () => {
+    const f = TestBed.createComponent(StructuredPaletteComponent);
+    f.detectChanges();
+    http.match('/api/activities').forEach((r) => r.flush([
+      { activityId: 'Web.Click', displayName: 'Tıkla', category: 'Web', inputs: [], outputs: [] },
+      { activityId: 'Excel.Read', displayName: 'Tıkla Excel', category: 'Excel', inputs: [], outputs: [] },
+    ]));
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    cmp.select('Web');
+    cmp.onSearch('tıkla');
+    expect(cmp.visibleActivityChips.map((c) => c.label)).toEqual(['Tıkla']);
+  });
+
+  it('collapses and expands the palette', () => {
+    const f = TestBed.createComponent(StructuredPaletteComponent);
+    f.detectChanges();
+    http.match('/api/activities').forEach((r) => r.flush([]));
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    const el = f.nativeElement as HTMLElement;
+
+    expect(cmp.collapsed()).toBe(false);
+    expect(el.querySelector('.palette__chips')).not.toBeNull();
+
+    el.querySelector<HTMLElement>('[data-testid="palette-toggle"]')!.click();
+    f.detectChanges();
+
+    expect(cmp.collapsed()).toBe(true);
+    expect(el.querySelector('.palette__chips')).toBeNull();
+  });
+
+  it('follows the shared category filter set from outside (toolbox)', () => {
+    const f = TestBed.createComponent(StructuredPaletteComponent);
+    f.detectChanges();
+    http.match('/api/activities').forEach((r) => r.flush([
+      { activityId: 'Web.Click', displayName: 'Tıkla', category: 'Web', inputs: [], outputs: [] },
+      { activityId: 'Excel.Read', displayName: 'Excel Oku', category: 'Excel', inputs: [], outputs: [] },
+    ]));
+    f.detectChanges();
+
+    TestBed.inject(StructuredPaletteFilter).set('Excel');
+    expect(f.componentInstance.visibleActivityChips.map((c) => c.label)).toEqual(['Excel Oku']);
+  });
+
   it('emits add when a chip is double-clicked', () => {
     const f = TestBed.createComponent(StructuredPaletteComponent);
     f.detectChanges();

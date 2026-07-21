@@ -1,6 +1,20 @@
 .palette { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-bottom: 1px solid #e2e8f0; }
 .palette__title { font-size: 12px; font-weight: 600; color: #475569; }
 
+// Katlanmış hâlde yalnız başlık satırı kalır → tuvale yer açılır.
+.palette--collapsed { gap: 0; padding: 4px 8px; }
+.palette__head { display: flex; align-items: center; gap: 6px; }
+.palette__toggle {
+  width: 18px; height: 18px; padding: 0; line-height: 16px;
+  border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;
+  color: #475569; font-size: 10px; cursor: pointer;
+}
+.palette__search {
+  width: 100%; box-sizing: border-box;
+  padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px;
+  background: #fff; color: #1f2937; font-size: 12px;
+}
+
 .palette__cats { display: flex; flex-wrap: wrap; gap: 4px; }
 .palette__cat {
   padding: 3px 10px; border: 1px solid #cbd5e1; border-radius: 999px;
@@ -38,4 +52,6 @@
   .palette__chip { background: #151b25; border-color: #2a3444; color: #e7ecf3; }
   .palette__chip--control { background: #1b2330; }
   .palette__add { background: #151b25; border-color: #2a3444; color: #e7ecf3; }
+  .palette__toggle { background: #151b25; border-color: #3a475b; color: #a3b0c4; }
+  .palette__search { background: #151b25; border-color: #3a475b; color: #e7ecf3; }
 }

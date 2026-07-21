@@ -109,6 +109,17 @@ describe('ToolboxComponent', () => {
     expect(component.filteredActivities()[0].activityId).toBe('Sap.Gui.SelectTab');
   });
 
+  it('emits the selected category so other panels can follow it', () => {
+    fixture.detectChanges();
+    flushActivities();
+
+    const seen: string[] = [];
+    component.categoryChanged.subscribe((c: string) => seen.push(c));
+    component.selectCategory('Web');
+
+    expect(seen).toEqual(['Web']);
+  });
+
   it('combines search and category filters', () => {
     fixture.detectChanges();
     flushActivities();

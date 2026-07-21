@@ -18,6 +18,11 @@ export class StructuredPaletteFilter {
     this.category.update((current) => (current === category ? null : category));
   }
 
+  /** Dışarıdan (soldaki toolbox) doğrudan atama; toggle semantiği yok. */
+  set(category: string | null): void {
+    this.category.set(category);
+  }
+
   clear(): void {
     this.category.set(null);
   }

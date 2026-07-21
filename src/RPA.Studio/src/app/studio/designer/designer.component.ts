@@ -209,6 +209,15 @@ export class DesignerComponent implements OnDestroy {
     this.structuredViewRef()?.addFromPalette(item);
   }
 
+  /**
+   * Soldaki toolbox'ta seçilen kategori yapısal paletin filtresine yansır — kullanıcı aynı
+   * seçimi iki panelde ayrı ayrı yapmak zorunda kalmasın. Toolbox'ın "tümü" sentineli
+   * (`__all__`) palette "filtre yok" (null) demektir.
+   */
+  onToolboxCategoryChanged(category: string): void {
+    this.structuredViewRef()?.setPaletteCategory(category === '__all__' ? null : category);
+  }
+
   onNodeSelect(nodeId: string | null): void {
     this.selectedNodeId.set(nodeId);
     const canvas = this.canvas();

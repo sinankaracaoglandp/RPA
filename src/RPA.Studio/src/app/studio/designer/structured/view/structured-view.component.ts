@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, Input, Output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, Component, EventEmitter, HostListener, Input, Output, inject, signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { WorkflowVariable, WorkflowVersion } from '../../../../shared/models/workflow.model';
@@ -70,6 +72,14 @@ export class StructuredViewComponent {
   @Output() readonly graphChanged = new EventEmitter<WorkflowVersion>();
 
   get editable(): boolean { return this.mode() === 'tree'; }
+
+  /**
+   * Palet kategori filtresi. `StructuredPaletteFilter` bu bileşen seviyesinde sağlandığından
+   * dışarıdan (designer → toolbox) erişim bu iki üye üzerinden gider.
+   */
+  private readonly paletteFilter = inject(StructuredPaletteFilter);
+  paletteCategory(): string | null { return this.paletteFilter.category(); }
+  setPaletteCategory(category: string | null): void { this.paletteFilter.set(category); }
 
   // ---- Mutasyon uygulama (findPath + tree-ops) ----
   onAction(a: StructuredAction): void {

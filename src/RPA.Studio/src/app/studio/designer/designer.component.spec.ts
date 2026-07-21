@@ -302,6 +302,26 @@ describe('draft persistence (Paket B)', () => {
     expect((item as { lanes: Record<string, unknown[]> }).lanes['body']).toEqual([]);
   });
 
+  it('mirrors the toolbox category into the structured palette filter', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Akış', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+    component.structuredView.set(true);
+    fixture.detectChanges();
+
+    component.onToolboxCategoryChanged('Web');
+    expect(component.structuredViewRef()!.paletteCategory()).toBe('Web');
+
+    // "Tümü" sentineli filtreyi kaldırır
+    component.onToolboxCategoryChanged('__all__');
+    expect(component.structuredViewRef()!.paletteCategory()).toBeNull();
+  });
+
   it('sets saveState to error when the save fails', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({
