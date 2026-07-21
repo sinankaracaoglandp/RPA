@@ -450,6 +450,75 @@ describe('StructuredViewComponent — kopyala', () => {
     expect((t[1] as { node: { activity: string } }).node.activity).toBe('Web.Click');
   });
 
+  // ---- Çoklu seçim (Ctrl+tık) ----
+
+  it('ctrl-click adds to and removes from the multi selection', () => {
+    const cmp = seededView().componentInstance;
+    const [a, box] = cmp.tree();
+
+    cmp.onSelect(a);
+    cmp.onSelect(box, true);
+    expect(cmp.selectedItems()).toEqual([a, box]);
+
+    cmp.onSelect(box, true); // aynı öğeye tekrar → seçimden çıkar
+    expect(cmp.selectedItems()).toEqual([a]);
+  });
+
+  it('emits a null property selection while multiple items are selected', () => {
+    const f = seededView();
+    const cmp = f.componentInstance;
+    const seen: unknown[] = [];
+    cmp.nodeSelect.subscribe((s: unknown) => seen.push(s));
+
+    cmp.onSelect(cmp.tree()[0]);
+    cmp.onSelect(cmp.tree()[1], true);
+
+    expect(seen[seen.length - 1]).toBeNull();
+  });
+
+  it('deletes every selected item in one undo step', () => {
+    const cmp = seededView().componentInstance;
+    const [a, box] = cmp.tree();
+    cmp.onSelect(a);
+    cmp.onSelect(box, true);
+
+    cmp.deleteSelection();
+    expect(cmp.tree()).toHaveLength(0);
+
+    cmp.undo();
+    expect(cmp.tree()).toHaveLength(2);
+  });
+
+  it('duplicates the whole selection after the last selected item', () => {
+    const cmp = seededView().componentInstance;
+    const [a, box] = cmp.tree();
+    cmp.onSelect(a);
+    cmp.onSelect(box, true);
+
+    cmp.duplicateSelection();
+    expect(cmp.tree()).toHaveLength(4);
+  });
+
+  it('moves the whole selection when a selected item is dragged', () => {
+    const cmp = seededView().componentInstance;
+    const a = cmp.tree()[0];
+    const box = cmp.tree()[1] as { lanes: Record<string, unknown[]> };
+    cmp.onSelect(a);
+
+    cmp.onDrop({
+      previousContainer: { data: cmp.tree() },
+      container: { data: box.lanes['body'] },
+      previousIndex: 0,
+      currentIndex: 1,
+      item: { data: a },
+    } as never);
+
+    const t = cmp.tree();
+    expect(t).toHaveLength(1); // 'a' kökten çıktı
+    const body = (t[0] as { lanes: Record<string, unknown[]> }).lanes['body'];
+    expect(body).toHaveLength(2);
+  });
+
   it('undoes a palette add', () => {
     const cmp = seededView().componentInstance;
     cmp.addFromPalette(newStep('Web.Click'));

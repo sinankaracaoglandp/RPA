@@ -52,10 +52,25 @@ describe('StructuredItemComponent', () => {
     f.componentRef.setInput('item', item);
     f.componentRef.setInput('editable', true);
     f.detectChanges();
-    let selected: unknown;
-    f.componentInstance.select.subscribe((i) => (selected = i));
+    let selected: { item: unknown; additive: boolean } | undefined;
+    f.componentInstance.select.subscribe((e) => (selected = e));
     (f.nativeElement.querySelector('[data-testid="structured-step"]') as HTMLElement).click();
-    expect(selected).toBe(item);
+    expect(selected).toEqual({ item, additive: false });
+  });
+
+  it('flags the selection as additive when ctrl is held', () => {
+    const f = TestBed.createComponent(StructuredItemComponent);
+    const item = step({ id: 's', type: 'activity', activity: 'A' });
+    f.componentRef.setInput('item', item);
+    f.componentRef.setInput('editable', true);
+    f.detectChanges();
+    let selected: { additive: boolean } | undefined;
+    f.componentInstance.select.subscribe((e) => (selected = e));
+
+    (f.nativeElement.querySelector('[data-testid="structured-step"]') as HTMLElement)
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    expect(selected!.additive).toBe(true);
   });
 
   it('marks the selected item', () => {

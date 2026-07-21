@@ -9,7 +9,7 @@ import { treeToWorkflow } from '../tree-to-workflow';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
   insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross, setItemProps,
-  setItemLabel, duplicateItem,
+  setItemLabel, duplicateItem, removeItems, duplicateItems, moveItemsAcross,
 } from '../edit/tree-ops';
 import { CONTROL_ACTIVITY_OF } from '../edit/control-activity-map';
 import { reduceWorkflow } from '../edit/structured-reducer';
@@ -92,6 +92,12 @@ export class StructuredViewComponent {
       const laneLen = (a.container.lanes[a.lane] ?? []).length;
       next = insertItem(t, laneSteps, laneLen, a.item);
     } else {
+      // Çoklu seçimdeki bir öğenin ✕/⧉ düğmesi grubun tamamına uygulanır.
+      const group = this.selectedItems();
+      if (group.length > 1 && group.includes(a.target)) {
+        if (a.kind === 'delete') { this.deleteSelection(); return; }
+        if (a.kind === 'duplicate') { this.duplicateSelection(); return; }
+      }
       const p = findPath(t, a.target);
       if (!p) { return; }
       if (a.kind === 'rename') {
@@ -177,11 +183,56 @@ export class StructuredViewComponent {
   readonly selectedLane = signal<{ container: ContainerItem; lane: LaneName } | null>(null);
   @Output() readonly nodeSelect = new EventEmitter<StructuredSelection | null>();
 
-  onSelect(item: StructuredItem): void {
+  /**
+   * Çoklu seçim (Ctrl+tık). `selected` "özellik paneli hangi node'u gösteriyor" demektir ve
+   * yalnız TEK öğe seçiliyken doludur; `selectedItems` toplu eylemlerin (taşı/sil/kopyala)
+   * hedefidir ve tek seçimde de o tek öğeyi içerir — böylece eylemler tek koda düşer.
+   */
+  readonly selectedItems = signal<StructuredItem[]>([]);
+
+  onSelect(item: StructuredItem, additive = false): void {
     this.propsEditing = false;
     this.selectedLane.set(null);
+
+    if (additive) {
+      const next = this.selectedItems().includes(item)
+        ? this.selectedItems().filter((i) => i !== item)
+        : [...this.selectedItems(), item];
+      this.selectedItems.set(next);
+      // Birden çok node seçiliyken hangi node'un özelliği düzenlendiği belirsiz olurdu → panel boş.
+      const single = next.length === 1 ? next[0] : null;
+      this.selected.set(single);
+      this.nodeSelect.emit(single ? this.selectionOf(single) : null);
+      return;
+    }
+
+    this.selectedItems.set([item]);
     this.selected.set(item);
     this.nodeSelect.emit(this.selectionOf(item));
+  }
+
+  isSelected(item: StructuredItem): boolean {
+    return this.selectedItems().includes(item);
+  }
+
+  /** Seçili grubun tamamını siler (tek undo adımı). */
+  deleteSelection(): void {
+    const items = this.selectedItems();
+    if (items.length === 0) { return; }
+    this.commit(removeItems(this.tree(), items));
+    this.clearSelection();
+  }
+
+  /** Seçili grubun kopyalarını gruptaki son öğenin ardına ekler; kopyalar seçili gelir. */
+  duplicateSelection(): void {
+    const items = this.selectedItems();
+    if (items.length === 0) { return; }
+    const r = duplicateItems(this.tree(), items);
+    if (r.copies.length === 0) { return; }
+    this.commit(r.tree);
+    this.selectedItems.set(r.copies);
+    this.selected.set(r.copies.length === 1 ? r.copies[0] : null);
+    this.nodeSelect.emit(r.copies.length === 1 ? this.selectionOf(r.copies[0]) : null);
   }
 
   /** Konteyner lane'inin boş alanına tıklama — ekleme hedefini o lane'e sabitler. */
@@ -195,6 +246,7 @@ export class StructuredViewComponent {
   clearSelection(): void {
     this.propsEditing = false;
     this.selected.set(null);
+    this.selectedItems.set([]);
     this.selectedLane.set(null);
     this.nodeSelect.emit(null);
   }
@@ -236,8 +288,13 @@ export class StructuredViewComponent {
     if (!toSteps) { return; }
     const data = event.item.data as unknown as { factory?: () => StructuredItem };
     let next: StructuredSequence;
+    const dragged = event.item.data as unknown as StructuredItem;
+    const group = this.selectedItems();
     if (data && typeof data.factory === 'function') {
       next = insertItem(t, toSteps, event.currentIndex, data.factory());
+    } else if (group.length > 1 && group.includes(dragged)) {
+      // Seçili gruptan bir öğe sürüklendi → grubun tamamı taşınır (belge sırası korunur).
+      next = moveItemsAcross(t, group, toSteps, event.currentIndex);
     } else if (event.previousContainer === event.container) {
       next = reorderInSeq(t, toSteps, event.previousIndex, event.currentIndex);
     } else {
@@ -290,6 +347,11 @@ export class StructuredViewComponent {
     if (!this.editable) { return; }
     const tag = (event.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
+    if (event.key === 'Delete' && this.selectedItems().length > 0) {
+      event.preventDefault();
+      this.deleteSelection();
+      return;
+    }
     const key = event.key.toLowerCase();
     if (!(event.ctrlKey || event.metaKey) || (key !== 'z' && key !== 'y')) { return; }
     event.preventDefault();

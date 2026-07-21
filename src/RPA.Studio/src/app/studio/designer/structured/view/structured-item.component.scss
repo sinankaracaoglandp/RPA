@@ -101,6 +101,9 @@
   &__lane {
     position: relative;
     padding-left: 18px;
+    // Boş bir lane'in sürükle-bırak hedefi olarak ölçülebilir yüksekliği olmalı; aksi halde
+    // içine node bırakılamaz (CDK sıfır alanlı drop-list'i isabet olarak görmez).
+    min-height: 44px;
 
     &::before {
       content: "";

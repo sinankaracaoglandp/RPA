@@ -1,6 +1,7 @@
 import {
   insertItem, removeItem, moveItem, findPath, newStep, newContainer,
   findSeqPath, reorderInSeq, moveAcross, updateItemAt, setItemProps, setItemLabel, duplicateItem,
+  removeItems, topLevelItems, moveItemsAcross, duplicateItems,
 } from './tree-ops';
 import { step, container, StructuredSequence, StepItem, ContainerItem } from '../structured-model';
 import { WorkflowNode } from '../../../../shared/models/workflow.model';
@@ -191,5 +192,61 @@ describe('duplicateItem', () => {
     const r = duplicateItem(tree, { steps: [{ lane: 'body', index: 0 }], index: 0 }, ids)!;
     const body = (r.tree[0] as ContainerItem).lanes.body as StructuredSequence;
     expect(body.map((c) => (c as StepItem).node.id)).toEqual(['b1', 'copy-1']);
+  });
+
+  // ---- Çoklu seçim işlemleri ----
+
+  it('removeItems drops every selected item, across sequences', () => {
+    const a = step(n('a')); const b = step(n('b')); const inner = step(n('inner'));
+    const tree: StructuredSequence = [a, b, container('while', {}, { body: [inner, step(n('keep'))] })];
+
+    const out = removeItems(tree, [a, inner]);
+
+    expect(out.map((i) => (i as StepItem).node?.id ?? 'C')).toEqual(['b', 'C']);
+    const body = (out[1] as ContainerItem).lanes.body as StructuredSequence;
+    expect(body.map((i) => (i as StepItem).node.id)).toEqual(['keep']);
+  });
+
+  it('topLevelItems drops targets already contained by another target', () => {
+    const inner = step(n('inner'));
+    const box = container('while', {}, { body: [inner] });
+    const tree: StructuredSequence = [box];
+
+    expect(topLevelItems(tree, [box, inner])).toEqual([box]);
+  });
+
+  it('moveItemsAcross moves a group into a lane, preserving order', () => {
+    const a = step(n('a')); const b = step(n('b'));
+    const box = container('while', {}, { body: [step(n('x'))] });
+    const tree: StructuredSequence = [a, b, box];
+
+    const out = moveItemsAcross(tree, [a, b], [{ lane: 'body', index: 2 }], 1);
+
+    expect(out).toHaveLength(1); // kökte yalnız konteyner kalır
+    const body = (out[0] as ContainerItem).lanes.body as StructuredSequence;
+    expect(body.map((i) => (i as StepItem).node.id)).toEqual(['x', 'a', 'b']);
+  });
+
+  it('moveItemsAcross is a no-op when the target is inside a moved container', () => {
+    const inner = step(n('inner'));
+    const box = container('while', {}, { body: [inner] });
+    const tree: StructuredSequence = [step(n('a')), box];
+
+    // box'ı kendi gövdesine taşımaya çalış
+    const out = moveItemsAcross(tree, [box], [{ lane: 'body', index: 1 }], 0);
+
+    expect(out).toBe(tree);
+  });
+
+  it('duplicateItems appends the copies after the last selected item', () => {
+    let i = 0; const ids = () => `copy-${++i}`;
+    const a = step(n('a')); const b = step(n('b'));
+    const tree: StructuredSequence = [a, step(n('mid')), b];
+
+    const out = duplicateItems(tree, [a, b], ids);
+
+    expect(out.tree.map((it) => (it as StepItem).node.id))
+      .toEqual(['a', 'mid', 'b', 'copy-1', 'copy-2']);
+    expect(out.copies).toHaveLength(2);
   });
 });

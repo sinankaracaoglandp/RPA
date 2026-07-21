@@ -42,11 +42,12 @@
             [items]="tree()"
             [editable]="editable"
             [selectedRef]="selected()"
+            [selectedRefs]="selectedItems()"
             [selectedLaneRef]="selectedLane()"
             (selectLane)="onSelectLane($event)"
             (action)="onAction($event)"
             (drop)="onDrop($event)"
-            (select)="onSelect($event)"
+            (select)="onSelect($event.item, $event.additive)"
           ></app-structured-sequence>
           @if (editable) {
             <app-structured-add-menu data-testid="root-add" (pick)="addToRoot($event)"></app-structured-add-menu>

@@ -29,12 +29,14 @@ export class StructuredItemComponent {
   @Input({ required: true }) item!: StructuredItem;
   @Input() editable = false;
   @Input() selectedRef: StructuredItem | null = null;
+  /** Çoklu seçimdeki tüm öğeler (vurgu bunun üyeliğine bakar). */
+  @Input() selectedRefs: readonly StructuredItem[] = [];
   /** Dizideki konum — akış bağlacı (üst) ve giriş/çıkış portlarının gösterimini belirler. */
   @Input() first = false;
   @Input() last = false;
   @Output() readonly action = new EventEmitter<StructuredAction>();
   @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
-  @Output() readonly select = new EventEmitter<StructuredItem>();
+  @Output() readonly select = new EventEmitter<{ item: StructuredItem; additive: boolean }>();
   @Input() selectedLaneRef: { container: ContainerItem; lane: LaneName } | null = null;
   @Output() readonly selectLane = new EventEmitter<{ container: ContainerItem; lane: LaneName }>();
 
@@ -48,11 +50,15 @@ export class StructuredItemComponent {
     this.selectLane.emit({ container: c, lane });
   }
 
-  get isSelected(): boolean { return this.item === this.selectedRef; }
+  get isSelected(): boolean {
+    return this.item === this.selectedRef || this.selectedRefs.includes(this.item);
+  }
 
+  /** Ctrl/Cmd basılıysa seçim eklemeli olur (çoklu seçim). */
   onSelect(event: Event): void {
     event.stopPropagation();
-    this.select.emit(this.item);
+    const me = event as MouseEvent;
+    this.select.emit({ item: this.item, additive: !!(me.ctrlKey || me.metaKey) });
   }
 
   get container(): ContainerItem | null {

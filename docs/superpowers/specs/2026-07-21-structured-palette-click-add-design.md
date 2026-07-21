@@ -83,6 +83,33 @@ eklenen node sessizce döngü gövdesine düşer. C'de kural tek cümledir: **se
 **Kabul edilen maliyet:** boş bir konteyner gövdesine ilk adım tıklayarak eklenemez;
 lane içindeki mevcut `+` ekleme menüsü ya da sürükleme kullanılır.
 
+## Çoklu seçim (2026-07-21 eki)
+
+`Ctrl`/`Cmd` + tık bir node'u seçime ekler/çıkarır (`selectedItems` signal'i). `selected`
+"özellik panelinin gösterdiği node" anlamını korur ve **yalnız tek öğe seçiliyken** doludur —
+birden çok node seçiliyken panel boşalır (hangi node'un düzenlendiği belirsiz olmasın).
+
+Toplu eylemler `tree-ops`'taki saf fonksiyonlara dayanır:
+
+| Eylem | Fonksiyon | Not |
+|---|---|---|
+| Taşı | `moveItemsAcross` | Grubun bir üyesi sürüklenince tamamı taşınır; belge sırası korunur |
+| Sil | `removeItems` | Tek undo adımı; `Delete` tuşu da tetikler |
+| Kopyala | `duplicateItems` | Kopyalar gruptaki SON öğenin ardına gelir, kopyalar seçili olur |
+
+İki değişmez kural:
+- **`topLevelItems`** — bir konteyner ve içindeki adım birlikte seçiliyse yalnız konteyner
+  işlenir (aksi halde taşımada öğe çoğalırdı).
+- **Kendi içine taşıma reddedilir** — hedef, taşınan bir konteynerin içindeyse ağaç
+  değişmeden döner (`adjustForRemoval` → `null`).
+
+Silme sonrası hedef yolu indeks kaymasına uğradığından `adjustForRemoval` her seviyede
+hedef indeksten önce silinen kardeş sayısını düşer. (İlk denenen "işaretçi" tekniği çalışmadı:
+`insertItem` yol üzerindeki ataları yeniden kurduğu için hedeflerin referans eşitliği bozuluyordu.)
+
+Ayrıca boş lane'lere `min-height: 44px` verildi — sıfır alanlı bir `cdkDropList` isabet
+kabul etmiyordu, yani boş bir gövdeye sürükleyip bırakmak mümkün değildi.
+
 ## Mutasyon ve seçim
 
 Ekleme `commit()` üzerinden gider → undo/redo geçmişi ve `graphChanged` yayını mevcut

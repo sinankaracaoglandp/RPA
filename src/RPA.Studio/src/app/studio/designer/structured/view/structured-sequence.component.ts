@@ -18,7 +18,8 @@ export class StructuredSequenceComponent {
   @Input() selectedRef: StructuredItem | null = null;
   @Output() readonly action = new EventEmitter<StructuredAction>();
   @Output() readonly drop = new EventEmitter<CdkDragDrop<StructuredSequence>>();
-  @Output() readonly select = new EventEmitter<StructuredItem>();
+  @Input() selectedRefs: readonly StructuredItem[] = [];
+  @Output() readonly select = new EventEmitter<{ item: StructuredItem; additive: boolean }>();
   @Input() selectedLaneRef: { container: ContainerItem; lane: LaneName } | null = null;
   @Output() readonly selectLane = new EventEmitter<{ container: ContainerItem; lane: LaneName }>();
 }

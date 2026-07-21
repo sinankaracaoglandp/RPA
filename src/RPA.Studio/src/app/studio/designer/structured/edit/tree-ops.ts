@@ -185,6 +185,110 @@ export function moveAcross(
   return insertItem(t1, adjusted, toIndex, item);
 }
 
+// ---- Çoklu seçim (Ctrl+tık) işlemleri ----
+
+/**
+ * Verilen öğeleri (referans eşitliği) ağacın her yerinden siler. Konteyner silindiğinde
+ * lane içeriği onunla birlikte gider — bu yüzden iç içe hedefler ayrıca ele alınmaz.
+ */
+export function removeItems(
+  tree: StructuredSequence, targets: readonly StructuredItem[],
+): StructuredSequence {
+  const set = new Set(targets);
+  const walk = (seq: StructuredSequence): StructuredSequence =>
+    seq.filter((it) => !set.has(it)).map((it) => {
+      if (it.kind !== 'container') { return it; }
+      const lanes: ContainerItem['lanes'] = {};
+      for (const lane of lanesFor(it.type)) {
+        const s = it.lanes[lane];
+        if (s) { lanes[lane] = walk(s); }
+      }
+      return { ...it, lanes };
+    });
+  return walk(tree);
+}
+
+/**
+ * Hedefleri belge sırasına dizer ve BAŞKA bir hedefin içinde kalanları eler — bir konteyner
+ * ve içindeki adım birlikte seçiliyse yalnız konteyner işlenir (aksi halde taşımada çoğalır).
+ */
+export function topLevelItems(
+  tree: StructuredSequence, targets: readonly StructuredItem[],
+): StructuredItem[] {
+  const set = new Set(targets);
+  const out: StructuredItem[] = [];
+  const walk = (seq: StructuredSequence): void => {
+    for (const it of seq) {
+      if (set.has(it)) {
+        out.push(it); // içine inme: altındaki hedefler bu öğeyle birlikte taşınır
+        continue;
+      }
+      if (it.kind === 'container') {
+        for (const lane of lanesFor(it.type)) { walk(it.lanes[lane] ?? []); }
+      }
+    }
+  };
+  walk(tree);
+  return out;
+}
+
+/**
+ * Silme sonrası hedef yolunu düzeltir: her seviyede, hedef indeksinden ÖNCE silinen kardeş
+ * sayısı kadar geri kaydırır. Yol üzerindeki bir ata da siliniyorsa hareket geçersizdir
+ * (öğeyi kendi içine taşıma) → null.
+ */
+function adjustForRemoval(
+  tree: StructuredSequence, toSteps: PathStep[], toIndex: number, removed: Set<StructuredItem>,
+): { steps: PathStep[]; index: number } | null {
+  let seq = tree;
+  const steps: PathStep[] = [];
+  const before = (s: StructuredSequence, i: number) =>
+    s.slice(0, i).filter((x) => removed.has(x)).length;
+
+  for (const s of toSteps) {
+    const item = seq[s.index];
+    if (!item || item.kind !== 'container' || removed.has(item)) { return null; }
+    steps.push({ lane: s.lane, index: s.index - before(seq, s.index) });
+    seq = item.lanes[s.lane] ?? [];
+  }
+  return { steps, index: toIndex - before(seq, toIndex) };
+}
+
+/**
+ * Seçili grubu hedef diziye (toSteps, toIndex) taşır; belge sırası korunur. Hedef, taşınan
+ * bir konteynerin İÇİNDEYSE hareket geçersizdir ve ağaç değişmeden döner.
+ */
+export function moveItemsAcross(
+  tree: StructuredSequence,
+  targets: readonly StructuredItem[],
+  toSteps: PathStep[], toIndex: number,
+): StructuredSequence {
+  const items = topLevelItems(tree, targets);
+  if (items.length === 0) { return tree; }
+
+  const at = adjustForRemoval(tree, toSteps, toIndex, new Set(items));
+  if (!at) { return tree; }
+
+  let next = removeItems(tree, items);
+  items.forEach((item, i) => { next = insertItem(next, at.steps, at.index + i, item); });
+  return next;
+}
+
+/** Seçili grubun kopyalarını, gruptaki SON öğenin ardına sırayla ekler. */
+export function duplicateItems(
+  tree: StructuredSequence, targets: readonly StructuredItem[], idGen?: () => string,
+): { tree: StructuredSequence; copies: StructuredItem[] } {
+  const items = topLevelItems(tree, targets);
+  const last = items[items.length - 1];
+  const at = last ? findPath(tree, last) : null;
+  if (!at) { return { tree, copies: [] }; }
+
+  const copies = items.map((it) => cloneItem(it, idGen));
+  let next = tree;
+  copies.forEach((copy, i) => { next = insertItem(next, at.steps, at.index + 1 + i, copy); });
+  return { tree: next, copies };
+}
+
 /** path'teki öğeyi fn ile değiştirir (immutable). */
 export function updateItemAt(
   tree: StructuredSequence, path: Path, fn: (item: StructuredItem) => StructuredItem,
