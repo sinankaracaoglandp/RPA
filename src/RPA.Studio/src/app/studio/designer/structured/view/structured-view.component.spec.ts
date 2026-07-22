@@ -618,3 +618,34 @@ describe('StructuredViewComponent — pan ile sürükleme çakışması', () => 
     expect(scroll.scrollTop).toBe(180);
   });
 });
+
+describe('StructuredViewComponent — bırakma hedefi canlı DOM\'dan çözülür', () => {
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [StructuredViewComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  }));
+
+  it('drops into the if lane the pointer is over, ignoring CDK\'s stale container', () => {
+    const wf = treeToWorkflow([step(n('a')), container('if', {}, { true: [], false: [] })], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+    const [a] = cmp.tree();
+
+    const lane = (f.nativeElement as HTMLElement).querySelector('[data-testid="lane-false"]')!;
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => lane;
+
+    // CDK'nın `container`'ı KÖK listeyi gösteriyor (bayat dikdörtgen yüzünden lane'e hiç
+    // giremedi); doğru hedef yalnız bırakma noktasından çözülebilir.
+    cmp.onSelect(a);
+    cmp.onDrop({
+      previousContainer: { data: cmp.tree() }, container: { data: cmp.tree() },
+      previousIndex: 0, currentIndex: 1, item: { data: a }, dropPoint: { x: 5, y: 5 },
+    } as never);
+
+    expect(cmp.tree()).toHaveLength(1);
+    const lanes = (cmp.tree()[0] as { lanes: Record<string, { node: { id: string } }[]> }).lanes;
+    expect(lanes['false'].map((i) => i.node.id)).toEqual(['a']);
+  });
+});

@@ -80,6 +80,8 @@
           (cdkDropListEntered)="dragOverLane = lane"
           (cdkDropListExited)="dragOverLane = null"
           cdkDropList
+          cdkDropListSortingDisabled
+          [appDropZone]="laneItems(container, lane)"
           [cdkDropListData]="laneItems(container, lane)"
           [cdkDropListDisabled]="!editable"
           (cdkDropListDropped)="dragOverLane = null; drop.emit($event)"

@@ -1,6 +1,8 @@
 <div
   class="structured-sequence"
   cdkDropList
+  cdkDropListSortingDisabled
+  [appDropZone]="items"
   [cdkDropListData]="items"
   [cdkDropListDisabled]="!editable"
   (cdkDropListDropped)="drop.emit($event)"

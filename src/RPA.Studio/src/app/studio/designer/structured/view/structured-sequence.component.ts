@@ -4,12 +4,13 @@ import { CdkDrag, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { ContainerItem, LaneName, StructuredItem, StructuredSequence } from '../structured-model';
 import { StructuredAction, StructuredItemComponent } from './structured-item.component';
+import { DropZoneDirective } from './drop-zone';
 
 @Component({
   selector: 'app-structured-sequence',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, TranslatePipe, StructuredItemComponent, CdkDrag, CdkDropList],
+  imports: [CommonModule, TranslatePipe, StructuredItemComponent, CdkDrag, CdkDropList, DropZoneDirective],
   templateUrl: './structured-sequence.component.html',
 })
 export class StructuredSequenceComponent {

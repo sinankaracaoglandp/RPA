@@ -8,9 +8,10 @@ import { ContainerItem, ContainerType, LaneName, StructuredItem, StructuredSeque
 import { treeToWorkflow } from '../tree-to-workflow';
 import { CdkDragDrop, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
-  insertItem, removeItem, moveItem, findPath, findSeqPath, reorderInSeq, moveAcross, setItemProps,
+  insertItem, removeItem, moveItem, findPath, findSeqPath, setItemProps,
   setItemLabel, duplicateItem, removeItems, duplicateItems, moveItemsAcross,
 } from '../edit/tree-ops';
+import { DropZoneRegistry } from './drop-zone';
 import { CONTROL_ACTIVITY_OF } from '../edit/control-activity-map';
 import { reduceWorkflow } from '../edit/structured-reducer';
 import { enclosingLoopItemVars } from '../edit/loop-item-vars';
@@ -77,6 +78,7 @@ export class StructuredViewComponent {
    * Palet kategori filtresi. `StructuredPaletteFilter` bu bileşen seviyesinde sağlandığından
    * dışarıdan (designer → toolbox) erişim bu iki üye üzerinden gider.
    */
+  private readonly dropZones = inject(DropZoneRegistry);
   private readonly paletteFilter = inject(StructuredPaletteFilter);
   paletteCategory(): string | null { return this.paletteFilter.category(); }
   setPaletteCategory(category: string | null): void { this.paletteFilter.set(category); }
@@ -281,36 +283,37 @@ export class StructuredViewComponent {
   }
 
   // ---- Sürükle-bırak (CDK → tree-ops) ----
+  /**
+   * Bırakma hedefi CDK'nın `container`/`currentIndex` alanlarından DEĞİL, bırakma noktasının
+   * CANLI DOM geometrisinden çözülür (`DropZoneRegistry`). CDK drop-list dikdörtgenlerini
+   * sürükleme başında önbelleğe alır; kök liste sıralama yaparken konteyner kartını kaydırdığı
+   * an lane'lerin önbellekli dikdörtgeni gerçek konumdan kayıyor ve `if`/`while`/`tryCatch`
+   * içine bırakmak imkânsızlaşıyordu. CDK sıralaması bu yüzden kapalıdır (`SortingDisabled`):
+   * kartlar sürükleme boyunca yerinde durur, hedef panel imlecin altından kaçmaz.
+   */
   onDrop(event: CdkDragDrop<StructuredSequence>): void {
     const t = this.tree();
-    const toSeq = event.container.data;
+    const dragged = event.item.data as unknown as StructuredItem;
+    const data = event.item.data as unknown as { factory?: () => StructuredItem };
+    const isFactory = !!data && typeof data.factory === 'function';
+    const group = this.selectedItems();
+    const moving = !isFactory && group.length > 1 && group.includes(dragged) ? group : [dragged];
+
+    const point = event.dropPoint;
+    const target = point
+      ? this.dropZones.resolve(point.x, point.y, isFactory ? [] : moving)
+      : null;
+    // Nokta bir bırakma alanına düşmediyse (tuval boşluğu) CDK'nın hedefine geri düşülür.
+    const toSeq = target ? target.seq : event.container.data;
     const toSteps = findSeqPath(t, toSeq);
     if (!toSteps) { return; }
-    const data = event.item.data as unknown as { factory?: () => StructuredItem };
-    let next: StructuredSequence;
-    const dragged = event.item.data as unknown as StructuredItem;
-    const group = this.selectedItems();
-    if (data && typeof data.factory === 'function') {
-      next = insertItem(t, toSteps, event.currentIndex, data.factory());
-    } else if (group.length > 1 && group.includes(dragged)) {
-      // Seçili gruptan bir öğe sürüklendi → grubun tamamı taşınır (belge sırası korunur).
-      // CDK'nın `currentIndex`'i AYNI liste içinde "sürüklenen öğe çıkarılmış" listeye göredir,
-      // listeler ARASINDA ise çıkarmadan. Grup taşımada indeks aritmetiği bu iki semantiği
-      // aynı anda tutturamaz → konumu çapa (bu indeksteki öğe) olarak veriyoruz.
-      const destSeq = event.container.data;
-      const base = event.previousContainer === event.container
-        ? destSeq.filter((x) => x !== dragged)
-        : destSeq;
-      next = moveItemsAcross(t, group, toSteps, base[event.currentIndex] ?? null);
-    } else if (event.previousContainer === event.container) {
-      next = reorderInSeq(t, toSteps, event.previousIndex, event.currentIndex);
-    } else {
-      const fromSeq = event.previousContainer.data;
-      const fromSteps = findSeqPath(t, fromSeq);
-      if (!fromSteps) { return; }
-      next = moveAcross(t, fromSteps, event.previousIndex, toSteps, event.currentIndex);
+
+    if (isFactory) {
+      this.commit(insertItem(t, toSteps, target ? target.index : event.currentIndex, data.factory!()));
+      return;
     }
-    this.commit(next);
+    // Tek öğe de çok öğe de aynı çapa tabanlı taşımayı kullanır (indeks aritmetiği yok).
+    this.commit(moveItemsAcross(t, moving, toSteps, target ? target.anchor : null));
   }
 
   // ---- Undo/Redo (geçmiş + prop koalesleme) ----

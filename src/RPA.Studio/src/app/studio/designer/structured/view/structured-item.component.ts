@@ -4,6 +4,7 @@ import { CdkDrag, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../core/translate.pipe';
 import { ContainerItem, ContainerType, LaneName, StructuredItem, StructuredSequence, lanesFor } from '../structured-model';
 import { StructuredAddMenuComponent } from './structured-add-menu.component';
+import { DropZoneDirective } from './drop-zone';
 
 /** Yapısal editör düzenleme olayı; öğe referansı taşır (path `findPath` ile host'ta çıkar). */
 export type StructuredAction =
@@ -21,7 +22,7 @@ export type StructuredAction =
   selector: 'app-structured-item',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, TranslatePipe, StructuredAddMenuComponent, CdkDrag, CdkDropList],
+  imports: [CommonModule, TranslatePipe, StructuredAddMenuComponent, CdkDrag, CdkDropList, DropZoneDirective],
   templateUrl: './structured-item.component.html',
   styleUrls: ['./structured-item.component.scss'],
 })
