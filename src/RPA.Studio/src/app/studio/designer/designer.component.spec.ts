@@ -302,6 +302,28 @@ describe('draft persistence (Paket B)', () => {
     expect((item as { lanes: Record<string, unknown[]> }).lanes['body']).toEqual([]);
   });
 
+  it('drops a control activity from the toolbox as a container block', () => {
+    fixture.detectChanges();
+    http.expectOne('/api/workflows/w1/draft').flush({
+      id: 'v1', workflowId: 'w1', version: '1.0.0',
+      jsonDefinition: JSON.stringify({
+        schemaVersion: '1.0', id: 'w1', name: 'Akış', version: '1.0.0',
+        nodes: [], connections: [], variables: [],
+      }),
+    });
+    component.structuredView.set(true);
+    fixture.detectChanges();
+
+    // Nokta hicbir birakma alanina dusmez -> secim kuralina geri dusulur; sekil yine konteyner olmali.
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint =
+      () => document.createElement('div');
+    component.onToolboxActivityDropped({ activityId: 'Logic.If', clientX: 5, clientY: 5 });
+    fixture.detectChanges();
+
+    const item = component.structuredViewRef()!.tree()[0];
+    expect(item).toEqual(expect.objectContaining({ kind: 'container', type: 'if' }));
+  });
+
   it('mirrors the toolbox category into the structured palette filter', () => {
     fixture.detectChanges();
     http.expectOne('/api/workflows/w1/draft').flush({
