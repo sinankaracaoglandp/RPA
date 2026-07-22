@@ -579,3 +579,42 @@ describe('StructuredViewComponent — kopyala', () => {
     expect(cmp.tree()).toHaveLength(2);
   });
 });
+
+describe('StructuredViewComponent — pan ile sürükleme çakışması', () => {
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [StructuredViewComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  }));
+
+  function panEvent(target: HTMLElement, x: number, y: number): PointerEvent {
+    return { button: 0, clientX: x, clientY: y, target } as unknown as PointerEvent;
+  }
+
+  it('does not pan the canvas when the gesture starts on a draggable card', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    const cmp = f.componentInstance;
+    const card = document.createElement('div');
+    card.className = 'cdk-drag';
+    const scroll = { scrollLeft: 0, scrollTop: 120 } as HTMLElement;
+
+    // Kart üzerinden başlayan pointer CDK sürüklemesidir; tuval kaymamalıdır — aksi halde
+    // hedef lane imlecin altından kayar ve konteynerin içine bırakmak imkânsızlaşır.
+    cmp.onPanStart(panEvent(card, 100, 100), scroll);
+    cmp.onPanMove(panEvent(card, 100, 40), scroll);
+
+    expect(scroll.scrollTop).toBe(120);
+  });
+
+  it('still pans when the gesture starts on the empty canvas background', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    const cmp = f.componentInstance;
+    const bg = document.createElement('div');
+    bg.className = 'structured-view__canvas';
+    const scroll = { scrollLeft: 0, scrollTop: 120 } as HTMLElement;
+
+    cmp.onPanStart(panEvent(bg, 100, 100), scroll);
+    cmp.onPanMove(panEvent(bg, 100, 40), scroll);
+
+    expect(scroll.scrollTop).toBe(180);
+  });
+});

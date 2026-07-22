@@ -388,6 +388,12 @@ export class StructuredViewComponent {
   private panX = 0; private panY = 0; private scrollX = 0; private scrollY = 0;
   onPanStart(event: PointerEvent, scroll: HTMLElement): void {
     if (event.button !== 0) { return; }
+    // Sürüklenebilir bir kartın (veya düğme/giriş alanının) üzerinden başlayan pointer CDK'nın
+    // sürükleme jestidir. CDK pointerdown'ı yalnız İÇ İÇE sürüklemelerde durdurur; kök seviyedeki
+    // kartlarda olay buraya kadar kabarır ve pan de başlardı → sürükleme boyunca tuval imlecin
+    // altından kayar, hedef lane yerinde durmaz ve konteynerin içine bırakmak imkânsızlaşırdı.
+    const target = event.target as HTMLElement | null;
+    if (target?.closest?.('.cdk-drag, button, input, select, textarea')) { return; }
     this.panning = true;
     this.panX = event.clientX; this.panY = event.clientY;
     this.scrollX = scroll.scrollLeft; this.scrollY = scroll.scrollTop;
