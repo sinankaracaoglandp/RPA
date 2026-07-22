@@ -23,6 +23,7 @@ import { RunLogService } from '../../shared/services/run-log.service';
 import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema';
 import { StructuredViewComponent } from './structured/view/structured-view.component';
 import { newContainer, newStep } from './structured/edit/tree-ops';
+import { StructuredItem } from './structured/structured-model';
 import { CONTAINER_OF_ACTIVITY } from './structured/edit/control-activity-map';
 
 /**
@@ -204,9 +205,27 @@ export class DesignerComponent implements OnDestroy {
    */
   onToolboxActivityAdded(event: { activityId: string }): void {
     if (!this.structuredView()) { return; }
-    const containerType = CONTAINER_OF_ACTIVITY[event.activityId];
-    const item = containerType ? newContainer(containerType) : newStep(event.activityId);
-    this.structuredViewRef()?.addFromPalette(item);
+    this.structuredViewRef()?.addFromPalette(this.structuredItemFor(event.activityId));
+  }
+
+  /**
+   * Toolbox'tan sürükleyip bırakma. Bırakma noktası bir ağaç panelinin üzerindeyse öğe oraya,
+   * değilse (paletin/boşluğun üzerine bırakıldıysa) seçim kuralına göre eklenir — sürükleme
+   * hiçbir durumda sessizce kaybolmaz.
+   */
+  onToolboxActivityDropped(event: { activityId: string; clientX: number; clientY: number }): void {
+    if (!this.structuredView()) { return; }
+    const view = this.structuredViewRef();
+    if (!view) { return; }
+    const item = this.structuredItemFor(event.activityId);
+    if (!view.addAtPoint(item, event.clientX, event.clientY)) {
+      view.addFromPalette(item);
+    }
+  }
+
+  private structuredItemFor(activityId: string): StructuredItem {
+    const containerType = CONTAINER_OF_ACTIVITY[activityId];
+    return containerType ? newContainer(containerType) : newStep(activityId);
   }
 
   /**

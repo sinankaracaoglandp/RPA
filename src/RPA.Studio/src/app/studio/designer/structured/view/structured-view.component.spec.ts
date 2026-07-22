@@ -649,3 +649,35 @@ describe('StructuredViewComponent — bırakma hedefi canlı DOM\'dan çözülü
     expect(lanes['false'].map((i) => i.node.id)).toEqual(['a']);
   });
 });
+
+describe('StructuredViewComponent — toolbox\'tan noktaya ekleme', () => {
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [StructuredViewComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  }));
+
+  it('adds the dragged activity into the lane under the drop point', () => {
+    const wf = treeToWorkflow([step(n('a')), container('if', {}, { true: [], false: [] })], { idGen: ids() });
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', wf);
+    f.detectChanges();
+    const cmp = f.componentInstance;
+
+    const lane = (f.nativeElement as HTMLElement).querySelector('[data-testid="lane-true"]')!;
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => lane;
+
+    expect(cmp.addAtPoint(newStep('Web.Click'), 5, 5)).toBe(true);
+
+    const lanes = (cmp.tree()[1] as { lanes: Record<string, { node: { activity: string } }[]> }).lanes;
+    expect(lanes['true'].map((i) => i.node.activity)).toEqual(['Web.Click']);
+  });
+
+  it('reports failure when the drop point is outside every drop zone', () => {
+    const f = TestBed.createComponent(StructuredViewComponent);
+    f.componentRef.setInput('workflow', treeToWorkflow([step(n('a'))], { idGen: ids() }));
+    f.detectChanges();
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint =
+      () => document.createElement('div');
+    expect(f.componentInstance.addAtPoint(newStep('Web.Click'), 5, 5)).toBe(false);
+  });
+});

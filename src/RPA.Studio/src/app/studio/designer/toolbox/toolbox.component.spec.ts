@@ -203,3 +203,20 @@ describe('ToolboxComponent', () => {
     expect(root.getAttribute('aria-label')).toBeTruthy();
   });
 });
+
+describe('ToolboxComponent — tuval yokken sürükle-bırak', () => {
+  it('emits the drop point upward when no canvas consumes the drag', () => {
+    TestBed.configureTestingModule({
+      imports: [ToolboxComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    const f = TestBed.createComponent(ToolboxComponent);
+    const dropped: unknown[] = [];
+    f.componentInstance.activityDroppedAt.subscribe((e) => dropped.push(e));
+
+    // Yapısal görünümde tuval yoktur → sürükleme bitişi designer'a devredilmelidir.
+    f.componentInstance.onActivityDragEnded({ activityId: 'Web.Click', clientX: 10, clientY: 20 });
+
+    expect(dropped).toEqual([{ activityId: 'Web.Click', clientX: 10, clientY: 20 }]);
+  });
+});

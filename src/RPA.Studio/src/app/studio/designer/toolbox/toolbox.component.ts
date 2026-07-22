@@ -46,6 +46,17 @@ export class ToolboxComponent {
    */
   @Output() readonly categoryChanged = new EventEmitter<string>();
 
+  /**
+   * Serbest-graf tuvali bırakmayı üstlenmediğinde (yapısal görünümde tuval yoktur) sürükleme
+   * bitişi ekran koordinatlarıyla yukarı verilir; hedefi designer belirler. Aksi halde
+   * toolbox'tan sürükleme yapısal görünümde sessizce kaybolurdu (yalnız çift tık ekliyordu).
+   */
+  @Output() readonly activityDroppedAt = new EventEmitter<{
+    activityId: string;
+    clientX: number;
+    clientY: number;
+  }>();
+
   private readonly catalog = inject(ActivityCatalogService);
 
   readonly ALL_CATEGORIES = ALL_CATEGORIES;
@@ -118,6 +129,7 @@ export class ToolboxComponent {
 
   onActivityDragEnded(event: { activityId: string; clientX: number; clientY: number }): void {
     if (!this.canvas?.containsClientPoint(event.clientX, event.clientY)) {
+      this.activityDroppedAt.emit(event);
       return;
     }
 

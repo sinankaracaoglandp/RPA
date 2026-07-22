@@ -163,6 +163,23 @@ export class StructuredViewComponent {
     if (added) { this.onSelect(added); }
   }
 
+  /**
+   * Ekran noktasına ekleme (soldaki toolbox'tan sürükle-bırak). Nokta bir bırakma alanına
+   * düşmüyorsa `false` döner — çağıran o zaman seçime göre ekleme yapabilir.
+   */
+  addAtPoint(item: StructuredItem, clientX: number, clientY: number): boolean {
+    if (!this.editable) { return false; }
+    const target = this.dropZones.resolve(clientX, clientY);
+    if (!target) { return false; }
+    const steps = findSeqPath(this.tree(), target.seq);
+    if (!steps) { return false; }
+    const next = insertItem(this.tree(), steps, target.index, item);
+    this.commit(next);
+    const added = this.itemAtIndex(next, steps, target.index);
+    if (added) { this.onSelect(added); }
+    return true;
+  }
+
   /** `commit` sonrası taze ağaçtan eklenen öğeyi çeker (seçim referans eşitliğine dayanır). */
   private itemAtIndex(
     tree: StructuredSequence, steps: { lane: string; index: number }[], index: number,
