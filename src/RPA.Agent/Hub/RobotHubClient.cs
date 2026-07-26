@@ -20,6 +20,9 @@ public sealed class RobotHubClient : IJobHubClient
     private readonly UserPromptService _userPromptService;
     private readonly ILogger<RobotHubClient> _logger;
 
+    /// <summary>Bağlantısızlık nedeniyle node logu düşürüldüğünde tekrar tekrar uyarmamak için.</summary>
+    private bool _nodeLogDropWarned;
+
     public RobotHubClient(
         RPA.Agent.Authentication.IAgentHubConnectionFactory connectionFactory,
         HubConnectionStatusCoordinator statusCoordinator,
@@ -72,8 +75,19 @@ public sealed class RobotHubClient : IJobHubClient
     {
         if (_connection.State != HubConnectionState.Connected)
         {
-            return; // Bağlantı yoksa canlı log best-effort — sessizce atla.
+            // Best-effort ama SESSİZ DEĞİL: bağlantı yoksa Studio konsolunda hiçbir node satırı
+            // görünmez ve sebebi anlaşılmaz (tanılama boşluğu). Gürültü olmaması için yalnız
+            // durum değiştiğinde uyarılır.
+            if (!_nodeLogDropWarned)
+            {
+                _nodeLogDropWarned = true;
+                _logger.LogWarning(
+                    "RobotHub bağlantısı {State} — node logları Studio konsoluna iletilemiyor.",
+                    _connection.State);
+            }
+            return;
         }
+        _nodeLogDropWarned = false;
         await _connection.SendAsync("ReportNodeLog", evt, cancellationToken);
     }
 

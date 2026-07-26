@@ -15,6 +15,8 @@ export interface NodeLogEvent {
   activityId?: string | null;
   inputs?: Record<string, string | null> | null;
   outputs?: Record<string, string | null> | null;
+  /** Node bittikten sonraki görünür workflow değişkenleri (maskeli anlık görüntü). */
+  variables?: Record<string, string | null> | null;
   error?: string | null;
   isBusinessError?: boolean;
 }
@@ -54,21 +56,27 @@ export class RunLogService {
   }
 
   private onNodeLog(evt: NodeLogEvent): void {
-    if (!evt || !this.activeJobRunId || evt.jobRunId !== this.activeJobRunId) {
+    // GUID karşılaştırması harf durumundan bağımsızdır (sunucu/istemci farklı biçimlerde
+    // üretebilir); duyarlı karşılaştırma tüm satırları sessizce düşürürdü.
+    if (!evt || !this.activeJobRunId ||
+      (evt.jobRunId ?? '').toLowerCase() !== this.activeJobRunId.toLowerCase()) {
       return;
     }
 
     const label = evt.activityId || evt.nodeType;
 
+    const vars = this.format(evt.variables, 'değişkenler');
+
     if (evt.error) {
       const kind = evt.isBusinessError ? 'İş kuralı' : 'Sistem';
-      this.log.error(`✕ ${label} — ${kind}: ${evt.error}`, this.format(evt.inputs, 'giriş'));
+      const detail = [this.format(evt.inputs, 'giriş'), vars].filter((s) => s).join(' · ');
+      this.log.error(`✕ ${label} — ${kind}: ${evt.error}`, detail || undefined);
       return;
     }
 
     // outputs dolu ise tamamlanma olayıdır; değilse başlangıç olayı.
     if (evt.outputs) {
-      const detail = [this.format(evt.inputs, 'giriş'), this.format(evt.outputs, 'çıkış')]
+      const detail = [this.format(evt.inputs, 'giriş'), this.format(evt.outputs, 'çıkış'), vars]
         .filter((s) => s)
         .join(' · ');
       this.log.success(`✓ ${label}`, detail || undefined);

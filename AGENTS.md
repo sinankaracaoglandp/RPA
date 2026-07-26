@@ -1140,6 +1140,54 @@ Doğrulama: Infrastructure 805, Agent 169, Studio 543 — yeşil; Release soluti
 **Saha testi bekliyor:** gerçek ALV'de kolon okuma (`ColumnOrder`) ve sözleşmenin uygulanması.
 
 
+## Kontrat Değişikliği — 2026-07-22 (Canlı konsolda değişken anlık görüntüsü)
+
+Test/tasarım sırasında sürecin ekrandan okuduğu değerlerin (özellikle `list<object>`) konsolda
+görülebilmesi için gözlemci olayı genişletildi. **Not:** Studio'daki "Hata Ayıklama" paneli
+(breakpoint/step-through) hâlâ **çalışmıyor** — `RobotHub` sunucu metotları yazılmadı
+(`ExecuteWithBreakpoints` → "Method does not exist"); geriye bırakıldı. Bu kayıt onun yerine
+mevcut canlı konsolu kullanılabilir kılar.
+
+- **`NodeExecutionEvent.Variables`** (`IReadOnlyDictionary<string,string?>?`, salt eklemeli) —
+  node tamamlandıktan sonra görünür TÜM workflow değişkenlerinin maskeli/kısaltılmış anlık
+  görüntüsü. Başlangıç olaylarında null. Gözlemci yoksa hiç üretilmez (üretimde maliyet yok).
+- **`VariableScope.ExportVisible()`** (yeni) — scope zincirinin düzleştirilmiş görüntüsü
+  (iç scope dıştakini gölgeler; `TryGetVariable` ile aynı sonuç). Yalnız gözlem amaçlıdır.
+- **`BaseRunner`:** aktivite/component dışındaki node tipleri (assign, log, if, döngüler,
+  checkpoint, delay, merge) artık **tamamlanma olayı da yayınlar** (önceden yalnız "başladı"
+  vardı) — değişken değişimleri konsolda görünür. Hata durumunda olay üretilmez (aktivite
+  hataları zaten ayrı raporlanır).
+- **Maskeleme güçlendi:** `Credential`/`Sensitive` tipli parametre adları yürütme boyunca
+  `ExecutionState.SensitiveNames`'te birikir; hassas bir **çıktı** üst scope'ta kalsa bile
+  sonraki node'ların anlık görüntüsünde `[MASKED]` kalır (o node'un metadata'sı adı bilmez).
+  Anahtar-adı sezgisi (`password/secret/token/credential`) korunur.
+- **Önizleme sınırı 200 → 4000 karakter** — 200'de bir ALV grid satır listesi/e-fatura nesnesi
+  ilk alanından sonra kesiliyordu.
+- **Studio:** `NodeLogEvent.variables` + konsol satırında `değişkenler: ad=değer, …` (hata
+  satırlarında da gösterilir). Yeni `run-log.service.spec.ts`.
+
+Etkilenen paketler: Domain (`IWorkflowExecutionObserver`), Infrastructure (`BaseRunner`,
+`VariableScope`), Studio (`RunLogService`). Doğrulama: Infrastructure 807, Agent 169, Studio 598
+— yeşil; Release 0 hata.
+
+### Ek — aynı gün (node logu tanılaması + ajan konsolu yedeği)
+
+Saha testinde Studio konsolunda **hiç** node satırı görünmedi (yalnız çalıştırma-durumu satırları).
+Bu yol (Agent → RobotHub → StudioHub → Studio) hiçbir zaman test edilmemişti (`ReportNodeLog` için
+sıfır test) ve her halkası **sessizce** başarısız oluyordu. Sessizlik kaldırıldı:
+
+- **`RobotHubClient.ReportNodeLogAsync`**: bağlantı yokken olayı düşürürken artık `Warning`
+  loglar (durum değişiminde bir kez — gürültü yok). Önceden koşulsuz `return` idi.
+- **`AgentWorkflowExecutionObserver`**: gönderim hatası `Debug` → `Warning` (ajanın varsayılan
+  `Information` seviyesinde `Debug` hiç basılmıyordu, yani hata görünmezdi).
+- **Ajan konsolu yedeği:** `OnNodeCompleted` node çıkışlarını ve **değişken anlık görüntüsünü**
+  ajanın kendi loguna `Information` seviyesinde yazar. SignalR köprüsü çalışmasa bile değerler
+  ajan konsolunda görülür. Değerler zaten `BaseRunner`'da maskelenmiştir → loglanması güvenlidir.
+- **`RunLogService`**: `jobRunId` karşılaştırması harf-durumu duyarsız (duyarlı karşılaştırma
+  tüm satırları sessizce düşürebilirdi).
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

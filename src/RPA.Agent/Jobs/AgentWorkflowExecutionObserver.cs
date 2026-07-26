@@ -25,7 +25,25 @@ public sealed class AgentWorkflowExecutionObserver : IWorkflowExecutionObserver
 
     public void OnNodeStarted(NodeExecutionEvent evt) => Forward(evt);
 
-    public void OnNodeCompleted(NodeExecutionEvent evt) => Forward(evt);
+    public void OnNodeCompleted(NodeExecutionEvent evt)
+    {
+        // Ajanın KENDİ konsoluna da yaz: Studio konsolu SignalR köprüsüne bağlıdır (bağlantı
+        // yoksa/orchestrator erişilemezse hiçbir şey görünmez). Değişken anlık görüntüsü zaten
+        // maskelenmiştir (BaseRunner), dolayısıyla loglanması güvenlidir.
+        _logger.LogInformation(
+            "Node {NodeId} ({Activity}) tamamlandı — çıkışlar: {Outputs} | değişkenler: {Variables}",
+            evt.NodeId,
+            evt.ActivityId ?? evt.NodeType,
+            Describe(evt.Outputs),
+            Describe(evt.Variables));
+
+        Forward(evt);
+    }
+
+    private static string Describe(IReadOnlyDictionary<string, string?>? values)
+        => values is null || values.Count == 0
+            ? "-"
+            : string.Join(", ", values.Select(kv => $"{kv.Key}={kv.Value ?? "∅"}"));
 
     private void Forward(NodeExecutionEvent evt)
     {
@@ -37,7 +55,9 @@ public sealed class AgentWorkflowExecutionObserver : IWorkflowExecutionObserver
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Canlı node logu iletilemedi (yok sayıldı) {NodeId}.", evt.NodeId);
+                // Uyarı seviyesi: Studio konsolunun boş kalmasının sebebi görünür olmalı
+                // (Debug seviyesi ajanın varsayılan Information ayarında hiç basılmıyordu).
+                _logger.LogWarning(ex, "Canlı node logu iletilemedi (yok sayıldı) {NodeId}.", evt.NodeId);
             }
         });
     }

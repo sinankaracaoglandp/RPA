@@ -334,6 +334,27 @@ public sealed class BaseRunner : IWorkflowRunner
             ActivityId = string.IsNullOrEmpty(node.Activity) ? null : node.Activity,
         });
 
+        // activity/componentCall kendi tamamlanma olayını (giriş/çıkış ile) yayınlar; diğer
+        // node tipleri için burada genel bir tamamlanma olayı üretilir ki değişken anlık
+        // görüntüsü (assign, döngü sayacı, log…) canlı konsolda görünsün.
+        var selfReporting = node.Type is "activity" or "componentCall";
+        var next = await DispatchNodeAsync(node, state);
+        if (!selfReporting)
+        {
+            NotifyCompleted(new NodeExecutionEvent
+            {
+                JobRunId = state.Context.JobRunId,
+                NodeId = node.Id,
+                NodeType = node.Type,
+                Outputs = new Dictionary<string, string?>(StringComparer.Ordinal),
+                Variables = SnapshotVariables(state),
+            });
+        }
+        return next;
+    }
+
+    private async Task<string?> DispatchNodeAsync(WorkflowNode node, ExecutionState state)
+    {
         switch (node.Type)
         {
             case "assign":
@@ -597,6 +618,18 @@ public sealed class BaseRunner : IWorkflowRunner
             ?? throw new SystemException(
                 $"Aktivite implementasyonu kayıtlı değil: '{node.Activity}' (node {node.Id}).");
 
+        // Hassas parametre adları yürütme boyunca hatırlanır: bu aktivitenin Credential/Sensitive
+        // çıktısı üst scope'ta kalır ve sonraki node'ların değişken anlık görüntüsünde de maskeli
+        // kalmalıdır (o node'un metadata'sı bu adı bilmez).
+        foreach (var p in metadata.Inputs.Concat(metadata.Outputs))
+        {
+            if (string.Equals(p.Type, "Credential", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Type, "Sensitive", StringComparison.OrdinalIgnoreCase))
+            {
+                state.SensitiveNames.Add(p.Name);
+            }
+        }
+
         // Node property'lerini çözerek node-local scope'a giriş değişkenleri olarak yaz.
         state.Scope.PushScope($"node-{node.Id}");
         Dictionary<string, object?> outputs;
@@ -653,6 +686,7 @@ public sealed class BaseRunner : IWorkflowRunner
             ActivityId = metadata.ActivityId,
             Inputs = MaskAndStringify(resolvedInputs, metadata),
             Outputs = MaskAndStringify(outputs, metadata),
+            Variables = SnapshotVariables(state),
         });
     }
 
@@ -671,6 +705,7 @@ public sealed class BaseRunner : IWorkflowRunner
             NodeType = node.Type,
             ActivityId = metadata.ActivityId,
             Inputs = MaskAndStringify(inputs, metadata),
+            Variables = SnapshotVariables(state),
             Error = message,
             IsBusinessError = isBusiness,
         });
@@ -699,13 +734,28 @@ public sealed class BaseRunner : IWorkflowRunner
     }
 
     /// <summary>
+    /// Gözlemci için görünür değişkenlerin maskeli anlık görüntüsü. Gözlemci yoksa iş yapılmaz
+    /// (üretimde snapshot maliyeti ödenmez).
+    /// </summary>
+    private Dictionary<string, string?>? SnapshotVariables(ExecutionState state)
+        => _observer is null
+            ? null
+            : MaskAndStringify(state.Scope.ExportVisible(), metadata: null, state.SensitiveNames);
+
+    /// <summary>
     /// Değerleri görüntülenebilir (maskeli/kısaltılmış) string'lere çevirir. Credential tipli
     /// parametreler ve gizli görünen anahtarlar (password/secret/token/credential) asla açılmaz.
     /// </summary>
     private static Dictionary<string, string?> MaskAndStringify(
-        IEnumerable<KeyValuePair<string, object?>> values, ActivityMetadata? metadata)
+        IEnumerable<KeyValuePair<string, object?>> values,
+        ActivityMetadata? metadata,
+        ISet<string>? extraSecretNames = null)
     {
         var credentialKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (extraSecretNames is not null)
+        {
+            credentialKeys.UnionWith(extraSecretNames);
+        }
         if (metadata is not null)
         {
             foreach (var p in metadata.Inputs.Concat(metadata.Outputs))
@@ -745,7 +795,9 @@ public sealed class BaseRunner : IWorkflowRunner
         {
             return null;
         }
-        const int max = 200;
+        // Test/tasarım sırasında ekrandan okunan bileşik değerlerin (list<object> grid satırları,
+        // e-fatura nesneleri) konsolda görülebilmesi için önizleme sınırı geniş tutulur.
+        const int max = 4000;
         return text.Length > max ? string.Concat(text.AsSpan(0, max), "…") : text;
     }
 
@@ -1158,5 +1210,12 @@ public sealed class BaseRunner : IWorkflowRunner
 
         /// <summary>Bu yürütmede en son çalıştırılan checkpoint node'unun ID'si (resume anchor). null = hiç çalışmadı.</summary>
         public string? LastCheckpointNodeId { get; set; }
+
+        /// <summary>
+        /// Yürütme boyunca biriken hassas değişken adları (Credential/Sensitive tipli aktivite
+        /// giriş-çıkışları). Gözlemciye giden değişken anlık görüntüsünde bu adlar maskelenir —
+        /// hassas bir çıktı scope'ta kalıp sonraki node'un anlık görüntüsünde açılmamalıdır.
+        /// </summary>
+        public HashSet<string> SensitiveNames { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }

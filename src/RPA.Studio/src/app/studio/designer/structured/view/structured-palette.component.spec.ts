@@ -104,6 +104,13 @@ describe('StructuredPaletteComponent', () => {
     const cmp = f.componentInstance;
     const el = f.nativeElement as HTMLElement;
 
+    // Varsayılan kapalı — tuvale yer açmak için.
+    expect(cmp.collapsed()).toBe(true);
+    expect(el.querySelector('.palette__chips')).toBeNull();
+
+    el.querySelector<HTMLElement>('[data-testid="palette-toggle"]')!.click();
+    f.detectChanges();
+
     expect(cmp.collapsed()).toBe(false);
     expect(el.querySelector('.palette__chips')).not.toBeNull();
 
@@ -133,6 +140,7 @@ describe('StructuredPaletteComponent', () => {
     http.match('/api/activities').forEach((r) => r.flush([
       { activityId: 'Web.Click', displayName: 'Click', category: 'Web', inputs: [], outputs: [] },
     ]));
+    f.componentInstance.toggleCollapsed();
     f.detectChanges();
 
     const emitted: StructuredItem[] = [];
@@ -150,6 +158,7 @@ describe('StructuredPaletteComponent', () => {
     const f = TestBed.createComponent(StructuredPaletteComponent);
     f.detectChanges();
     http.match('/api/activities').forEach((r) => r.flush([]));
+    f.componentInstance.toggleCollapsed();
     f.detectChanges();
 
     const emitted: StructuredItem[] = [];
@@ -167,6 +176,7 @@ describe('StructuredPaletteComponent', () => {
     const f = TestBed.createComponent(StructuredPaletteComponent);
     f.detectChanges();
     http.match('/api/activities').forEach((r) => r.flush([]));
+    f.componentInstance.toggleCollapsed();
     f.detectChanges();
 
     const plus = (f.nativeElement as HTMLElement)

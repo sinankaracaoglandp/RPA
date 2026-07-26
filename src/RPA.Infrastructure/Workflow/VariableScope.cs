@@ -84,6 +84,25 @@ public sealed class VariableScope
     public IReadOnlyDictionary<string, object?> ExportGlobal()
         => new Dictionary<string, object?>(_scopes[0], StringComparer.Ordinal);
 
+    /// <summary>
+    /// Zincirdeki tüm scope'ların düzleştirilmiş anlık görüntüsü — iç (üst) scope dıştakini
+    /// gölgeler; okuma sırasıyla (<see cref="TryGetVariable"/>) aynı sonucu verir.
+    /// Yalnızca gözlem/tanılama içindir (canlı konsol değişken görünümü).
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> ExportVisible()
+    {
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
+        // Tabandan içe doğru: sonraki (daha iç) scope aynı adı ezer.
+        foreach (var scope in _scopes)
+        {
+            foreach (var (key, value) in scope)
+            {
+                result[key] = value;
+            }
+        }
+        return result;
+    }
+
     /// <summary>Verilen değerleri global scope'a yazar (checkpoint resume için) — mevcut değerlerin üzerine yazar.</summary>
     public void ImportGlobal(IReadOnlyDictionary<string, object?> variables)
     {

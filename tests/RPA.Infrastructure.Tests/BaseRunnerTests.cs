@@ -295,6 +295,89 @@ public class BaseRunnerTests
     }
 
     [Fact]
+    public async Task Observer_ReportsVariableSnapshot_ForActivityAndNonActivityNodes()
+    {
+        var observer = new RecordingObserver();
+        var factory = new MapFactory().Add("Test.Rows", () => new FakeActivity("Test.Rows", _ =>
+            Task.FromResult(new Dictionary<string, object?>
+            {
+                ["gridSatirlari"] = new List<Dictionary<string, object?>>
+                {
+                    new() { ["MATNR"] = "M-1", ["MAKTX"] = "Vida" },
+                    new() { ["MATNR"] = "M-2", ["MAKTX"] = "Somun" },
+                },
+            })));
+
+        var json = """
+        {"schemaVersion":"1.0","id":"37373737-3737-3737-3737-373737373737","name":"snapshot","version":"1.0.0",
+         "nodes":[
+           {"id":"n1","type":"assign","variableName":"sayac","value":"7"},
+           {"id":"n2","type":"activity","activity":"Test.Rows","properties":{}}
+         ],
+         "connections":[{"from":"n1","to":"n2"}]}
+        """;
+
+        var result = await CreateRunner(
+            new Dictionary<string, ActivityMetadata>
+            {
+                ["Test.Rows"] = new() { ActivityId = "Test.Rows", DisplayName = "Test.Rows" },
+            },
+            factory,
+            observer: observer).ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        Assert.True(result.Success, result.Exception?.Message);
+
+        // assign gibi aktivite olmayan node'lar da tamamlanma olayı yayınlar (değişken görünürlüğü).
+        var assignEvent = Assert.Single(observer.Completed, e => e.NodeId == "n1");
+        Assert.Equal("7", assignEvent.Variables!["sayac"]);
+
+        // list<object> çıktısı anlık görüntüde JSON olarak, alan değerleriyle birlikte görünür.
+        var activityEvent = Assert.Single(observer.Completed, e => e.NodeId == "n2");
+        Assert.Equal("7", activityEvent.Variables!["sayac"]);
+        Assert.Contains("MAKTX", activityEvent.Variables["gridSatirlari"]!, StringComparison.Ordinal);
+        Assert.Contains("Somun", activityEvent.Variables["gridSatirlari"]!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Observer_VariableSnapshot_MasksSensitiveValues_InLaterNodesToo()
+    {
+        var observer = new RecordingObserver();
+        var factory = new MapFactory()
+            .Add("Test.Secret", () => new FakeActivity("Test.Secret", _ =>
+                Task.FromResult(new Dictionary<string, object?> { ["apiKey"] = "SECRET-VALUE" })))
+            .Add("Test.Noop", () => new FakeActivity("Test.Noop", _ =>
+                Task.FromResult(new Dictionary<string, object?>())));
+
+        var json = """
+        {"schemaVersion":"1.0","id":"38383838-3838-3838-3838-383838383838","name":"secret","version":"1.0.0",
+         "nodes":[
+           {"id":"s1","type":"activity","activity":"Test.Secret","properties":{}},
+           {"id":"s2","type":"activity","activity":"Test.Noop","properties":{}}
+         ],
+         "connections":[{"from":"s1","to":"s2"}]}
+        """;
+
+        await CreateRunner(
+            new Dictionary<string, ActivityMetadata>
+            {
+                ["Test.Secret"] = new()
+                {
+                    ActivityId = "Test.Secret",
+                    DisplayName = "Test.Secret",
+                    Outputs = [new ActivityParameter { Name = "apiKey", Type = "Sensitive" }],
+                },
+                ["Test.Noop"] = new() { ActivityId = "Test.Noop", DisplayName = "Test.Noop" },
+            },
+            factory,
+            observer: observer).ExecuteAsync(Version(json), new(), Guid.NewGuid());
+
+        foreach (var evt in observer.Completed)
+        {
+            Assert.Equal("[MASKED]", evt.Variables!["apiKey"]);
+        }
+    }
+
+    [Fact]
     public async Task PublishedProfile_XmlList_ForEach_ExposesDynamicLineFields()
     {
         await using var db = CreateEInvoiceProfileDatabase();

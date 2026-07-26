@@ -34,7 +34,7 @@ export class StructuredPaletteComponent implements OnInit {
   readonly filter = inject(StructuredPaletteFilter);
 
   /** Palet katlanabilir — tuvale yer açmak için (yalnız görünüm durumu, kalıcı değil). */
-  readonly collapsed = signal(false);
+  readonly collapsed = signal(true);
   readonly search = signal('');
 
   toggleCollapsed(): void { this.collapsed.update((c) => !c); }
