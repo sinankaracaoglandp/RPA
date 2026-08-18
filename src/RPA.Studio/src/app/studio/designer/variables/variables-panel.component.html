@@ -20,11 +20,10 @@
           <select
             class="variables-panel__type"
             [attr.data-testid]="'variable-type-' + $index"
-            [value]="variable.type"
             (change)="updateVariable($index, { type: $any($event.target).value })"
           >
-            @for (type of variableTypes; track type) {
-              <option [value]="type">{{ type }}</option>
+            @for (type of typeOptions(variable); track type) {
+              <option [value]="type" [selected]="type === variable.type">{{ type }}</option>
             }
           </select>
           <input
@@ -44,10 +43,32 @@
           >
             Sil
           </button>
-          @if (variable.schema) {
-            <div class="variables-panel__paths" [attr.data-testid]="'variable-paths-' + $index">
-              @for (path of variablePathsFor(variable.name); track path) {
-                <code>{{ path }}</code>
+          @if (hasSchema(variable)) {
+            <div class="variables-panel__schema" [attr.data-testid]="'variable-schema-' + $index">
+              <button
+                type="button"
+                class="variables-panel__schema-toggle"
+                [attr.data-testid]="'variable-schema-toggle-' + $index"
+                [attr.aria-expanded]="isSchemaExpanded(variable)"
+                (click)="toggleSchema(variable)"
+              >
+                <span class="variables-panel__schema-caret" aria-hidden="true">{{ isSchemaExpanded(variable) ? '▾' : '▸' }}</span>
+                {{ isSchemaExpanded(variable) ? 'Alanları gizle' : 'Alanları göster' }}
+                <span class="variables-panel__schema-count">{{ schemaFieldRows(variable).length }}</span>
+              </button>
+
+              @if (isSchemaExpanded(variable)) {
+                <ul class="variables-panel__fields" [attr.data-testid]="'variable-fields-' + $index">
+                  @for (field of schemaFieldRows(variable); track field.path) {
+                    <li
+                      class="variables-panel__field"
+                      [class.variables-panel__field--nested]="field.nested"
+                    >
+                      <code class="variables-panel__field-path">{{ field.path }}</code>
+                      <span class="variables-panel__field-type">{{ field.type }}</span>
+                    </li>
+                  }
+                </ul>
               }
             </div>
           }

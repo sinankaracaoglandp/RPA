@@ -17,25 +17,80 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
     {
         var document = Load(xml);
         var namespaces = Namespaces(document);
-        var result = ReadFields(document.CreateNavigator()!, document, definition.Fields, namespaces);
+        var documentPrefixes = DocumentPrefixes(document);
+        var result = ReadFields(document.CreateNavigator()!, document, definition.Fields, namespaces, documentPrefixes);
         foreach (var collection in definition.Collections)
         {
             try
             {
-                result[collection.Name] = document.XPathSelectElements(collection.ScopeXPath, namespaces)
-                    .Select(element => ReadFields(element.CreateNavigator(), document, collection.Fields, namespaces)).ToList();
+                result[collection.Name] = document
+                    .XPathSelectElements(NamespaceSafeXPath(collection.ScopeXPath, documentPrefixes), namespaces)
+                    .Select(element => ReadFields(element.CreateNavigator(), document, collection.Fields, namespaces, documentPrefixes)).ToList();
             }
             catch (XPathException) { throw new InvoiceParseException($"Geçersiz koleksiyon XPath'i: {collection.Name}"); }
         }
         return result;
     }
 
-    private Dictionary<string, object?> ReadFields(XPathNavigator scope, XDocument document, IEnumerable<EInvoiceFieldDefinition> fields, XmlNamespaceManager namespaces)
+    /// <summary>Belgenin kökünde bildirilen namespace önekleri (varsayılan ns için "" anahtarı).</summary>
+    private static Dictionary<string, string> DocumentPrefixes(XDocument document)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var attribute in document.Root?.Attributes().Where(a => a.IsNamespaceDeclaration) ?? [])
+        {
+            var prefix = attribute.Name.Namespace == XNamespace.Xmlns ? attribute.Name.LocalName : string.Empty;
+            result[prefix] = attribute.Value;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// XPath segmentlerini namespace'e toleranslı biçime çevirir — Studio eşleme editörünün
+    /// tasarım-anı önizlemesiyle (einvoice-mapping.model.ts <c>namespaceSafeXPath</c>) BİREBİR
+    /// aynı semantik. Editör XPath'leri belgenin etiket adlarından üretir ve UBL kökü varsayılan
+    /// namespace'te olduğundan segment öneksiz olur (<c>/Invoice/cbc:ID</c>); ham hâliyle .NET
+    /// bunu "namespace'siz Invoice" diye arayıp hiçbir şey bulamıyordu (tüm alanlar null).
+    /// Bilinmeyen önekler olduğu gibi bırakılır; onları <see cref="Namespaces"/> yöneticisi çözer.
+    /// </summary>
+    private static string NamespaceSafeXPath(string? xpath, IReadOnlyDictionary<string, string> documentPrefixes)
+    {
+        if (string.IsNullOrWhiteSpace(xpath)) { return xpath ?? string.Empty; }
+
+        return string.Join("/", xpath.Split('/').Select(segment =>
+        {
+            if (segment.Length == 0 || segment is "." or ".."
+                || segment.StartsWith('@') || segment.Contains('(', StringComparison.Ordinal))
+            {
+                return segment;
+            }
+
+            var colon = segment.IndexOf(':', StringComparison.Ordinal);
+            if (colon >= 0)
+            {
+                var prefix = segment[..colon];
+                var rest = segment[(colon + 1)..];
+                var bracket = rest.IndexOf('[', StringComparison.Ordinal);
+                var name = bracket >= 0 ? rest[..bracket] : rest;
+                var predicate = bracket >= 0 ? rest[bracket..] : string.Empty;
+                // Eksen belirteci (descendant-or-self::x) veya bilinmeyen önek → dokunma.
+                return name.Length > 0 && documentPrefixes.TryGetValue(prefix, out var uri)
+                    ? $"*[local-name()='{name}' and namespace-uri()='{uri}']{predicate}"
+                    : segment;
+            }
+
+            var bracketIndex = segment.IndexOf('[', StringComparison.Ordinal);
+            var localName = bracketIndex >= 0 ? segment[..bracketIndex] : segment;
+            var tail = bracketIndex >= 0 ? segment[bracketIndex..] : string.Empty;
+            return $"*[local-name()='{localName}']{tail}";
+        }));
+    }
+
+    private Dictionary<string, object?> ReadFields(XPathNavigator scope, XDocument document, IEnumerable<EInvoiceFieldDefinition> fields, XmlNamespaceManager namespaces, IReadOnlyDictionary<string, string> documentPrefixes)
     {
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var field in fields)
         {
-            var raw = Values(scope, document, field, namespaces).Select(value => ApplyRegex(value, field))
+            var raw = Values(scope, document, field, namespaces, documentPrefixes).Select(value => ApplyRegex(value, field))
                 .Where(value => value is not null).Select(value => value!).ToList();
             if (raw.Count == 0 && !string.IsNullOrWhiteSpace(field.FallbackRegex))
                 raw = ApplyFallbackRegex(ScopeText(scope), field);
@@ -66,16 +121,16 @@ public sealed class EInvoiceProfileExtractor(InvoiceParseOptions? options = null
         catch (ArgumentException) { throw new InvoiceParseException($"Geçersiz profil fallback regex'i: {field.Name}"); }
     }
 
-    private static IEnumerable<string> Values(XPathNavigator scope, XDocument document, EInvoiceFieldDefinition field, XmlNamespaceManager namespaces)
+    private static IEnumerable<string> Values(XPathNavigator scope, XDocument document, EInvoiceFieldDefinition field, XmlNamespaceManager namespaces, IReadOnlyDictionary<string, string> documentPrefixes)
     {
         try
         {
             return field.Source switch
             {
-                "XPath" => Select(scope, field.ValueXPath ?? ".", namespaces),
+                "XPath" => Select(scope, NamespaceSafeXPath(field.ValueXPath ?? ".", documentPrefixes), namespaces),
                 "InvoiceNotes" => document.Root?.Elements(XName.Get("Note", Basic)).Select(x => x.Value) ?? [],
                 "LineNotes" => scope.SelectDescendants("Note", Basic, true).Cast<XPathNavigator>().Select(x => x.Value),
-                "Standard" => Select(scope, StandardXPath(field.ValueXPath ?? field.Name), namespaces),
+                "Standard" => Select(scope, NamespaceSafeXPath(StandardXPath(field.ValueXPath ?? field.Name), documentPrefixes), namespaces),
                 _ => []
             };
         }

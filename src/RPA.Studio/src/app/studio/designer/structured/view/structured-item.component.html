@@ -1,0 +1,120 @@
+@if (!first) { <div class="structured-flow-link" data-testid="flow-link" aria-hidden="true"></div> }
+@if (item.kind === 'step') {
+  <div class="structured-step" data-testid="structured-step"
+       [class.structured-item--selected]="isSelected" (click)="onSelect($event)">
+    @if (!first) { <span class="structured-port structured-port--in" aria-hidden="true"></span> }
+    @if (!last) { <span class="structured-port structured-port--out" aria-hidden="true"></span> }
+    <span class="structured-step__icon" aria-hidden="true">▸</span>
+    @if (renaming) {
+      <input
+        #renameInput
+        class="structured-item__rename-input"
+        data-testid="item-rename-input"
+        [value]="labelOf()"
+        [placeholder]="'structured.renamePlaceholder' | translate"
+        (click)="$event.stopPropagation()"
+        (keydown.enter)="commitRename(renameInput.value)"
+        (keydown.escape)="cancelRename()"
+        (blur)="commitRename(renameInput.value)"
+      />
+    } @else {
+      <span class="structured-step__title" data-testid="item-title" (dblclick)="startRename($event)">{{ stepTitle() }}</span>
+    }
+    <span class="structured-step__type">{{ item.node.activity ?? item.node.type }}</span>
+    @if (editable) {
+      <span class="structured-item__controls">
+        <button type="button" data-testid="item-rename" [title]="'structured.rename' | translate" (click)="startRename($event)">✎</button>
+        <button type="button" data-testid="item-duplicate" [title]="'structured.duplicate' | translate" (click)="emitAction('duplicate', $event)">⧉</button>
+          <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
+        <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down', $event)">↓</button>
+        <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete', $event)">✕</button>
+      </span>
+    }
+  </div>
+} @else if (container) {
+  <div class="structured-container" data-testid="structured-container" [attr.data-type]="container.type"
+       [class.structured-item--selected]="isSelected">
+    @if (!first) { <span class="structured-port structured-port--in" aria-hidden="true"></span> }
+    @if (!last) { <span class="structured-port structured-port--out" aria-hidden="true"></span> }
+    <header class="structured-container__header" (click)="onSelect($event)">
+      <span class="structured-container__icon" data-testid="container-icon" aria-hidden="true">{{ containerIcon(container.type) }}</span>
+      @if (renaming) {
+        <input
+          #renameInput
+          class="structured-item__rename-input"
+          data-testid="item-rename-input"
+          [value]="labelOf()"
+          [placeholder]="'structured.renamePlaceholder' | translate"
+          (click)="$event.stopPropagation()"
+          (keydown.enter)="commitRename(renameInput.value)"
+          (keydown.escape)="cancelRename()"
+          (blur)="commitRename(renameInput.value)"
+        />
+      } @else if (labelOf()) {
+        <span class="structured-container__label" data-testid="item-title" (dblclick)="startRename($event)">{{ labelOf() }}</span>
+        <span class="structured-container__kind">{{ 'structured.type.' + container.type | translate }}</span>
+      } @else {
+        <span class="structured-container__label" data-testid="item-title" (dblclick)="startRename($event)">{{ 'structured.type.' + container.type | translate }}</span>
+      }
+      @if (summary(container)) {
+        <code class="structured-container__summary">{{ summary(container) }}</code>
+      }
+      @if (editable) {
+        <span class="structured-item__controls">
+          <button type="button" data-testid="item-rename" [title]="'structured.rename' | translate" (click)="startRename($event)">✎</button>
+          <button type="button" data-testid="item-duplicate" [title]="'structured.duplicate' | translate" (click)="emitAction('duplicate', $event)">⧉</button>
+          <button type="button" data-testid="item-up" [title]="'structured.moveUp' | translate" (click)="emitAction('up', $event)">↑</button>
+          <button type="button" data-testid="item-down" [title]="'structured.moveDown' | translate" (click)="emitAction('down', $event)">↓</button>
+          <button type="button" data-testid="item-delete" [title]="'structured.delete' | translate" (click)="emitAction('delete', $event)">✕</button>
+        </span>
+      }
+    </header>
+    <div class="structured-container__lanes">
+      @for (lane of lanes(container); track lane) {
+        <section
+          class="structured-container__lane"
+          [attr.data-testid]="'lane-' + lane"
+          [class.structured-container__lane--selected]="isLaneSelected(container, lane)"
+          [class.structured-container__lane--over]="dragOverLane === lane"
+          (click)="onLaneClick(container, lane, $event)"
+          (cdkDropListEntered)="dragOverLane = lane"
+          (cdkDropListExited)="dragOverLane = null"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [appDropZone]="laneItems(container, lane)"
+          [cdkDropListData]="laneItems(container, lane)"
+          [cdkDropListDisabled]="!editable"
+          (cdkDropListDropped)="dragOverLane = null; drop.emit($event)"
+        >
+          <span class="structured-container__lane-label">{{ 'structured.lane.' + lane | translate }}</span>
+          @for (child of laneItems(container, lane); track $index) {
+            <app-structured-item
+              [item]="child"
+              [editable]="editable"
+              [selectedRef]="selectedRef"
+              [selectedRefs]="selectedRefs"
+              [selectedLaneRef]="selectedLaneRef"
+              (selectLane)="selectLane.emit($event)"
+              [first]="$first"
+              [last]="$last"
+              cdkDrag
+              [cdkDragData]="child"
+              [cdkDragDisabled]="!editable"
+              (action)="action.emit($event)"
+              (drop)="drop.emit($event)"
+              (select)="select.emit($event)"
+            ></app-structured-item>
+          }
+          @if (laneItems(container, lane).length === 0) {
+            <p class="structured-container__lane-empty" data-testid="lane-empty">
+              {{ (editable ? 'structured.dropHere' : 'structured.empty') | translate }}
+            </p>
+          }
+          @if (editable) {
+            <app-structured-add-menu (pick)="onLaneAdd(container, lane, $event)"></app-structured-add-menu>
+          }
+        </section>
+      }
+    </div>
+  </div>
+}

@@ -29,6 +29,23 @@
                 (valueChange)="onValueChange(port, $event)"
               ></app-einvoice-mapping-editor>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            } @else if (isEInvoiceProjectPicker(port)) {
+              <label class="generic-property__label" [attr.for]="'prop-' + port.name">
+                {{ port.description || 'Proje' }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <select
+                [id]="'prop-' + port.name"
+                class="generic-property__input"
+                [attr.data-testid]="'prop-' + port.name"
+                (change)="onValueChange(port, $any($event.target).value)"
+              >
+                <option value="" [selected]="!value(port)">Proje seç</option>
+                @for (project of projectOptions; track project.id) {
+                  <option [value]="project.id" [selected]="project.id === value(port)">{{ project.name }}</option>
+                }
+              </select>
+              <span class="generic-property__hint">Profilin kayıtlı olduğu projeyi seç — profiller buna göre gelir.</span>
             } @else if (isEInvoiceProfile(port)) {
               <label class="generic-property__label" [attr.for]="'prop-' + port.name">
                 {{ port.description || 'E-Fatura profili' }}
@@ -111,6 +128,17 @@
                 (valueChange)="onValueChange(port, $event)"
               ></app-text-offset-editor>
               <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
+            } @else if (isKeystrokeField(port)) {
+              <label class="generic-property__label">
+                {{ port.description || port.name }}
+                @if (port.required) { <span class="generic-property__req">*</span> }
+              </label>
+              <app-keystroke-sequence-editor
+                [attr.data-testid]="'prop-' + port.name + '-keystroke'"
+                [value]="stringValue(port)"
+                (valueChange)="onValueChange(port, $event)"
+              ></app-keystroke-sequence-editor>
+              <span class="generic-property__hint">{{ port.name }} · {{ port.type }}</span>
             } @else {
               <label class="generic-property__label" [attr.for]="'prop-' + port.name">
                 {{ port.description || port.name }}
@@ -133,29 +161,38 @@
                 </div>
               }
               <div class="generic-property__input-row">
-                @if (isVariableField(port) && variables.length > 0) {
-                  <select
+                @if (isVariableField(port)) {
+                  <!-- Değişken adı alanı: serbest yazılabilir combobox (input + datalist).
+                       Önceden <select>'ti; ad tanımlanırken (File.List çıktısı gibi) değişken
+                       oluşup liste dolunca alan aniden dropdown'a dönüşüp yazmayı kilitliyordu. -->
+                  <!-- Değeri her tuşta değil, yalnız Enter'a basınca veya alandan çıkınca
+                       (change/blur) yayınla → değişken adı yazılırken her harf için ayrı
+                       (çöp) değişken oluşmaz; ad tamamlanınca tek seferde tanımlanır. -->
+                  <input
                     [id]="'prop-' + port.name"
                     [value]="value(port)"
                     (change)="onValueChange(port, $any($event.target).value)"
+                    (keydown.enter)="onValueChange(port, $any($event.target).value); $any($event.target).blur()"
+                    [attr.list]="'prop-' + port.name + '-vars'"
+                    [placeholder]="port.name"
                     class="generic-property__input"
                     [attr.data-testid]="'prop-' + port.name"
-                  >
-                    <option value="">{{ port.name }}</option>
+                    autocomplete="off"
+                  />
+                  <datalist [id]="'prop-' + port.name + '-vars'">
                     @for (variable of variables; track variable.name) {
-                      <option [value]="variable.name">{{ variable.name }}</option>
+                      <option [value]="variable.name"></option>
                     }
-                  </select>
+                  </datalist>
                 } @else if ((port.options?.length ?? 0) > 0) {
                   <select
                     [id]="'prop-' + port.name"
-                    [value]="value(port)"
                     (change)="onValueChange(port, $any($event.target).value)"
                     class="generic-property__input"
                     [attr.data-testid]="'prop-' + port.name"
                   >
                     @for (option of port.options ?? []; track option) {
-                      <option [value]="option">{{ option }}</option>
+                      <option [value]="option" [selected]="option === value(port)">{{ option }}</option>
                     }
                   </select>
                 } @else if (showModeSelector(port) && fieldMode(port) === 'variable') {
@@ -265,12 +302,61 @@
                   }
                 </div>
               }
+              @if (showPatternExamples(port)) {
+                <div class="generic-property__examples" data-testid="prop-pattern-examples">
+                  <span class="generic-property__examples-title">Örnek filtreler (birden çok uzantı için ; veya , kullan)</span>
+                  @for (example of patternExamples(port); track example) {
+                    <code class="generic-property__example">{{ example }}</code>
+                  }
+                </div>
+              }
             }
           </div>
         }
       </form>
       @if (variableError) {
         <p class="generic-property__error" role="alert">{{ variableError }}</p>
+      }
+
+      @if (isForEach) {
+        <div class="generic-property__foreach" data-testid="foreach-item-editor">
+          @if (itemVariableError) {
+            <p class="generic-property__error" role="alert" data-testid="foreach-item-variable-error">
+              {{ itemVariableError }}
+            </p>
+          }
+          @if (showManualFields) {
+            <div class="generic-property__manual-fields" data-testid="foreach-manual-fields">
+              <p class="generic-property__desc">{{ 'foreach.manualFieldsHint' | translate }}</p>
+              @for (f of itemFields; track $index) {
+                <div class="generic-property__manual-field-row">
+                  <input
+                    type="text"
+                    [value]="f.name"
+                    (input)="updateItemField($index, { name: $any($event.target).value })"
+                    [placeholder]="'foreach.fieldName' | translate"
+                  />
+                  <select [value]="f.type" (change)="updateItemField($index, { type: $any($event.target).value })">
+                    <option value="string">string</option>
+                    <option value="int">int</option>
+                    <option value="number">number</option>
+                    <option value="bool">bool</option>
+                    <option value="datetime">datetime</option>
+                    <option value="object">object</option>
+                  </select>
+                  <button type="button" (click)="removeItemField($index)">✕</button>
+                </div>
+              }
+              <button type="button" (click)="addItemField()" data-testid="foreach-add-field">
+                + {{ 'foreach.addField' | translate }}
+              </button>
+            </div>
+          } @else {
+            <p class="generic-property__desc" data-testid="foreach-auto-hint">
+              {{ 'foreach.autoSchemaHint' | translate }}
+            </p>
+          }
+        </div>
       }
     }
   }

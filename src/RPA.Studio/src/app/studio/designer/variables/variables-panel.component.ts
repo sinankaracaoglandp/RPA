@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { WorkflowVariable } from '../../../shared/models/workflow.model';
+import { variableFieldPaths } from '../variable-schema.util';
 
 const VARIABLE_TYPES = ['string', 'int', 'decimal', 'bool', 'DateTime', 'JSON'] as const;
 
@@ -17,6 +18,35 @@ export class VariablesPanelComponent {
   @Output() readonly variablesChange = new EventEmitter<WorkflowVariable[]>();
 
   readonly variableTypes = VARIABLE_TYPES;
+
+  /** Şeması açık gösterilen değişken adları (tıklayınca genişler). */
+  private readonly expanded = new Set<string>();
+
+  /** Bu değişkenin bir şeması (object/list) var mı — alan listesi gösterilebilir mi? */
+  hasSchema(variable: WorkflowVariable): boolean {
+    return !!variable.schema && this.schemaFieldRows(variable).length > 0;
+  }
+
+  isSchemaExpanded(variable: WorkflowVariable): boolean {
+    return this.expanded.has(variable.name);
+  }
+
+  toggleSchema(variable: WorkflowVariable): void {
+    if (this.expanded.has(variable.name)) {
+      this.expanded.delete(variable.name);
+    } else {
+      this.expanded.add(variable.name);
+    }
+  }
+
+  /**
+   * Değişken şemasındaki alanları ad + tip ile döndürür. Object kök için `deg.alan`,
+   * list<object> kök için `satir.alan`. Bir alan kendisi liste ise item alanları
+   * bir seviye içerlek (`nested`) olarak eklenir (fatura → satır kalemleri gibi).
+   */
+  schemaFieldRows(variable: WorkflowVariable): SchemaFieldRow[] {
+    return variableFieldPaths(variable).map((r) => ({ path: r.path, type: r.type, nested: r.nested }));
+  }
 
   addVariable(): void {
     this.emit([
@@ -100,10 +130,25 @@ export class VariablesPanelComponent {
     return candidate;
   }
 
+  /**
+   * Bu satır için tip seçeneklerini döndürür. Değişkenin mevcut tipi temel listede yoksa
+   * (ör. `File.List` çıktısının `list<object>` tipi) seçenek olarak eklenir; aksi halde
+   * `<select>` eşleşen `<option>` bulamaz ve tip boş görünürdü.
+   */
+  typeOptions(variable: WorkflowVariable): string[] {
+    const base = [...VARIABLE_TYPES] as string[];
+    if (variable.type && !base.includes(variable.type)) {
+      return [...base, variable.type];
+    }
+    return base;
+  }
+
   private normalizeVariable(variable: WorkflowVariable): WorkflowVariable {
     const type = variable.type || 'string';
+    // `...variable` ile şema/açıklama korunur — aksi halde tip/ad/varsayılan değişince
+    // (ör. File.List çıktısının alan şeması) silinirdi.
     return {
-      name: variable.name,
+      ...variable,
       type,
       scope: variable.scope ?? 'global',
       default: this.parseDefault(type, this.defaultValue(variable)),
@@ -181,4 +226,10 @@ interface JsonSchemaLike {
   type?: string;
   properties?: Record<string, JsonSchemaLike>;
   items?: JsonSchemaLike;
+}
+
+export interface SchemaFieldRow {
+  path: string;
+  type: string;
+  nested: boolean;
 }

@@ -1,0 +1,59 @@
+<div class="structured-view" data-testid="structured-view">
+  @switch (mode()) {
+    @case ('empty') {
+      <p class="structured-view__msg" data-testid="structured-view-empty">{{ 'structured.emptyView' | translate }}</p>
+    }
+    @case ('fallback') {
+      <p class="structured-view__msg" data-testid="structured-view-fallback">
+        {{ 'structured.fallback' | translate }}
+        @if (fallbackReason()) {
+          <br /><small>{{ 'structured.fallbackReason' | translate }}: {{ fallbackReason() }}</small>
+        }
+      </p>
+    }
+    @case ('tree') {
+      <div class="structured-view__toolbar">
+        <button type="button" data-testid="structured-undo" [disabled]="!canUndo" [title]="'structured.undo' | translate" (click)="undo()">↶</button>
+        <button type="button" data-testid="structured-redo" [disabled]="!canRedo" [title]="'structured.redo' | translate" (click)="redo()">↷</button>
+        <button type="button" data-testid="structured-zoom-out" (click)="zoomOut()">−</button>
+        <span class="structured-view__zoom">{{ (zoom() * 100) | number:'1.0-0' }}%</span>
+        <button type="button" data-testid="structured-zoom-in" (click)="zoomIn()">+</button>
+      </div>
+      @if (editable) {
+        <app-structured-palette (add)="addFromPalette($event)"></app-structured-palette>
+      }
+      <div
+        #scroll
+        class="structured-view__scroll"
+        (wheel)="onWheel($event)"
+        (pointerdown)="onPanStart($event, scroll)"
+        (pointermove)="onPanMove($event, scroll)"
+        (pointerup)="onPanEnd()"
+        (pointerleave)="onPanEnd()"
+      >
+        <div
+          class="structured-view__canvas"
+          data-testid="structured-view-tree"
+          [style.zoom]="zoom()"
+          cdkDropListGroup
+          (click)="clearSelection()"
+        >
+          <app-structured-sequence
+            [items]="tree()"
+            [editable]="editable"
+            [selectedRef]="selected()"
+            [selectedRefs]="selectedItems()"
+            [selectedLaneRef]="selectedLane()"
+            (selectLane)="onSelectLane($event)"
+            (action)="onAction($event)"
+            (drop)="onDrop($event)"
+            (select)="onSelect($event.item, $event.additive)"
+          ></app-structured-sequence>
+          @if (editable) {
+            <app-structured-add-menu data-testid="root-add" (pick)="addToRoot($event)"></app-structured-add-menu>
+          }
+        </div>
+      </div>
+    }
+  }
+</div>

@@ -112,8 +112,8 @@ function getOutputPorts(nodeType: WorkflowNodeType): Array<{
     case 'for':
     case 'forEach':
       return [
-        { port: 'body', label: 'Body', tone: 'positive' },
-        { port: 'exit', label: 'Exit', tone: 'negative' },
+        { port: 'body', label: 'Gövde', tone: 'positive' },
+        { port: 'exit', label: 'Çıkış (döngü sonrası)', tone: 'negative' },
       ];
     case 'if':
       return [
@@ -183,7 +183,18 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
     return this._currentNodeId;
   }
 
+  /** Seçili ForEach'in gövde node id'leri (hafif görsel vurgu). */
+  @Input()
+  set bodyHighlightNodeIds(ids: string[]) {
+    this._bodyHighlightNodeIds = new Set(ids ?? []);
+    this.refreshViews();
+  }
+  get bodyHighlightNodeIds(): string[] {
+    return [...this._bodyHighlightNodeIds];
+  }
+
   private _breakpointNodeIds = new Set<string>();
+  private _bodyHighlightNodeIds = new Set<string>();
   private _currentNodeId: string | null = null;
 
   @Output() readonly nodeSelect = new EventEmitter<string | null>();
@@ -453,11 +464,18 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       outputs: getOutputPorts(node.nodeType),
       inputs: getInputPorts(node.nodeType).map((port) => ({
         port,
-        label: port === 'loop-back' ? 'Repeat' : 'In',
+        label: port === 'loop-back' ? 'Gövde sonu / tekrar' : 'In',
       })),
       selected: this.selectedNodeIds.has(node.id),
       breakpoint: this._breakpointNodeIds.has(node.id),
       current: node.id === this._currentNodeId,
+      bodyHighlight: this._bodyHighlightNodeIds.has(node.id),
+      exitUnconnected:
+        ['forEach', 'for', 'while'].includes(node.nodeType) &&
+        !this.editor.getConnections().some(
+          (c) => c.source === node.id &&
+            (c as unknown as { sourceOutput?: string }).sourceOutput === 'exit',
+        ),
     };
   }
 
@@ -1235,6 +1253,9 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
       case 'forEach':
         writable['items'] = props['items'] as string | undefined;
         writable['itemVariable'] = props['itemVariable'] as string | undefined;
+        if (Array.isArray(props['itemFields'])) {
+          writable['itemFields'] = props['itemFields'];
+        }
         break;
       case 'for':
         writable['start'] = props['start'] as number | undefined;
@@ -1278,6 +1299,7 @@ export class CanvasComponent implements AfterViewInit, OnChanges, OnDestroy {
         return {
           ...(typeof node['items'] === 'string' ? { items: node['items'] } : {}),
           ...(typeof node['itemVariable'] === 'string' ? { itemVariable: node['itemVariable'] } : {}),
+          ...(Array.isArray(node['itemFields']) ? { itemFields: node['itemFields'] } : {}),
         };
       case 'for':
         return {

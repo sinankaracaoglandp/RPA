@@ -1,17 +1,23 @@
 import { ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, Output } from '@angular/core';
 import {
+  DiscoveredColumn,
+  DiscoveredList,
   EInvoiceCollectionDefinition,
   EInvoiceMappingRule,
   EInvoiceProfileDefinition,
   RulePreview,
   XmlTreeNode,
   buildXPath,
+  columnToRule,
+  discoverLists,
   ibanPreset,
   kurPreset,
   parseSampleXml,
   previewProfileDefinition,
   previewRule,
   relativizeXPath,
+  scanColumns,
+  splitValueUnitRules,
 } from './einvoice-mapping.model';
 import { RegexWizardComponent } from './regex-wizard.component';
 import { collectTextScopes, TextScope } from './regex-wizard.model';
@@ -156,6 +162,7 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
       this.editingIndex = null;
       this.editingCollection = null;
       this.editingFieldName = null;
+      this.draftTarget = 'root';
       this.draft = { ...this.draft, name: '', source: 'XPath', type: 'string', required: false, multiple: false };
       this.fieldDialogOpen = true;
     }
@@ -269,9 +276,24 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
     this.editingIndex = null;
     this.editingCollection = null;
     this.editingFieldName = null;
+    this.draftTarget = 'root';
     this.draft = { name: '', source: 'XPath', valueXPath: this.draft.valueXPath ?? '', type: 'string', required: false, multiple: false };
     this.fieldDialogOpen = true;
     this.cdr?.markForCheck();
+  }
+
+  /** "Diziyi sil" düğmesi: yanlışlıkla silmeye karşı onay ister. */
+  confirmRemoveCollection(name: string): void {
+    if (typeof confirm === 'function' && !confirm(`"${name}" satır dizisi ve içindeki tüm alanlar silinsin mi?`)) return;
+    this.removeCollection(name);
+  }
+
+  /** Bir satır dizisini (koleksiyonu) bütünüyle kaldırır. */
+  removeCollection(name: string): void {
+    this.collections = this.collections.filter(collection => collection.name !== name);
+    if (this.selectedCollectionName === name) this.selectedCollectionName = '';
+    if (this.draftTarget === name) this.draftTarget = 'root';
+    this.emitProfileDefinition();
   }
 
   closeFieldDialog(): void {
@@ -427,6 +449,134 @@ export class EInvoiceMappingEditorComponent implements OnDestroy {
       return undefined;
     };
     return visit(this.tree);
+  }
+
+  // --- Liste sihirbazı ---------------------------------------------------------------------
+
+  /** Keşif tablosunda düzenlenebilir bir kolon satırı. */
+  wizardColumns: Array<DiscoveredColumn & { selected: boolean; name: string; type: EInvoiceMappingRule['type']; split: boolean }> = [];
+  wizardListName = '';
+  wizardScopeXPath = '';
+  activeWizardList: string | null = null;
+  wizardFullscreen = false;
+
+  toggleWizardFullscreen(): void {
+    this.wizardFullscreen = !this.wizardFullscreen;
+    this.cdr?.markForCheck();
+  }
+
+  /** Örnek XML'de bulunan tekrar eden listeler. */
+  discoveredLists(): DiscoveredList[] {
+    return this.tree.length ? discoverLists(this.tree) : [];
+  }
+
+  /** Bu liste için zaten bir koleksiyon tanımlı mı? */
+  isListDefined(list: DiscoveredList): boolean {
+    return this.collections.some(collection => collection.scopeXPath === list.scopeXPath);
+  }
+
+  /** Liste butonuna tıklanınca: kolonları tara, keşif tablosunu aç. */
+  selectDiscoveredList(list: DiscoveredList): void {
+    this.activeWizardList = list.scopeXPath;
+    this.wizardScopeXPath = list.scopeXPath;
+    const existing = this.collections.find(collection => collection.scopeXPath === list.scopeXPath);
+    this.wizardListName = existing?.name ?? this.uniqueListName(list.localName);
+    const definedPaths = new Set((existing?.fields ?? []).map(field => (field.valueXPath ?? '').replace(/^\.\//, '')));
+    this.wizardColumns = scanColumns(list.firstElement).map(column => ({
+      ...column,
+      selected: definedPaths.size === 0 ? Boolean(column.sampleValue) : definedPaths.has(column.relativePath),
+      name: column.suggestedName,
+      type: column.suggestedType,
+      split: false,
+    }));
+    this.cdr?.markForCheck();
+  }
+
+  closeWizard(): void {
+    this.wizardFullscreen = false;
+    this.activeWizardList = null;
+    this.wizardColumns = [];
+    this.wizardListName = '';
+    this.wizardScopeXPath = '';
+    this.cdr?.markForCheck();
+  }
+
+  toggleWizardColumn(index: number, selected: boolean): void {
+    this.wizardColumns = this.wizardColumns.map((column, current) => current === index ? { ...column, selected } : column);
+  }
+
+  /** Üstteki "Tümünü seç / Tümünü bırak". */
+  setAllWizardColumns(selected: boolean): void {
+    this.wizardColumns = this.wizardColumns.map(column => ({ ...column, selected }));
+    this.cdr?.markForCheck();
+  }
+
+  allWizardColumnsSelected(): boolean {
+    return this.wizardColumns.length > 0 && this.wizardColumns.every(column => column.selected);
+  }
+
+  /** Seçili kolonlar arasında birden fazla kez geçen (çakışan) adlar. */
+  duplicateWizardNames(): Set<string> {
+    const counts = new Map<string, number>();
+    for (const column of this.wizardColumns) {
+      if (!column.selected) continue;
+      const key = column.name.trim().toLowerCase();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return new Set([...counts].filter(([, count]) => count > 1).map(([key]) => key));
+  }
+
+  isWizardColumnDuplicate(name: string): boolean {
+    return this.duplicateWizardNames().has(name.trim().toLowerCase());
+  }
+
+  /** "Listeyi oluştur" için engel var mı? (çakışan ad veya seçim yok). */
+  wizardBlocked(): boolean {
+    if (this.duplicateWizardNames().size > 0) return true;
+    return !this.wizardColumns.some(column => column.selected && this.isIdentifier(column.name.trim()));
+  }
+
+  updateWizardColumn(index: number, patch: Partial<{ name: string; type: EInvoiceMappingRule['type']; split: boolean }>): void {
+    this.wizardColumns = this.wizardColumns.map((column, current) => current === index ? { ...column, ...patch } : column);
+  }
+
+  /** Seçili kolonlardan bir koleksiyon (satır dizisi) oluşturur. */
+  createListFromWizard(): void {
+    const name = this.wizardListName.trim();
+    const scope = this.wizardScopeXPath.trim();
+    if (!this.isIdentifier(name) || !scope || this.wizardBlocked()) return;
+    const fields: EInvoiceMappingRule[] = [];
+    const used = new Set<string>();
+    for (const column of this.wizardColumns) {
+      if (!column.selected || !this.isIdentifier(column.name)) continue;
+      const built = column.split ? splitValueUnitRules(column, column.name) : [columnToRule(column, column.name, column.type)];
+      for (const rule of built) {
+        const key = rule.name.toLowerCase();
+        if (used.has(key)) continue;
+        used.add(key);
+        fields.push(rule);
+      }
+    }
+    if (!fields.length) return;
+    this.collections = [
+      ...this.collections.filter(collection => collection.scopeXPath !== scope),
+      { name, scopeXPath: scope, fields },
+    ];
+    this.selectedCollectionName = name;
+    this.emitProfileDefinition();
+    this.closeWizard();
+  }
+
+  private uniqueListName(base: string): string {
+    let name = base.charAt(0).toLowerCase() + base.slice(1);
+    if (!this.isIdentifier(name)) name = `liste`;
+    let candidate = name;
+    let counter = 2;
+    while (this.collections.some(collection => collection.name.toLowerCase() === candidate.toLowerCase())) {
+      candidate = `${name}${counter++}`;
+    }
+    return candidate;
   }
 
   buildXPath(node: XmlTreeNode): string { return buildXPath(node); }

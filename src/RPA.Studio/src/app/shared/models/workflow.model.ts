@@ -36,6 +36,8 @@ export interface WorkflowNode {
   type: WorkflowNodeType;
   /** Activity id (e.g. 'Sap.Nco.CallBapi') — required when type === 'activity'. */
   activity?: string;
+  /** Kullanıcının verdiği okunabilir ad (örn. "Fatura no girişi"). Yalnız gösterim. */
+  label?: string;
   channel?: 'nco' | 'gui';
   properties?: Record<string, unknown>;
   /** UI-only canvas coordinate. */

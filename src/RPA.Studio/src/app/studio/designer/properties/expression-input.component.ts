@@ -4,6 +4,7 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { TranslatePipe } from '../../../core/translate.pipe';
 import { WorkflowVariable } from '../../../shared/models/workflow.model';
 import { ExpressionFunctionInfo, ExpressionFunctionService } from '../../../shared/services/expression-function.service';
+import { variableFieldPaths } from '../variable-schema.util';
 
 export interface AutocompleteItem {
   kind: 'variable' | 'function';
@@ -105,6 +106,16 @@ export class ExpressionInputComponent implements ControlValueAccessor, OnInit {
         insert: `{{${v.name}}}`,
         caretOffsetFromEnd: 0,
       }));
+    const fieldPaths: AutocompleteItem[] = (this.variables ?? [])
+      .flatMap((v) => variableFieldPaths(v))
+      .filter((f) => f.path.toLowerCase().startsWith(q.toLowerCase()))
+      .map((f) => ({
+        kind: 'variable' as const,
+        label: f.path,
+        detail: f.type,
+        insert: `{{${f.path}}}`,
+        caretOffsetFromEnd: 0,
+      }));
     const fns: AutocompleteItem[] = this.fnService.filter(q).map((f: ExpressionFunctionInfo) => ({
       kind: 'function',
       label: f.name,
@@ -112,7 +123,7 @@ export class ExpressionInputComponent implements ControlValueAccessor, OnInit {
       insert: `${f.name}()`,
       caretOffsetFromEnd: 1, // parantez içine konumlan
     }));
-    this.suggestions = [...vars, ...fns];
+    this.suggestions = [...vars, ...fieldPaths, ...fns];
     this.activeIndex = 0;
     this.suggestionsOpen = this.suggestions.length > 0 && q.length > 0;
     this.cdr.markForCheck();

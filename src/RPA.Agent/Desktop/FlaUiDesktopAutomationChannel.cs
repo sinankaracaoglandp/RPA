@@ -8,9 +8,11 @@ using FlaUI.Core.Conditions;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using Microsoft.Extensions.Logging;
 using RPA.Domain.Interfaces;
+using RPA.Domain.ValueObjects;
 using Capture = FlaUI.Core.Capturing.Capture;
 using SystemException = RPA.Domain.Exceptions.SystemException;
 
@@ -102,6 +104,11 @@ public sealed class FlaUiDesktopAutomationChannel : IDesktopAutomationChannel, I
                 catch { /* aşağıda genel hata fırlatılır */ }
             }
 
+            // Excel/Word gibi tek-örnekli uygulamalar: exe ikinci kez başlatılınca mevcut
+            // örneğe devredip yeni pencere AÇMADAN çıkar. Bu durumda (ya da uygulama zaten
+            // açıksa) aynı görüntü adına ait ZATEN AÇIK ana pencereye bağlanırız.
+            window ??= TryAttachExistingByImage(path);
+
             if (window is null)
             {
                 throw new SystemException($"Uygulama başlatıldı ama pencere bulunamadı ({path}).");
@@ -114,6 +121,44 @@ public sealed class FlaUiDesktopAutomationChannel : IDesktopAutomationChannel, I
         catch (Exception ex) when (ex is not SystemException)
         {
             throw new SystemException($"Uygulama başlatılamadı ({path}): {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Verilen exe yoluna ait ZATEN ÇALIŞAN bir örneğin ana penceresine bağlanır (yoksa null).
+    /// Excel/Word gibi tek-örnekli uygulamalar ikinci kez başlatılınca yeni pencere açmaz;
+    /// mevcut örneğe devreder. Süreç görüntü adına göre eşleşip attach ederiz.
+    /// </summary>
+    private Window? TryAttachExistingByImage(string path)
+    {
+        try
+        {
+            var imageName = System.IO.Path.GetFileNameWithoutExtension(path);
+            if (string.IsNullOrWhiteSpace(imageName))
+            {
+                return null;
+            }
+
+            var process = System.Diagnostics.Process.GetProcessesByName(imageName)
+                .Where(p => { try { return p.MainWindowHandle != IntPtr.Zero; } catch { return false; } })
+                .OrderByDescending(p => { try { return p.StartTime; } catch { return DateTime.MinValue; } })
+                .FirstOrDefault();
+            if (process is null)
+            {
+                return null;
+            }
+
+            var app = Application.Attach(process);
+            var window = app.GetMainWindow(_automation);
+            if (window is not null)
+            {
+                _app = app;
+            }
+            return window;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -221,6 +266,116 @@ public sealed class FlaUiDesktopAutomationChannel : IDesktopAutomationChannel, I
         }
         Keyboard.Type(keys);
         return Task.CompletedTask;
+    }
+
+    public Task SendKeysAsync(string? selector, IReadOnlyList<KeystrokeStep> steps)
+    {
+        if (!string.IsNullOrWhiteSpace(selector))
+        {
+            Resolve(selector).Focus();
+        }
+
+        foreach (var step in steps)
+        {
+            if (step.Type == KeystrokeStepType.Text)
+            {
+                if (!string.IsNullOrEmpty(step.Text))
+                {
+                    Keyboard.Type(step.Text);
+                }
+            }
+            else
+            {
+                SendChord(step);
+            }
+
+            if (step.WaitMs > 0)
+            {
+                Thread.Sleep(step.WaitMs);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Modifier'ları basılı tutup ana tuşu gönderir, sonra ters sırada bırakır.</summary>
+    private static void SendChord(KeystrokeStep step)
+    {
+        var held = new List<IDisposable>();
+        try
+        {
+            foreach (var modifier in step.Modifiers)
+            {
+                held.Add(Keyboard.Pressing(ModifierKey(modifier)));
+            }
+
+            Keyboard.Type(MainKey(step.Key!));
+        }
+        finally
+        {
+            for (var i = held.Count - 1; i >= 0; i--)
+            {
+                held[i].Dispose();
+            }
+        }
+    }
+
+    private static VirtualKeyShort ModifierKey(string modifier) => modifier switch
+    {
+        "ctrl" => VirtualKeyShort.CONTROL,
+        "shift" => VirtualKeyShort.SHIFT,
+        "alt" => VirtualKeyShort.LMENU,
+        "altgr" => VirtualKeyShort.RMENU,
+        "win" => VirtualKeyShort.LWIN,
+        _ => throw new SystemException($"Desteklenmeyen modifier: '{modifier}'."),
+    };
+
+    private static VirtualKeyShort MainKey(string key)
+    {
+        if (key.Length == 1)
+        {
+            var c = key[0];
+            if (c is >= 'A' and <= 'Z')
+            {
+                return Enum.Parse<VirtualKeyShort>($"KEY_{c}");
+            }
+            if (c is >= '0' and <= '9')
+            {
+                return Enum.Parse<VirtualKeyShort>($"KEY_{c}");
+            }
+        }
+
+        return key switch
+        {
+            "F1" => VirtualKeyShort.F1,
+            "F2" => VirtualKeyShort.F2,
+            "F3" => VirtualKeyShort.F3,
+            "F4" => VirtualKeyShort.F4,
+            "F5" => VirtualKeyShort.F5,
+            "F6" => VirtualKeyShort.F6,
+            "F7" => VirtualKeyShort.F7,
+            "F8" => VirtualKeyShort.F8,
+            "F9" => VirtualKeyShort.F9,
+            "F10" => VirtualKeyShort.F10,
+            "F11" => VirtualKeyShort.F11,
+            "F12" => VirtualKeyShort.F12,
+            "Home" => VirtualKeyShort.HOME,
+            "End" => VirtualKeyShort.END,
+            "PageUp" => VirtualKeyShort.PRIOR,
+            "PageDown" => VirtualKeyShort.NEXT,
+            "Up" => VirtualKeyShort.UP,
+            "Down" => VirtualKeyShort.DOWN,
+            "Left" => VirtualKeyShort.LEFT,
+            "Right" => VirtualKeyShort.RIGHT,
+            "Tab" => VirtualKeyShort.TAB,
+            "Enter" => VirtualKeyShort.RETURN,
+            "Esc" => VirtualKeyShort.ESCAPE,
+            "Space" => VirtualKeyShort.SPACE,
+            "Backspace" => VirtualKeyShort.BACK,
+            "Delete" => VirtualKeyShort.DELETE,
+            "Insert" => VirtualKeyShort.INSERT,
+            _ => throw new SystemException($"Desteklenmeyen tuş: '{key}'."),
+        };
     }
 
     public Task WaitForAsync(string selector, int timeoutMs)

@@ -74,7 +74,20 @@ describe('ProjectsComponent', () => {
 
     fixture.componentInstance.openWorkflow('w1');
 
-    expect(navigate).toHaveBeenCalledWith(['/designer', 'w1']);
+    expect(navigate).toHaveBeenCalledWith(['/designer', 'w1'], {});
+  });
+
+  it('passes the selected project as a query param so the designer can auto-fill project-scoped fields', () => {
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    fixture.detectChanges();
+    http.expectOne('/api/projects').flush([{ id: 'p1', name: 'Pilot', workflowCount: 1 }]);
+
+    fixture.componentInstance.openProject('p1');
+    http.expectOne('/api/projects/p1/workflows').flush([]);
+    fixture.componentInstance.openWorkflow('w1');
+
+    expect(navigate).toHaveBeenCalledWith(['/designer', 'w1'], { queryParams: { projectId: 'p1' } });
   });
 
   it('navigates back to the home page from the projects header', () => {

@@ -38,6 +38,31 @@ public class WorkflowValidatorTests
         Assert.Empty(result.Errors);
     }
 
+    [Theory]
+    [InlineData("object")]
+    [InlineData("list<object>")]
+    public void SchemaBackedVariableTypes_ArePermitted(string variableType)
+    {
+        // File.List → list<object>, EInvoice.ReadProfile → object gibi aktivite çıktıları
+        // şema destekli değişken üretir; bunlar workflow şemasınca kabul edilmelidir.
+        var json = $$"""
+        {
+          "schemaVersion": "1.0",
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "name": "Örnek Akış",
+          "version": "1.0.0",
+          "nodes": [],
+          "connections": [],
+          "variables": [
+            { "name": "dosyalar", "type": "{{variableType}}", "scope": "global" }
+          ]
+        }
+        """;
+        var result = new WorkflowValidator().ValidateWorkflowJson(json);
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+    }
+
     [Fact]
     public void MissingRequiredField_Fails()
     {

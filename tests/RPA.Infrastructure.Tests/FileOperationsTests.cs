@@ -218,6 +218,68 @@ public class FileOperationsTests : IDisposable
     }
 
     [Fact]
+    public async Task FileList_MultipleExtensions_UnionsMatches()
+    {
+        CreateTestFile("a.pdf", "1");
+        CreateTestFile("b.xlsx", "2");
+        CreateTestFile("c.docx", "3");
+        CreateTestFile("d.txt", "4");
+
+        var activity = new FileListActivity();
+        var context = CreateContext();
+        context.SetVariable("folder", _testDir);
+        context.SetVariable("pattern", "*.pdf;*.xlsx");
+
+        var result = await activity.ExecuteAsync(context);
+
+        var files = (Newtonsoft.Json.Linq.JArray)result["files"]!;
+        var names = files.Select(f => (string)f["name"]!).OrderBy(n => n).ToArray();
+        Assert.Equal(new[] { "a.pdf", "b.xlsx" }, names);
+    }
+
+    [Fact]
+    public async Task FileList_MultipleExtensions_DeduplicatesOverlappingPatterns()
+    {
+        CreateTestFile("a.pdf", "1");
+
+        var activity = new FileListActivity();
+        var context = CreateContext();
+        context.SetVariable("folder", _testDir);
+        context.SetVariable("pattern", "*;*.pdf");
+
+        var result = await activity.ExecuteAsync(context);
+
+        var files = (Newtonsoft.Json.Linq.JArray)result["files"]!;
+        Assert.Single(files);
+    }
+
+    [Fact]
+    public async Task FileList_OutputVariable_BindsListToVariable()
+    {
+        CreateTestFile("a.txt", "1");
+
+        var activity = new FileListActivity();
+        var context = CreateContext();
+        context.SetVariable("folder", _testDir);
+        context.SetVariable("pattern", "*");
+        context.SetVariable("outputVariable", "dosyalar");
+
+        var result = await activity.ExecuteAsync(context);
+
+        Assert.True(result.ContainsKey("dosyalar"));
+        Assert.Same(result["files"], result["dosyalar"]);
+        Assert.NotNull(context.GetVariable<object?>("dosyalar"));
+    }
+
+    [Fact]
+    public void FileList_Metadata_FolderPickerAndOutputVariable()
+    {
+        var metadata = new FileListActivity().GetMetadata();
+        Assert.Contains(metadata.Inputs, p => p.Name == "folder" && p.PickerKind == "folder");
+        Assert.Contains(metadata.Inputs, p => p.Name == "outputVariable");
+    }
+
+    [Fact]
     public async Task FileList_NonexistentFolderThrows()
     {
         var activity = new FileListActivity();

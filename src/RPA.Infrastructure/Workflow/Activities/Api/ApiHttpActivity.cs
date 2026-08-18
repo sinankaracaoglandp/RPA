@@ -66,7 +66,18 @@ public sealed class ApiHttpActivity : IActivity
         ActivityId = "Api.HttpRequest",
         DisplayName = "HTTP Request",
         Category = "API",
-        Inputs = new() { new() { Name = "url", Type = "string", Required = true } },
+        // ExecuteAsync bu girdilerin TAMAMINI okur; eksik bildirmek katalogla uyuşmazlık
+        // (ve Studio ile runtime arasında sessiz sapma) üretiyordu.
+        Inputs = new()
+        {
+            new() { Name = "method", Type = "string", Required = false, DefaultValue = "GET" },
+            new() { Name = "url", Type = "string", Required = true },
+            new() { Name = "headers", Type = "JSON", Required = false },
+            new() { Name = "body", Type = "JSON", Required = false },
+            new() { Name = "authType", Type = "string", Required = false },
+            new() { Name = "credentialName", Type = "Credential", Required = false },
+            new() { Name = "timeoutSeconds", Type = "int", Required = false, DefaultValue = 30 },
+        },
         Outputs = new() { new() { Name = "statusCode", Type = "int" }, new() { Name = "responseBody", Type = "JSON" } },
     };
 }

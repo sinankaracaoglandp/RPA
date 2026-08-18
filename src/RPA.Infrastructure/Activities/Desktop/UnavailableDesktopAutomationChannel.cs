@@ -1,6 +1,7 @@
 namespace RPA.Infrastructure.Activities.Desktop;
 
 using RPA.Domain.Interfaces;
+using RPA.Domain.ValueObjects;
 
 /// <summary>
 /// Placeholder channel used by non-agent processes so Desktop.* activity registrations
@@ -21,6 +22,8 @@ public sealed class UnavailableDesktopAutomationChannel : IDesktopAutomationChan
     public Task SelectItemAsync(string selector, string item) => Unavailable();
 
     public Task SendKeysAsync(string? selector, string keys) => Unavailable();
+
+    public Task SendKeysAsync(string? selector, IReadOnlyList<KeystrokeStep> steps) => Unavailable();
 
     public Task WaitForAsync(string selector, int timeoutMs) => Unavailable();
 

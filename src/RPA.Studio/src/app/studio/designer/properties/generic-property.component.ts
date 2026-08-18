@@ -8,9 +8,14 @@ import { SpyElement } from '../../../shared/services/spy.service';
 import { SelectorPickerButtonComponent } from './selector-picker-button.component';
 import { VisionSequenceEditorComponent } from './vision-sequence-editor.component';
 import { TextOffsetEditorComponent } from './text-offset-editor.component';
+import { KeystrokeSequenceEditorComponent } from './keystroke-sequence-editor.component';
 import { EInvoiceMappingEditorComponent } from './einvoice-mapping-editor.component';
 import { EInvoiceProfile, EInvoiceProfileVersion } from '../../../shared/models/einvoice-profile.model';
 import { EInvoiceProfileService } from '../../../shared/services/einvoice-profile.service';
+import { ProjectService, ProjectSummary } from '../../../shared/services/project.service';
+import { TranslatePipe } from '../../../core/translate.pipe';
+import { variableFieldPaths } from '../variable-schema.util';
+import { parseRootVariableName, JsonSchemaLike, LoopItemField } from '../loop-item-schema';
 
 interface ExpressionValidationSegment {
   text: string;
@@ -29,13 +34,14 @@ export type FieldMode = 'value' | 'variable' | 'expression';
 @Component({
   selector: 'app-generic-property',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, EInvoiceMappingEditorComponent],
+  imports: [CommonModule, FormsModule, TranslatePipe, SelectorPickerButtonComponent, VisionSequenceEditorComponent, TextOffsetEditorComponent, KeystrokeSequenceEditorComponent, EInvoiceMappingEditorComponent],
   templateUrl: './generic-property.component.html',
   styleUrls: ['./generic-property.component.scss'],
 })
 export class GenericPropertyComponent {
   private readonly catalog = inject(ActivityCatalogService);
   private readonly einvoiceProfiles = inject(EInvoiceProfileService);
+  private readonly projects = inject(ProjectService);
   private readonly cdr = inject(ChangeDetectorRef);
 
   private _activityType?: string;
@@ -51,6 +57,7 @@ export class GenericPropertyComponent {
   einvoiceProfileVersions: EInvoiceProfileVersion[] = [];
   einvoiceProfileError = '';
   einvoiceNewerVersion: number | null = null;
+  projectOptions: ProjectSummary[] = [];
 
   /** Alan başına giriş kipi: Değer (literal) / Değişken / İfade. Kullanıcı elle değiştirdiğinde saklanır. */
   private readonly modeOverrides: Record<string, FieldMode> = {};
@@ -69,6 +76,8 @@ export class GenericPropertyComponent {
 
   @Input() properties: Record<string, unknown> = {};
   @Input() variables: WorkflowVariable[] = [];
+  /** Designer projeden açıldıysa taşınan proje kimliği; e-fatura profil seçicisini otomatik doldurur. */
+  @Input() projectId: string | null = null;
   @Output() readonly propertiesChange = new EventEmitter<Record<string, unknown>>();
 
   get inputs(): ActivityPort[] {
@@ -105,7 +114,7 @@ export class GenericPropertyComponent {
   /** Bu alan için kip seçici gösterilsin mi? Yalnız düz metin/sayı/tarih alanlarında. */
   showModeSelector(port: ActivityPort): boolean {
     if ((port.options?.length ?? 0) > 0) return false; // enum → dropdown
-    if (this.isVariableField(port) && this.variables.length > 0) return false; // değişken adı alanı
+    if (this.isVariableField(port)) return false; // değişken adı alanı — kip seçici yok
     const t = this.inputType(port);
     return t === 'text' || t === 'number' || t === 'date' || t === 'datetime-local';
   }
@@ -155,12 +164,19 @@ export class GenericPropertyComponent {
     return null;
   }
 
-  /** İfade kipinde açık token'a göre filtrelenmiş değişken önerileri. */
+  /** İfade kipinde açık token'a göre filtrelenmiş değişken + şema alan-yolu önerileri. */
   expressionSuggestions(port: ActivityPort): WorkflowVariable[] {
     const partial = this.openTokenPartial(port);
     if (partial === null) return [];
     const q = partial.trim().toLowerCase();
-    return (this.variables ?? []).filter((v) => v.name.toLowerCase().includes(q)).slice(0, 8);
+    const names: WorkflowVariable[] = (this.variables ?? []).filter((v) =>
+      v.name.toLowerCase().includes(q),
+    );
+    const fields: WorkflowVariable[] = (this.variables ?? [])
+      .flatMap((v) => variableFieldPaths(v))
+      .filter((f) => f.path.toLowerCase().includes(q))
+      .map((f) => ({ name: f.path, type: f.type }));
+    return [...names, ...fields].slice(0, 8);
   }
 
   /** Öneriyi seçince açık `{{...` token'ını `{{ad}}` ile tamamlar. */
@@ -186,6 +202,40 @@ export class GenericPropertyComponent {
 
   isEInvoiceProfile(port: ActivityPort): boolean {
     return port.pickerKind === 'einvoice-profile';
+  }
+
+  /** Bu aktivite proje-kapsamlı e-fatura profili okuyan aktivitelerden mi? */
+  private isEInvoiceReadActivity(): boolean {
+    return this.metadata?.activityId === 'EInvoice.ReadProfile'
+      || this.metadata?.activityId === 'EInvoice.ReadProfileBatch';
+  }
+
+  /** projectId alanı bu aktivitede GUID yerine proje-adı açılır listesiyle gösterilir. */
+  isEInvoiceProjectPicker(port: ActivityPort): boolean {
+    return port.name === 'projectId' && this.isEInvoiceReadActivity();
+  }
+
+  /**
+   * Node'da projectId henüz boşsa ve designer bir proje bağlamından açıldıysa
+   * (`projectId` input'u), o projeyi otomatik seçili yapar — kullanıcı GUID bilmek
+   * ya da listeden elle seçmek zorunda kalmaz.
+   */
+  private adoptContextProjectId(): void {
+    const current = String(this.properties['projectId'] ?? '').trim();
+    const context = (this.projectId ?? '').trim();
+    if (current || !context) {
+      return;
+    }
+    const next = { ...this.properties, projectId: context };
+    this.properties = next;
+    this.propertiesChange.emit(next);
+  }
+
+  loadProjectOptions(): void {
+    this.projects.getProjects().subscribe({
+      next: projects => { this.projectOptions = projects; this.cdr.markForCheck(); },
+      error: () => { this.projectOptions = []; this.cdr.markForCheck(); },
+    });
   }
 
   loadEInvoiceProfiles(): void {
@@ -278,6 +328,11 @@ export class GenericPropertyComponent {
     return port.pickerKind === 'text-offset';
   }
 
+  /** Desktop.SendKeys gibi yapısal tuş dizisi editörü gerektiren alan mı? */
+  isKeystrokeField(port: ActivityPort): boolean {
+    return port.pickerKind === 'keystroke-sequence';
+  }
+
   /** Editöre geçilecek değeri string'e indirger (JSON dizisi). */
   stringValue(port: ActivityPort): string {
     const v = this.value(port);
@@ -285,10 +340,23 @@ export class GenericPropertyComponent {
   }
 
   /** selector-picker-button'a geçilecek spy türü ('image-sequence'/'text-offset' spy türü değil, editör ipucu → null). */
-  spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | null {
-    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset' || port.pickerKind === 'einvoice-profile'
+  spyPickerKind(port: ActivityPort): 'sap' | 'web' | 'desktop' | 'image' | 'folder' | null {
+    return port.pickerKind === 'image-sequence' || port.pickerKind === 'text-offset'
+      || port.pickerKind === 'keystroke-sequence' || port.pickerKind === 'einvoice-profile'
       ? null
-      : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | undefined) ?? null;
+      : (port.pickerKind as 'sap' | 'web' | 'desktop' | 'image' | 'folder' | undefined) ?? null;
+  }
+
+  /** File.List pattern alanı için birden çok uzantı örneği gösterilsin mi? */
+  showPatternExamples(port: ActivityPort): boolean {
+    return this.activityType === 'File.List' && port.name === 'pattern';
+  }
+
+  patternExamples(port: ActivityPort): string[] {
+    if (!this.showPatternExamples(port)) {
+      return [];
+    }
+    return ['*.pdf', '*.xlsx;*.xls', '*.pdf;*.docx;*.png', 'rapor_*.csv'];
   }
 
   boolValue(port: ActivityPort): boolean {
@@ -383,6 +451,19 @@ export class GenericPropertyComponent {
     this.properties = next;
     this.clearVariableError();
     this.propertiesChange.emit(next);
+    if (this.isForEach && port.name === 'itemVariable') {
+      this.validateItemVariable();
+    }
+    // projectId değişince e-fatura profil listesi otomatik tazelensin (kullanıcı
+    // "Profilleri getir"e basmak zorunda kalmasın; yeni kaydedilen profil hemen gelsin).
+    if (port.name === 'projectId'
+      && (this.metadata?.activityId === 'EInvoice.ReadProfile' || this.metadata?.activityId === 'EInvoice.ReadProfileBatch')) {
+      if (String(next['projectId'] ?? '').trim()) {
+        this.loadEInvoiceProfiles();
+      } else {
+        this.einvoiceProfileOptions = [];
+      }
+    }
   }
 
   // Paket F: image picker sonuclarinin onizlemesi (port.name -> base64 PNG).
@@ -392,6 +473,13 @@ export class GenericPropertyComponent {
       return;
     }
     this.onValueChange(port, element.elementId);
+
+    // ALV grid seçildiyse tasarım anındaki kolon adlarını da kaydet. Bu bir SÖZLEŞMEDİR:
+    // çalışma anında eksik kolon null gelir, fazlası yok sayılır (runtime bunu uygular).
+    // Kolonlar yalnız tasarım anında okunabilir; çalışma anında süreç tasarlanamaz.
+    if (element.columns?.length) {
+      this.onValueChange({ ...port, name: 'columns' }, JSON.stringify(element.columns));
+    }
   }
 
   /// <summary>
@@ -410,7 +498,7 @@ export class GenericPropertyComponent {
     return (
       this.inputType(port) !== 'checkbox' &&
       (port.options?.length ?? 0) === 0 &&
-      !(this.isVariableField(port) && this.variables.length > 0)
+      !this.isVariableField(port)
     );
   }
 
@@ -506,6 +594,60 @@ export class GenericPropertyComponent {
     return (this.variables ?? []).length > 0;
   }
 
+  // ---- Logic.ForEach: eleman değişkeni + fallback alan editörü ----
+
+  itemVariableError = '';
+
+  get isForEach(): boolean {
+    return this.activityType === 'Logic.ForEach';
+  }
+
+  /** itemVariable adı geçerli mi? (boş → varsayılan 'item', geçerli sayılır). */
+  validateItemVariable(): void {
+    const name = String(this.properties['itemVariable'] ?? '').trim();
+    this.itemVariableError =
+      name === '' || /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+        ? ''
+        : 'Gecersiz degisken adi. Harf/alt cizgi ile baslamali.';
+  }
+
+  /** items ifadesi şemalı bir list<object> değişkenine çözülüyor mu? */
+  private itemsResolvesToSchema(): boolean {
+    const root = parseRootVariableName(String(this.properties['items'] ?? ''));
+    if (!root) {
+      return false;
+    }
+    const schema = this.variables.find((v) => v.name === root)?.schema as JsonSchemaLike | undefined;
+    return !!schema && schema.type === 'array' && !!schema.items?.properties;
+  }
+
+  /** Şemaya çözülemediğinde elle alan editörü gösterilir. */
+  get showManualFields(): boolean {
+    return this.isForEach && !this.itemsResolvesToSchema();
+  }
+
+  get itemFields(): LoopItemField[] {
+    return (this.properties['itemFields'] as LoopItemField[] | undefined) ?? [];
+  }
+
+  private commitItemFields(fields: LoopItemField[]): void {
+    const next = { ...this.properties, itemFields: fields };
+    this.properties = next;
+    this.propertiesChange.emit(next);
+  }
+
+  addItemField(): void {
+    this.commitItemFields([...this.itemFields, { name: '', type: 'string' }]);
+  }
+
+  updateItemField(index: number, patch: Partial<LoopItemField>): void {
+    this.commitItemFields(this.itemFields.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  }
+
+  removeItemField(index: number): void {
+    this.commitItemFields(this.itemFields.filter((_, i) => i !== index));
+  }
+
   private loadMetadata(activityType: string | undefined): void {
     this.metadata = undefined;
     this.error = false;
@@ -517,8 +659,14 @@ export class GenericPropertyComponent {
       next: (meta) => {
         this.metadata = meta;
         this.loading = false;
+        this.seedDefaultValues(meta);
         if (activityType === 'EInvoice.ReadProfile' || activityType === 'EInvoice.ReadProfileBatch') {
+          this.loadProjectOptions();
+          this.adoptContextProjectId();
           this.loadEInvoiceVersionInfo();
+          if (String(this.properties['projectId'] ?? '').trim()) {
+            this.loadEInvoiceProfiles();
+          }
         }
         this.cdr.markForCheck();
       },
@@ -528,6 +676,29 @@ export class GenericPropertyComponent {
         this.cdr.markForCheck();
       },
     });
+  }
+
+  /**
+   * Katalog metadata'sındaki varsayılan değerleri (ör. sourceMode="XmlContent") node'da
+   * henüz set edilmemiş alanlara işler ve emit eder. Dropdown/enum alanlarında görünen
+   * "ilk seçenek" modele yazılmıyordu → zorunlu bir varsayılan (sourceMode) kaydet anında
+   * "eksik" sayılıp doğrulama 400 dönüyordu. Yalnız tanımsız alanları tohumlar (kullanıcının
+   * girdiği değerleri ezmez).
+   */
+  private seedDefaultValues(meta: ActivityMetadata): void {
+    const inputs = meta.inputs ?? [];
+    let changed = false;
+    const next = { ...this.properties };
+    for (const input of inputs) {
+      if (input.defaultValue !== undefined && input.defaultValue !== null && next[input.name] === undefined) {
+        next[input.name] = input.defaultValue;
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.properties = next;
+      this.propertiesChange.emit(next);
+    }
   }
 
   private normalizeEditorValue(port: ActivityPort, value: string): string {

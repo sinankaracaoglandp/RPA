@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.SAP;
+﻿namespace RPA.Infrastructure.SAP;
 
 using System.Collections.Concurrent;
 using System.Runtime.Versioning;
@@ -44,12 +44,22 @@ internal sealed class StubSapGuiSession : ISapGuiSession
     /// <summary>Son seçilen menü yolu (test doğrulaması için).</summary>
     public IReadOnlyList<string>? LastSelectedMenu { get; private set; }
 
+    /// <summary>Son gönderilen sanal tuş ve hedef pencere (test doğrulaması için).</summary>
+    public (int VKey, string WindowId)? LastSentVKey { get; private set; }
+
     private void EnsureConnected()
     {
         if (!_connected)
         {
             throw new InvalidOperationException("SAP GUI oturumu kapalı.");
         }
+    }
+
+    public Task SendVKeyAsync(int vKey, string windowId)
+    {
+        EnsureConnected();
+        LastSentVKey = (vKey, windowId);
+        return Task.CompletedTask;
     }
 
     public Task StartTransactionAsync(string transactionCode)

@@ -20,6 +20,11 @@ import { BackHomeComponent } from '../../shared/back-home/back-home.component';
 import { LogConsoleComponent } from './log-console/log-console.component';
 import { ExecutionLogService } from '../../shared/services/execution-log.service';
 import { RunLogService } from '../../shared/services/run-log.service';
+import { injectedLoopVariables, enclosingForEachNodes } from './loop-item-schema';
+import { StructuredViewComponent } from './structured/view/structured-view.component';
+import { newContainer, newStep } from './structured/edit/tree-ops';
+import { StructuredItem } from './structured/structured-model';
+import { CONTAINER_OF_ACTIVITY } from './structured/edit/control-activity-map';
 
 /**
  * Root layout of the workflow designer. Owns the canvas and mediates between it
@@ -44,6 +49,7 @@ import { RunLogService } from '../../shared/services/run-log.service';
     VariablesPanelComponent,
     BackHomeComponent,
     LogConsoleComponent,
+    StructuredViewComponent,
   ],
   templateUrl: './designer.component.html',
   styleUrls: ['./designer.component.scss'],
@@ -58,6 +64,7 @@ export class DesignerComponent implements OnDestroy {
    * Sinyal, resolve olduğunda bağlamaları reaktif olarak günceller.
    */
   readonly canvas = viewChild(CanvasComponent);
+  readonly structuredViewRef = viewChild(StructuredViewComponent);
 
   private readonly debug = inject(DebugService);
   private readonly modeService = inject(ModeService);
@@ -69,6 +76,9 @@ export class DesignerComponent implements OnDestroy {
   private readonly router = inject(Router);
   private runStatusPolling?: Subscription;
 
+  /** Projeden açıldıysa (query param) taşınan proje kimliği — e-fatura profil seçici gibi
+   *  proje-kapsamlı alanları otomatik doldurmak için. */
+  readonly projectId = signal<string | null>(null);
   readonly workflow = signal<WorkflowVersion | undefined>(undefined);
   readonly selectedNodeId = signal<string | null>(null);
   readonly selectedActivityType = signal<string | undefined>(undefined);
@@ -77,9 +87,59 @@ export class DesignerComponent implements OnDestroy {
   readonly variables = signal<WorkflowVariable[]>([]);
   readonly debugMode = signal(false);
 
+  /** Salt-okunur yapısal görünüm açık mı (serbest-graf canvas yerine iç içe kutular). */
+  // Varsayılan görünüm: yapısal (serbest-graf canvas'a düğmeyle geçilir).
+  readonly structuredView = signal(true);
+  toggleStructuredView(): void { this.structuredView.update((v) => !v); }
+
+  /**
+   * Properties paneline geçen değişkenler: temel workflow değişkenleri + seçili node'u
+   * saran ForEach döngülerinin türetilmiş `item` değişkenleri. Enjekte edilenler kalıcı
+   * workflow'a yazılmaz; yalnız autocomplete/alan gösterimi içindir.
+   */
+  readonly panelVariables = computed<WorkflowVariable[]>(() => {
+    const base = this.variables();
+    // Yapısal modda enjeksiyon ağaç-yolundan gelir (structuredVars); serbest-graf'ta graf-tabanlı.
+    if (this.structuredView()) {
+      return [...base, ...this.structuredVars()];
+    }
+    const graph = this.currentGraph() ?? this.workflow();
+    const nodeId = this.selectedNodeId();
+    if (!graph) {
+      return base;
+    }
+    return [...base, ...injectedLoopVariables(nodeId, graph, base)];
+  });
+
+  /**
+   * Seçili node bir ForEach ise (veya bir ForEach'in gövdesindeyse) vurgulanacak
+   * gövde node id'leri. Seçili ForEach'in kendi gövdesini önceler; gövde node'u
+   * seçiliyse onu saran (en yakın) döngünün gövdesini vurgular.
+   */
+  readonly loopBodyHighlightIds = computed<string[]>(() => {
+    const graph = this.currentGraph() ?? this.workflow();
+    const nodeId = this.selectedNodeId();
+    if (!graph || !nodeId) {
+      return [];
+    }
+    const selected = graph.nodes.find((n) => n.id === nodeId);
+    const loopId =
+      selected?.type === 'forEach'
+        ? nodeId
+        : enclosingForEachNodes(nodeId, graph).at(-1)?.id;
+    if (!loopId) {
+      return [];
+    }
+    return graph.nodes
+      .filter((n) => enclosingForEachNodes(n.id, graph).some((fe) => fe.id === loopId))
+      .map((n) => n.id);
+  });
+
   readonly workflowId = signal<string | null>(null);
   readonly dirty = signal(false);
   readonly saveState = signal<'idle' | 'saving' | 'error'>('idle');
+  /** Son kaydetme hatasının backend mesajı (400 gövdesindeki { error }); yoksa null. */
+  readonly saveErrorMessage = signal<string | null>(null);
   readonly runState = signal<'idle' | 'saving' | 'queued' | 'error'>('idle');
   readonly lastQueueItemId = signal<string | null>(null);
   readonly lastQueueId = signal<string | null>(null);
@@ -96,6 +156,7 @@ export class DesignerComponent implements OnDestroy {
   readonly debugCurrentNodeId = this.debug.currentNodeId;
 
   constructor() {
+    this.projectId.set(this.route.snapshot.queryParamMap?.get('projectId') ?? null);
     const routedId = this.route.snapshot.paramMap.get('workflowId');
     if (routedId) {
       this.workflowId.set(routedId);
@@ -132,6 +193,50 @@ export class DesignerComponent implements OnDestroy {
     await this.canvas()?.addNode(activityId);
   }
 
+  /**
+   * Toolbox'ta çift tık / `+` ile eklenen aktivite. Toolbox kendi ekleme yolunu `canvas`
+   * varlığına bağlar; yapısal görünümde `app-canvas` render edilmediğinden o yol ölüdür ve
+   * eylem sessizce kaybolurdu. Yapısal görünümdeyken ekleme ağaca yönlendirilir (kural C:
+   * seçilinin ardına).
+   *
+   * Kontrol-akışı aktiviteleri (Logic.If/ForEach/...) düz adım olarak eklenemez — yapısal
+   * karşılıkları konteyner bloğudur. Toolbox bunları listesinden elemez (add-menu eler),
+   * bu yüzden dönüşüm burada yapılır; aksi halde blok yerine düz aktivite kutusu eklenir.
+   */
+  onToolboxActivityAdded(event: { activityId: string }): void {
+    if (!this.structuredView()) { return; }
+    this.structuredViewRef()?.addFromPalette(this.structuredItemFor(event.activityId));
+  }
+
+  /**
+   * Toolbox'tan sürükleyip bırakma. Bırakma noktası bir ağaç panelinin üzerindeyse öğe oraya,
+   * değilse (paletin/boşluğun üzerine bırakıldıysa) seçim kuralına göre eklenir — sürükleme
+   * hiçbir durumda sessizce kaybolmaz.
+   */
+  onToolboxActivityDropped(event: { activityId: string; clientX: number; clientY: number }): void {
+    if (!this.structuredView()) { return; }
+    const view = this.structuredViewRef();
+    if (!view) { return; }
+    const item = this.structuredItemFor(event.activityId);
+    if (!view.addAtPoint(item, event.clientX, event.clientY)) {
+      view.addFromPalette(item);
+    }
+  }
+
+  private structuredItemFor(activityId: string): StructuredItem {
+    const containerType = CONTAINER_OF_ACTIVITY[activityId];
+    return containerType ? newContainer(containerType) : newStep(activityId);
+  }
+
+  /**
+   * Soldaki toolbox'ta seçilen kategori yapısal paletin filtresine yansır — kullanıcı aynı
+   * seçimi iki panelde ayrı ayrı yapmak zorunda kalmasın. Toolbox'ın "tümü" sentineli
+   * (`__all__`) palette "filtre yok" (null) demektir.
+   */
+  onToolboxCategoryChanged(category: string): void {
+    this.structuredViewRef()?.setPaletteCategory(category === '__all__' ? null : category);
+  }
+
   onNodeSelect(nodeId: string | null): void {
     this.selectedNodeId.set(nodeId);
     const canvas = this.canvas();
@@ -148,15 +253,142 @@ export class DesignerComponent implements OnDestroy {
     }
   }
 
+  /** Yapısal moddaki seçili node'u saran döngülerin item değişkenleri (panel autocomplete'i için). */
+  readonly structuredVars = signal<WorkflowVariable[]>([]);
+
+  /** Yapısal görünümdeki node seçimi mevcut özellik panelini besler. */
+  onStructuredSelect(sel: { activityType?: string; properties: Record<string, unknown>; variables?: WorkflowVariable[] } | null): void {
+    this.selectedActivityType.set(sel?.activityType);
+    this.selectedProperties.set(sel?.properties ?? {});
+    this.structuredVars.set(sel?.variables ?? []);
+  }
+
   onPropertiesChange(properties: Record<string, unknown>): void {
+    if (this.structuredView()) {
+      this.selectedProperties.set(properties);
+      this.structuredViewRef()?.updateSelectedProps(properties);
+      this.bindOutputVariableSchema(this.selectedActivityType(), properties);
+      return;
+    }
     const nodeId = this.selectedNodeId();
     if (nodeId) {
       this.canvas()?.updateNodeProperties(nodeId, properties);
       this.selectedProperties.set(properties);
-      const activity = this.selectedActivityType();
-      if (activity === 'EInvoice.ReadProfile' || activity === 'EInvoice.ReadProfileBatch') {
-        this.onProfileActivityPropertiesChange(activity, properties);
-      }
+      this.bindOutputVariableSchema(this.selectedActivityType(), properties);
+    }
+  }
+
+  /**
+   * Çıktı-şeması üreten aktivitelerin (`File.List`, `EInvoice.ReadProfile*`) seçilen çıktı
+   * değişkenini şemalı bir workflow değişkenine bağlar. Hem klasik hem yapısal görünümde
+   * çalışır (yapısal görünüm daha önce erken `return` ile bunu atlıyordu).
+   */
+  private bindOutputVariableSchema(activity: string | undefined, properties: Record<string, unknown>): void {
+    if (activity === 'EInvoice.ReadProfile' || activity === 'EInvoice.ReadProfileBatch') {
+      this.onProfileActivityPropertiesChange(activity, properties);
+    }
+    if (activity === 'File.List') {
+      this.onFileListPropertiesChange(properties);
+    }
+    if (activity === 'Sap.Gui.GridRead') {
+      this.onGridReadPropertiesChange(properties);
+    }
+  }
+
+  /**
+   * Sap.Gui.GridRead çıktısını (ALV satır listesi) seçilen `outputVariable` adında bir
+   * `list<object>` workflow değişkenine bağlar; sonraki node'lar (ör. Logic.ForEach) listeyi
+   * görebilsin diye.
+   *
+   * <p>File.List'ten farkı: ALV kolonları çalışma anında belirlenir (hangi transaction/layout
+   * kullanıldığına bağlı), bu yüzden sabit bir alan şeması ÜRETİLEMEZ. Değişken şemasız
+   * `list<object>` olarak tanımlanır; satır alanlarına ALV teknik kolon adıyla erişilir.</p>
+   */
+  onGridReadPropertiesChange(properties: Record<string, unknown>): void {
+    const outputVariable = String(properties['outputVariable'] ?? '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable)) {
+      return;
+    }
+    // Kolonlar 🎯 ile grid seçildiğinde SAP'tan okunup 'columns' alanına yazılır. Varsa satır
+    // şeması bunlardan üretilir → sonraki node'larda {{satir.MATNR}} autocomplete çalışır.
+    const columns = this.parseGridColumns(properties['columns']);
+    const schema = columns.length
+      ? {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: Object.fromEntries(columns.map((c) => [c, { type: 'string' }])),
+          },
+        }
+      : undefined;
+    const nextVariable: WorkflowVariable = {
+      name: outputVariable,
+      type: 'list<object>',
+      scope: 'global',
+      schema,
+      description: columns.length
+        ? `Sap.Gui.GridRead satır listesi (${columns.length} kolon)`
+        : 'Sap.Gui.GridRead satır listesi (kolonlar çalışma anında belirlenir)',
+    };
+    const variables = this.variables();
+    const next = variables.some((variable) => variable.name === outputVariable)
+      ? variables.map((variable) => (variable.name === outputVariable ? { ...variable, ...nextVariable } : variable))
+      : [...variables, nextVariable];
+    this.onVariablesChange(next);
+  }
+
+  /**
+   * File.List çıktısını (dosya listesi) seçilen `outputVariable` adında bir `list<object>`
+   * workflow değişkenine bağlar; böylece sonraki node'lar (ör. Logic.ForEach) dosya alanlarına
+   * ({{...name}}, {{...path}}) şema autocomplete ile erişebilir.
+   */
+  onFileListPropertiesChange(properties: Record<string, unknown>): void {
+    const outputVariable = String(properties['outputVariable'] ?? '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable)) {
+      return;
+    }
+    const schema = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          path: { type: 'string' },
+          size: { type: 'number' },
+          createdAt: { type: 'string' },
+          modifiedAt: { type: 'string' },
+        },
+      },
+    };
+    const nextVariable: WorkflowVariable = {
+      name: outputVariable,
+      type: 'list<object>',
+      scope: 'global',
+      schema,
+      description: 'File.List dosya listesi',
+    };
+    const variables = this.variables();
+    const next = variables.some((variable) => variable.name === outputVariable)
+      ? variables.map((variable) => (variable.name === outputVariable ? { ...variable, ...nextVariable } : variable))
+      : [...variables, nextVariable];
+    this.onVariablesChange(next);
+  }
+
+  /** 'columns' alanındaki JSON kolon dizisini okur (boş/bozuk → boş liste). */
+  private parseGridColumns(raw: unknown): string[] {
+    if (Array.isArray(raw)) {
+      return raw.filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
+    }
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+        : [];
+    } catch {
+      return [];
     }
   }
 
@@ -214,7 +446,9 @@ export class DesignerComponent implements OnDestroy {
     if (!id) {
       return; // yeni-taslak modu: kalıcı hedef yok (Projelerim'den açılır)
     }
-    const serialized = this.canvas()?.serialize() ?? this.currentGraph();
+    // Yapısal görünümde canvas yoktur; henüz düzenleme yapılmadıysa currentGraph de boştur —
+    // bu durumda yüklenen taslak grafı kaydedilir (aksi halde kaydet sessizce hiçbir şey yapmazdı).
+    const serialized = this.canvas()?.serialize() ?? this.currentGraph() ?? this.workflow();
     const graph = serialized ? { ...serialized, variables: this.variables() } : undefined;
     if (!graph) {
       return;
@@ -229,14 +463,32 @@ export class DesignerComponent implements OnDestroy {
         next: () => {
           this.dirty.set(false);
           this.saveState.set('idle');
+          this.saveErrorMessage.set(null);
           resolve();
         },
-        error: () => {
+        error: (err: unknown) => {
+          const message = this.extractSaveError(err);
+          this.saveErrorMessage.set(message);
+          this.log.error(`Kaydetme başarısız: ${message}`);
           this.saveState.set('error');
           resolve();
         },
       });
     });
+  }
+
+  /** HTTP hata gövdesinden ({ error: "..." }) okunabilir bir mesaj çıkarır. */
+  private extractSaveError(err: unknown): string {
+    const body = (err as { error?: unknown })?.error;
+    if (typeof body === 'string' && body.trim()) {
+      return body;
+    }
+    const inner = (body as { error?: unknown })?.error;
+    if (typeof inner === 'string' && inner.trim()) {
+      return inner;
+    }
+    const message = (err as { message?: unknown })?.message;
+    return typeof message === 'string' && message.trim() ? message : 'Bilinmeyen hata';
   }
 
   /** Kaydedilmiş taslağı Agent kuyruğuna alır. */

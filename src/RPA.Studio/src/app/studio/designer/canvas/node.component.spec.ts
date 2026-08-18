@@ -129,4 +129,21 @@ describe('NodeComponent', () => {
 
     expect(emitted).toEqual([{ nodeId: component.node.id, port: 'loop-back' }]);
   });
+
+  it('applies the body-highlight class when node.bodyHighlight is true', () => {
+    fixture.componentRef.setInput('node', {
+      id: 'a', label: 'A', nodeType: 'activity', bodyHighlight: true,
+    });
+    fixture.detectChanges();
+    const root = fixture.nativeElement.querySelector('.canvas-node');
+    expect(root.classList).toContain('canvas-node--body-highlight');
+  });
+
+  it('shows the exit hint when a loop node exit is unconnected', () => {
+    fixture.componentRef.setInput('node', {
+      id: 'fe', label: 'ForEach', nodeType: 'forEach', exitUnconnected: true,
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="canvas-node-exit-hint"]')).toBeTruthy();
+  });
 });

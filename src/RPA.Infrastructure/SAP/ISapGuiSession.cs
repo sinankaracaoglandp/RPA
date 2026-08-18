@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.SAP;
+﻿namespace RPA.Infrastructure.SAP;
 
 /// <summary>
 /// Tek bir SAP GUI Scripting COM oturumunun (GuiSession) düşük seviye soyutlaması.
@@ -35,6 +35,9 @@ public interface ISapGuiSession
     Task SelectMenuAsync(IReadOnlyList<string> menuTexts);
 
     /// <summary>ALV grid içeriğini oku.</summary>
+    /// <summary>Pencereye SAP sanal tuşu (VKey) gönderir.</summary>
+    Task SendVKeyAsync(int vKey, string windowId);
+
     Task<List<Dictionary<string, object?>>> ReadGridAsync(string gridId);
 
     /// <summary>Aktif pencerenin ekran görüntüsünü al (PNG).</summary>

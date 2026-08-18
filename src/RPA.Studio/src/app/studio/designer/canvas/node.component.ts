@@ -39,6 +39,10 @@ export interface CanvasNodeView {
   breakpoint?: boolean;
   /** Execution is currently paused on this node (debug mode). */
   current?: boolean;
+  /** Seçili bir ForEach'in gövdesindeki bir node (hafif vurgu). */
+  bodyHighlight?: boolean;
+  /** Bir döngü node'unun exit portu hiçbir yere bağlı değil (görsel hatırlatma). */
+  exitUnconnected?: boolean;
   outputs?: CanvasNodeSocketView[];
   inputs?: CanvasNodeSocketView[];
 }

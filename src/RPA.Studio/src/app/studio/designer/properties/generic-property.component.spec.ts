@@ -122,7 +122,14 @@ describe('GenericPropertyComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(spy.pick).toHaveBeenCalledWith('sap', undefined);
+    expect(spy.pick).toHaveBeenCalledWith('sap', {
+      captureMode: 'f2',
+      delaySeconds: 5,
+      hotKey: 'T',
+      ctrl: true,
+      shift: false,
+      alt: false,
+    });
     expect((fixture.nativeElement.querySelector('[data-testid="prop-elementId"]') as HTMLInputElement).value)
       .toBe('wnd[0]/usr/btn[OK]');
     expect(emitted.at(-1)).toEqual({ elementId: 'wnd[0]/usr/btn[OK]' });
@@ -165,6 +172,103 @@ describe('GenericPropertyComponent', () => {
     fixture.detectChanges();
 
     expect(emitted.at(-1)).toEqual({ browser: 'edge' });
+  });
+
+  it('outputVariable: hiç değişken yokken bile ilk tuşta değil, yalnız commit ile yayınlar', () => {
+    component.activityType = 'File.List';
+    component.properties = {};
+    component.variables = []; // hiç değişken yok — ilk-tuş senaryosu
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/File.List').flush({
+      activityId: 'File.List',
+      displayName: 'Dosya Listele',
+      inputs: [{ name: 'outputVariable', type: 'string', required: false }],
+    });
+    fixture.detectChanges();
+
+    const field = fixture.nativeElement.querySelector('[data-testid="prop-outputVariable"]') as HTMLInputElement;
+    // Değişken yokken bile <input> (combobox) olmalı, <select> değil.
+    expect(field.tagName).toBe('INPUT');
+
+    // İlk tuş dahil hiçbir input olayı YAYINLAMAMALI — "F" için çöp değişken oluşmasın.
+    field.value = 'F';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(emitted.length).toBe(0);
+
+    field.value = 'FtrList';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(emitted.length).toBe(0);
+
+    // Yalnız commit (change/blur/Enter) tek seferde yayınlar.
+    field.value = 'FtrList';
+    field.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(emitted.length).toBe(1);
+    expect(emitted.at(-1)?.['outputVariable']).toBe('FtrList');
+  });
+
+  it('seeds metadata default values into node properties (e.g. sourceMode) on load', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { filePath: '{{_satir.path}}' };
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe((value) => (emitted = value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'sourceMode', type: 'string', defaultValue: 'XmlContent', options: ['FilePath', 'XmlContent'] },
+        { name: 'filePath', type: 'string' },
+        { name: 'outputVariable', type: 'string', defaultValue: 'fatura' },
+      ],
+    });
+    http.expectOne('/api/projects').flush([]);
+    fixture.detectChanges();
+
+    // Varsayılanı olan ve node'da bulunmayan alanlar tohumlanmalı; girilen filePath korunur.
+    expect(emitted?.['sourceMode']).toBe('XmlContent');
+    expect(emitted?.['outputVariable']).toBe('fatura');
+    expect(emitted?.['filePath']).toBe('{{_satir.path}}');
+  });
+
+  it('SendKeys: modifier checkbox edits the clicked step (nested @for index regression)', () => {
+    component.activityType = 'Desktop.SendKeys';
+    component.properties = {
+      keys: JSON.stringify([
+        { type: 'text', text: 'A1', waitMs: 0 },
+        { type: 'chord', modifiers: [], key: 'Enter', waitMs: 0 },
+        { type: 'text', text: 'X', waitMs: 0 },
+        { type: 'chord', modifiers: [], key: 'Tab', waitMs: 0 },
+        { type: 'chord', modifiers: [], key: 'S', waitMs: 0 },
+      ]),
+    };
+    const emitted: Record<string, unknown>[] = [];
+    component.propertiesChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    http.expectOne('/api/activities/Desktop.SendKeys').flush({
+      activityId: 'Desktop.SendKeys',
+      displayName: 'Tuş Gönder',
+      inputs: [{ name: 'keys', type: 'string', pickerKind: 'keystroke-sequence' }],
+    });
+    fixture.detectChanges();
+
+    // 5. adımın (index 4) Ctrl kutucuğu — data-testid adım index'ini taşımalı.
+    const ctrl = fixture.nativeElement.querySelector('[data-testid="ks-mod-4-ctrl"]') as HTMLInputElement;
+    expect(ctrl).toBeTruthy();
+    ctrl.click();
+    fixture.detectChanges();
+
+    const saved = JSON.parse(String(emitted.at(-1)?.['keys']));
+    expect(saved[4].modifiers).toEqual(['ctrl']); // tıklanan adım
+    expect(saved[1].modifiers).toEqual([]);       // diğer chord adımlar bozulmamalı
+    expect(saved[3].modifiers).toEqual([]);
   });
 
   it('routes an einvoice mapping picker before generic property branches', () => {
@@ -212,9 +316,8 @@ describe('GenericPropertyComponent', () => {
         { name: 'outputVariable', type: 'string', required: false },
       ],
     });
-    fixture.detectChanges();
-
-    (fixture.nativeElement.querySelector('[data-testid="load-einvoice-profiles"]') as HTMLButtonElement).click();
+    // Proje açılır listesi + (projectId dolu) profil listesi otomatik yüklenir.
+    http.expectOne('/api/projects').flush([{ id: 'project-1', name: 'Pilot', workflowCount: 1 }]);
     http.expectOne('/api/projects/project-1/einvoice-profiles').flush([
       {
         id: 'profile-1',
@@ -247,6 +350,60 @@ describe('GenericPropertyComponent', () => {
     });
   });
 
+  it('projectId girilince e-fatura profil listesi otomatik yüklenir (buton gerekmez)', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { outputVariable: 'fatura' };
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'projectId', type: 'string', required: true },
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+      ],
+    });
+    fixture.detectChanges();
+    // Proje açılır listesi yüklenir; projectId boş olduğundan profil listesi çekilmez.
+    http.expectOne('/api/projects').flush([{ id: 'project-9', name: 'Yeni', workflowCount: 0 }]);
+    http.expectNone('/api/projects/project-9/einvoice-profiles');
+
+    component.onValueChange({ name: 'projectId', type: 'string' }, 'project-9');
+    http.expectOne('/api/projects/project-9/einvoice-profiles').flush([
+      { id: 'profile-9', projectId: 'project-9', name: 'Yeni Profil', draftDefinitionJson: '{"fields":[],"collections":[]}', createdAt: '2026-07-17T00:00:00Z' },
+    ]);
+    fixture.detectChanges();
+
+    expect(component.einvoiceProfileOptions.map(profile => profile.name)).toContain('Yeni Profil');
+  });
+
+  it('designer bir proje bağlamından açıldıysa projectId otomatik dolar ve profiller yüklenir', () => {
+    component.activityType = 'EInvoice.ReadProfile';
+    component.properties = { outputVariable: 'fatura' };
+    component.projectId = 'ctx-proj';
+    let emitted: Record<string, unknown> | undefined;
+    component.propertiesChange.subscribe(value => (emitted = value));
+    fixture.detectChanges();
+    http.expectOne('/api/activities/EInvoice.ReadProfile').flush({
+      activityId: 'EInvoice.ReadProfile',
+      displayName: 'E-Fatura Profili Oku',
+      inputs: [
+        { name: 'projectId', type: 'string', required: true },
+        { name: 'profileId', type: 'string', required: true, pickerKind: 'einvoice-profile' },
+      ],
+    });
+    fixture.detectChanges();
+
+    http.expectOne('/api/projects').flush([{ id: 'ctx-proj', name: 'Bağlam', workflowCount: 1 }]);
+    // projectId otomatik dolduğundan profil listesi elle seçim olmadan yüklenir.
+    http.expectOne('/api/projects/ctx-proj/einvoice-profiles').flush([
+      { id: 'profile-x', projectId: 'ctx-proj', name: 'Bağlam Profili', draftDefinitionJson: '{"fields":[],"collections":[]}', createdAt: '2026-07-17T00:00:00Z' },
+    ]);
+    fixture.detectChanges();
+
+    expect(emitted?.['projectId']).toBe('ctx-proj');
+    expect(component.einvoiceProfileOptions.map(p => p.name)).toContain('Bağlam Profili');
+  });
+
   it('node eski profil sürümündeyse yeni sürüm uyarısı gösterir', () => {
     component.properties = { projectId: 'proj-1', profileId: 'prof-1', profileVersion: 1 };
     component.activityType = 'EInvoice.ReadProfile';
@@ -263,6 +420,9 @@ describe('GenericPropertyComponent', () => {
       { id: 'v2', profileId: 'prof-1', version: 2, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-16T00:00:00Z' },
       { id: 'v1', profileId: 'prof-1', version: 1, outputSchemaJson: '{"type":"object"}', publishedAt: '2026-07-15T00:00:00Z' },
     ]);
+    // Proje açılır listesi + profil listesi de otomatik yüklenir.
+    http.expectOne('/api/projects').flush([{ id: 'proj-1', name: 'Pilot', workflowCount: 1 }]);
+    http.expectOne('/api/projects/proj-1/einvoice-profiles').flush([]);
     fixture.detectChanges();
 
     expect(component.einvoiceNewerVersion).toBe(2);
@@ -303,5 +463,41 @@ describe('GenericPropertyComponent', () => {
     expect(examples.textContent).toContain('{{karar}} != 0');
     expect(examples.textContent).toContain('{{aktif}} == true');
     expect(examples.textContent).toContain('{{tarih}} == "2026-07-09T08:30:00"');
+  });
+
+  it('flags an invalid ForEach itemVariable name', () => {
+    (component as unknown as { _activityType: string })._activityType = 'Logic.ForEach';
+    component.properties = { items: '${faturalar}', itemVariable: '1bad' };
+    expect(component.isForEach).toBe(true);
+    component.validateItemVariable();
+    expect(component.itemVariableError).not.toBe('');
+  });
+
+  it('shows manual field editor when items has no resolvable schema variable', () => {
+    (component as unknown as { _activityType: string })._activityType = 'Logic.ForEach';
+    component.variables = [];
+    component.properties = { items: '${hamListe}', itemVariable: 'satir' };
+    expect(component.showManualFields).toBe(true);
+  });
+
+  it('hides manual field editor when items resolves to a list<object> variable', () => {
+    (component as unknown as { _activityType: string })._activityType = 'Logic.ForEach';
+    component.variables = [{
+      name: 'faturalar', type: 'list<object>',
+      schema: { type: 'array', items: { type: 'object', properties: { tutar: { type: 'number' } } } },
+    } as never];
+    component.properties = { items: '${faturalar}', itemVariable: 'fatura' };
+    expect(component.showManualFields).toBe(false);
+  });
+
+  it('expressionSuggestions includes schema field paths', () => {
+    component.variables = [{
+      name: 'fatura', type: 'object',
+      schema: { type: 'object', properties: { tutar: { type: 'number' } } },
+    } as never];
+    component.properties = { message: '{{fatura.tu' };
+    const port = { name: 'message', type: 'string' };
+    const labels = component.expressionSuggestions(port).map((s) => s.name);
+    expect(labels).toContain('fatura.tutar');
   });
 });

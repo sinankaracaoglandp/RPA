@@ -1,4 +1,4 @@
-namespace RPA.Domain.ValueObjects;
+﻿namespace RPA.Domain.ValueObjects;
 
 /// <summary>
 /// Bir SAP GUI ekran elementinin değişmez (immutable) tanımı. UI Spy modülü bir elementin
@@ -27,6 +27,14 @@ public sealed record SapGuiElement
 
     /// <summary>İmleç/ekran konumu — Y koordinatı (piksel). UI Spy tespit anındaki konum.</summary>
     public int Y { get; init; }
+
+    /// <summary>
+    /// ALV grid kontrollerinde (GuiGridView) TASARIM ANINDA okunan teknik kolon adları.
+    /// Grid dışı elementlerde <c>null</c>.
+    /// <para>Kolonlar çalışma anında değişebildiğinden bu liste bir SÖZLEŞMEDİR: çalışma anında
+    /// eksik kolon <c>null</c> doldurulur, fazladan gelen kolon yok sayılır.</para>
+    /// </summary>
+    public IReadOnlyList<string>? Columns { get; init; }
 
     public SapGuiElement() { }
 

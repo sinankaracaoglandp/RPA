@@ -7,8 +7,10 @@ export interface ActivityPort {
   type: string;
   required?: boolean;
   description?: string;
-  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | 'image-sequence' | 'text-offset' | 'einvoice-mapping' | 'einvoice-profile' | null;
+  pickerKind?: 'sap' | 'web' | 'desktop' | 'image' | 'folder' | 'image-sequence' | 'text-offset' | 'keystroke-sequence' | 'einvoice-mapping' | 'einvoice-profile' | null;
   options?: string[];
+  /** Katalog metadata'sındaki varsayılan değer (backend ActivityParameter.DefaultValue). */
+  defaultValue?: unknown;
 }
 
 export interface ActivityMetadata {

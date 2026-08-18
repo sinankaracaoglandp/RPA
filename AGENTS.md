@@ -644,6 +644,550 @@ Gerekçe: sözleşmesi tanımlanmış ama bağlanmamış bir kapı, uygulanmayan
 
 ---
 
+## Kontrat Değişikliği — 2026-07-18 (Desktop.SendKeys yapısal tuş dizisi)
+
+`Desktop.SendKeys` artık modifier + özel tuş (Ctrl+A, F4, Home/End/PageUp/PageDown, AltGr, Win…)
+gönderebiliyor. Önceki implementasyon `keys`'i FlaUI `Keyboard.Type` ile yalnız **düz metin** olarak
+yazıyordu; metadata'nın ima ettiği `'^s'` (Ctrl+S) sözdizimi hiç çalışmıyordu. Tasarım:
+`docs/superpowers/specs/2026-07-18-desktop-sendkeys-structural-editor-design.md`.
+
+- **Yeni value object:** `RPA.Domain.ValueObjects.KeystrokeStep` (record) + `KeystrokeStepType`
+  enum (`Chord`, `Text`). Bir adım ya modifier(ler) + tek ana tuş (chord) ya da düz metindir;
+  opsiyonel `WaitMs` taşır.
+- **Yeni parser:** `RPA.Domain.ValueObjects.KeystrokeSequenceParser.Parse(string?)` — ham `keys`
+  alanını JSON adım dizisine çevirir; **geçerli JSON dizi değilse tek `Text` adımı** (geriye
+  uyumluluk: eski düz-metin `keys` değerleri korunur). Doğrulama hataları (tanınmayan tuş/modifier,
+  boş chord, boş metin, boş girdi) → `BusinessException`. Parse tek yerdedir (tek kaynak).
+- **`IDesktopAutomationChannel`** kontrat genişledi: yeni **opsiyonel overload**
+  `SendKeysAsync(string? selector, IReadOnlyList<KeystrokeStep> steps)`. Mevcut string imza
+  **korundu** (geriye uyumlu). `DesktopSendKeysActivity` artık `keys`'i parse edip tipli overload'ı
+  çağırır; `Desktop.SendKeys` `keys` parametresi katalogda `pickerKind:"keystroke-sequence"` alır.
+- **FlaUI implementasyonu** (`FlaUiDesktopAutomationChannel`): chord → modifier'lar
+  `Keyboard.Pressing(VirtualKeyShort)` ile basılı tutulur, ana tuş `Keyboard.Type(VirtualKeyShort)`
+  ile gönderilir, ters sırada bırakılır (`try/finally`). AltGr→`RMENU`, Win→`LWIN`. `UnavailableDesktop
+  AutomationChannel` yeni overload'ı da uygular.
+- **Studio:** yeni `KeystrokeSequenceEditorComponent` (`pickerKind:"keystroke-sequence"`, spy türü
+  DEĞİL — editör ipucu, `selector-picker-button`'a null geçer). Modifier checkbox'ları
+  (Ctrl/Shift/Alt/AltGr/Win) + gruplu ana-tuş dropdown'u (Harf/Rakam, F1–F12, Gezinme) + tip seçici
+  (Tuş vuruşu/Metin) + bekleme (ms) + canlı önizleme. i18n `keystroke.*` (TR + EN).
+
+Etkilenen paketler: Domain (yeni VO + parser), Infrastructure (Desktop aktivitesi + katalog),
+Agent (FlaUI kanalı), Studio (yapısal editör). WebAPI/LicenseGenerator etkilenmez.
+Doğrulama: Domain 31, Infrastructure 710, Agent 150, Studio 500 — tümü yeşil.
+
+---
+
+## Kontrat Değişikliği — 2026-07-20 (File.List klasör picker + çoklu uzantı + çıktı değişkeni)
+
+Studio designer'da `File.List` node'u üç yönde geliştirildi; bunun için yeni bir 🎯 picker türü
+**`folder`** eklendi (mevcut spy/picker altyapısına ek).
+
+- **Yeni picker türü `folder`:** Agent makinesinde native klasör seçim diyaloğu
+  (`FolderBrowserDialog`) açar, seçilen tam yolu alanın değerine yazar.
+  - **`SpyElementMessage.FromFolder(folderPath, sessionId)`** (`Kind="folder"`, ElementId/Selector =
+    yol).
+  - **Yeni arayüz `IFolderPicker`** (`RPA.Agent.UISpy`) — `DetectOnceAsync → string?` (iptal → null).
+    Impl `WinFormsFolderPicker` (STA thread, `AddAgentCore`'da kayıtlı, yalnız Windows).
+  - **`ISpySessionCoordinator`** opsiyonel `IFolderPicker? folderPicker` ctor parametresi aldı ve
+    `kind:"folder"` dalını işliyor (timeout ≥300 sn — kullanıcı elle klasör gezinir).
+  - **`StudioHub.SupportedKinds`**'e `folder` eklendi.
+  - Studio: `SpyKind`, `ActivityPort.pickerKind` ve `generic-property.spyPickerKind` `folder`
+    değerini kabul eder; folder sonucu düz string yol olarak `elementId`'den okunur.
+- **Çoklu uzantı filtresi:** `File.List` `pattern` alanı artık `;` veya `,` ile ayrılmış birden
+  çok deseni destekler (örn. `*.pdf;*.xlsx`). Çalışma zamanı `FileListActivity.ParsePatterns`
+  ile desenleri ayırır, `Directory.GetFiles` sonuçlarını birleştirir ve yol bazında
+  benzersizleştirir. Studio'da `pattern` alanının altında örnek filtreler gösterilir.
+- **Çıktı değişkeni:** `File.List`'e opsiyonel `outputVariable` girdisi (varsayılan `dosyalar`)
+  eklendi (Web.GetText deseni). Çalışma zamanı dosya listesini bu değişkene bağlar; Studio designer
+  seçilen ada `list<object>` bir workflow değişkeni (dosya şeması: name/path/size/createdAt/
+  modifiedAt) oluşturur/günceller — sonraki node'lar (Logic.ForEach) alanlara autocomplete ile erişir.
+
+Etkilenen paketler: Domain public arayüzleri değişmedi; Infrastructure (`FileListActivity`,
+`ActivityRegistry`, `SpyElementMessage`), Agent (`SpySessionCoordinator`, yeni `WinFormsFolderPicker`,
+DI), WebAPI (`StudioHub` whitelist), Studio (spy service, activity model, generic-property, designer).
+Doğrulama: Infrastructure FileOps+SpyElementMessage 30, Agent SpySessionCoordinator 10, Studio 519 —
+tümü yeşil.
+
+---
+
+## Kontrat Değişikliği — 2026-07-20 (WorkflowSchema: şema destekli değişken tipleri + File.* DI kaydı)
+
+Üç ilişkili düzeltme; ikisi kontrata dokunuyor:
+
+**1) `WorkflowSchema.json` — `variables[].type` enum'una `object` ve `list<object>` eklendi.**
+Aktivite çıktılarına bağlanan değişkenler (`File.List` → `list<object>`, `EInvoice.ReadProfile`
+→ `object`, `EInvoice.ReadProfileBatch` → `list<object>`) bu tipleri üretiyordu ama şema enum'u
+yalnız `string,int,decimal,bool,DateTime,DataTable,JSON,Credential` kabul ediyordu → **her kaydet
+şema doğrulamasında 400** (`WorkflowDesignService.SaveDraftAsync` → BusinessException). Değişiklik
+salt eklemeli (mevcut workflow'lar etkilenmez). `WorkflowSchema.json` tek kaynak; Infrastructure'a
+linked embedded resource olarak gömülür.
+
+**2) `File.*` aktiviteleri DI'a kaydedildi** (kontrat değil, eksik wiring). `File.Copy/Move/Delete/
+List/Zip/Unzip` katalogda vardı ama `WorkflowServiceCollectionExtensions`'ta keyed `IActivity`
+kaydı yoktu → runner "Aktivite implementasyonu kayıtlı değil: 'File.List'" atıyordu. Regresyon
+guard: `ActivityRegistryCoverageTests.FileActivities_CatalogEntries_HaveExecutableImplementations`.
+
+**3) Studio (kontrat değil):** değişken paneli `normalizeVariable` artık `schema`/`description`'ı
+koruyor; tip dropdown'u kendi tipini (`list<object>`) gösteriyor; `outputVariable` alanı serbest
+yazılabilir combobox + **commit-on-change** (her tuşta değil, Enter/blur'da yayınlar) → ad yazarken
+çöp değişken oluşmuyor. Yapısal görünüm de `File.List`/profil çıktı-şeması bağlamayı çalıştırıyor.
+
+Etkilenen paketler: Domain (`WorkflowSchema.json`), Infrastructure (`WorkflowServiceCollection
+Extensions`, validator testleri), Studio (designer + generic-property + variables panel).
+Doğrulama: Infrastructure validator 57, ActivityRegistryCoverage 9, Studio 523 — tümü yeşil.
+
+---
+
+## Kontrat Değişikliği — 2026-07-20 (Node kullanıcı adı + yapısal görünüm varsayılanı)
+
+**`WorkflowSchema.json`** node nesnesine opsiyonel **`label`** (string) alanı eklendi — kullanıcının
+verdiği okunabilir node adı (örn. "Fatura no girişi"). Salt gösterim; çalışma zamanı semantiği YOK,
+runner/aktiviteler okumaz. Salt eklemeli → mevcut workflow'lar etkilenmez.
+
+- **Studio `WorkflowNode`** modeline `label?: string` eklendi.
+- **Yapısal görünüm:** adım kartı başlığı `label` varsa onu gösterir (yoksa activity id); aktivite
+  id'si ikincil bilgi olarak yanında kalır. Konteyner başlığında `label` tip etiketinin yerini alır,
+  tip küçük rozet olarak yanında durur. Satır-içi yeniden adlandırma (✎ düğmesi / başlığa çift tık,
+  Enter onaylar, Esc iptal). Yeni `StructuredAction` türü `{ kind: 'rename', target, label }`,
+  yeni tree-ops `setItemLabel` (adımda `node.label`, konteynerde `props.label`; boş ad alanı siler).
+  `setItemProps` konteynerde `label`'ı korur (özellik panelinin alanı değildir).
+- **Designer varsayılan görünümü artık yapısal** (`structuredView = signal(true)`); serbest-graf
+  canvas'a mevcut düğmeyle geçilir. Buna bağlı iki düzeltme:
+  - `save()` grafı `canvas()?.serialize() ?? currentGraph() ?? workflow()` sırasıyla alır — yapısal
+    görünümde canvas yoktur ve hiç düzenleme yapılmadıysa `currentGraph` boştur; önceki hâlinde
+    kaydet **sessizce hiçbir şey yapmıyordu**.
+  - Yapısal görünüm dikey kaydırması: `.structured-view` flex sütun + `.designer__canvas
+    app-structured-view { flex: 1 1 auto; min-height: 0 }`. Önceki sabit `calc(100% - 37px)` paleti
+    hesaba katmadığından node eklendikçe tuval taşıyor, scrollbar hiç çıkmıyordu. Zoom
+    `transform: scale()` yerine CSS `zoom` ile uygulanır (transform düzeni etkilemediğinden
+    büyütmede kaydırma alanı oluşmuyordu).
+
+- **Node kopyalama:** yapısal kartlarda ⧉ düğmesi (`StructuredAction` türü `duplicate`). Yeni
+  tree-ops `cloneItem` / `duplicateItem` / `itemAt`: öğe derin kopyalanır (props `structuredClone`
+  ile — kopya ile özgün node değer paylaşmaz), her adım node'una TAZE id verilir, kopya özgünün
+  hemen ardına eklenir ve seçili gelir. Konteynerlerde tüm lane içeriği özyinelemeli kopyalanır.
+  Undo/redo geçmişine normal mutasyon olarak girer.
+- **Geç gelen taslak:** `StructuredViewComponent` `workflow` input'unda `null` artık "henüz
+  yüklenmedi" demektir ve tohum sayılmaz. Önceki hâlinde taslak HTTP ile geldiğinden ilk (null)
+  bağlanma tohum sayılıyor, ağaç kalıcı olarak boş kalıyordu ("Görüntülenecek adım yok"); yalnız
+  görünümden çıkıp dönünce (bileşen yeniden kurulunca) doluyordu.
+
+Etkilenen paketler: Domain (`WorkflowSchema.json`), Studio (designer + yapısal görünüm).
+Infrastructure/WebAPI/Agent **etkilenmez** (`label` runner tarafından okunmaz).
+Doğrulama: Studio 540, Infrastructure şema/validator 59 — tümü yeşil.
+
+
+## Kontrat Değişikliği — 2026-07-20 (SAP UI Spy "hedef göster" gerçek COM çözücüsü)
+
+SAP node'larının `elementId` alanlarındaki 🎯 picker'ı çalışır hâle getirildi. 2026-07-11 Paket C
+kaydında "kalan iş" olarak bırakılan `NullSapGuiElementResolver` (her noktada `null`) yerini gerçek
+COM çözücüsüne bıraktı; ayrıca picker artık masaüstü picker'ıyla **aynı** etkileşim deneyimini sunar.
+
+- **Yeni:** `ComSapGuiElementResolver` (`RPA.Infrastructure/UISpy/`) — çalışan SAP Logon'a bağlanır,
+  `GuiSession.FindByPosition(x, y, false)` ile noktadaki bileşeni çözer. Kalıcı `SapStaThread`
+  üzerinde marshallanır; SAP kapanırsa motor referansı bırakılıp sonraki çağrıda yeniden attach edilir.
+  `AddAgentCore` içinde `ISapGuiElementResolver` olarak kayıtlı (Attended + Windows).
+- **Yeni:** `SapGuiAutomation` (`RPA.Infrastructure/SAP/`) — SAPGUI attach yolu (ProgID + ROT,
+  SAP Logon otomatik başlatma) ve COM koleksiyon yardımcıları `ComSapGuiSessionFactory`'den buraya
+  taşındı; fabrika ile çözücü **tek kaynağı** paylaşır (kopya yok). Fabrikanın public davranışı aynı.
+- **Yeni:** `SapComponentDescender` + `ISapComponentAccessor` — `FindByPosition` çoğu ekranda noktayı
+  içeren **konteyneri** (`GuiUserArea`, subscreen) döndürür; kullanıcı metin alanını göstermek isterken
+  **frame seçiliyordu**. Çözücü artık çocuklara inip noktayı içeren en derin bileşeni alır (çakışan
+  kardeşlerde en küçük alanlı). COM'dan bağımsız saf mantık → birim testli (6 test).
+- **Yeni:** `SapElementId.Normalize` — SAP mutlak ID'si (`/app/con[0]/ses[0]/wnd[0]/usr/...`)
+  oturumdan bağımsız göreli forma (`wnd[0]/usr/...`) indirgenir. Aksi halde tasarım anındaki
+  bağlantı/oturum indeksi ID'ye gömülür ve çalışma anında başka oturumda kırılır.
+- **`ISapGuiElementResolver` kontratı genişledi (salt eklemeli):** `void Highlight(int x, int y)`
+  varsayılan (no-op) üye. `SapGuiElementDetector.HighlightAt` bunu yüzeye çıkarır. Mevcut
+  implementasyonlar ve testler etkilenmez.
+- **`SapGuiSinglePicker` yeniden yazıldı:** önceden `DetectElementUnderCursor()`'ı **tek sefer**
+  çağırıp dönüyordu — imleç 🎯'e basıldığı an tarayıcının üzerindeydi, dolayısıyla gerçek çözücüyle
+  bile doğru element seçilemezdi. Artık `FlaUiDesktopSinglePicker` ile birebir aynı döngü: tasarımcı
+  penceresi küçültülür → hover'da element vurgulanır (`GuiVComponent.Visualize`) → sol tık onaylar →
+  `Esc` iptal eder → pencere eski yerleşimine döner. **Ctor değişti** (yeni: `IPickerWindowManager`,
+  `ILogger`).
+- **Yeni:** `IPickerWindowManager` / `Win32PickerWindowManager` / `NoopPickerWindowManager`
+  (`RPA.Agent/UISpy/`) — picker'ların "tek ekran" pencere yönetimi soyutlandı (test edilebilirlik).
+
+**Kapsam dışı:** SAP ID'leri hâlâ `elementId`'dir (selector DEĞİL) — SAP GUI Scripting'in adresleme
+birimi budur; `Sap.Gui.*` katalog imzaları değişmedi.
+**Ön koşul:** SAP GUI kurulu + SAP Logon açık + GUI Scripting etkin (istemci ve sunucu tarafında).
+
+Etkilenen paketler: Paket C (SAP), Agent UI Spy. Domain/WebAPI/Studio **etkilenmez**.
+Doğrulama: Infrastructure 733, Agent 155, Domain 31, WebAPI 129 — tümü yeşil; Release derleme 0 hata.
+Gerçek COM yolu (FindByPosition/Visualize) SAP GUI kurulu makinede elle doğrulanmalıdır.
+
+
+## Kontrat Değişikliği — 2026-07-21 (Sap.Gui.SendVKey — SAP sanal tuşları)
+
+SAP'ta F8 (Çalıştır), F3 (Geri), F4 (Arama yardımı), F12 (İptal), Enter gibi tuşlar buton
+tıklamaktan daha yaygın ve daha sağlamdır (ekran düzeni değişse de çalışır, odaktan bağımsızdır).
+`sendVKey` yalnızca kanalın İÇİNDE kullanılıyordu (login'de Enter); dışarıya hiç açılmamıştı.
+
+- **`ISapGuiChannel` genişledi (salt eklemeli):** `SendVKeyAsync(int vKey, string windowId = "wnd[0]")`.
+  İç soyutlama `ISapGuiSession.SendVKeyAsync(int vKey, string windowId)`.
+  `ComSapGuiSession` `findById(windowId)` → `sendVKey` (PENCERE üzerinde, element üzerinde değil);
+  `StubSapGuiSession` `LastSentVKey`'e kaydeder. Aralık dışı VKey (`<0` / `>48`) → `BusinessException`.
+- **Yeni aktivite `Sap.Gui.SendVKey`** (kategori "SAP", capability `sap-gui`): `key` (varsayılan
+  "F8") + opsiyonel `windowId` (varsayılan `wnd[0]`; iletişim kutusu için `wnd[1]`).
+  Katalog `ActivityRegistry.RegisterSapGui`; keyed DI `SapGuiServiceCollectionExtensions`.
+- **Yeni:** `SapVirtualKey.Parse` (`RPA.Infrastructure/SAP/`) — kullanıcı-dostu ad → SAP VKey
+  numarası. SAP standart tablosu: 0=Enter, 1–12=F1–F12, 13–24=Shift+F1–F12, 25–36=Ctrl+F1–F12,
+  37–48=Ctrl+Shift+F1–F12. Ayrıca isimli kısayollar (Save/Ctrl+S=11, Back=3, Exit=15, Cancel=12,
+  Execute=8) ve düz numara kabul edilir. Tanınmayan girdi → `BusinessException` (tasarım hatası).
+
+**Kapsam dışı (bilinçli):** Studio'da tuş seçimi şimdilik **düz metin alanı** (varsayılan "F8");
+açılır liste yazılmadı. `pickerKind` **verilmedi** — `generic-property.component.ts` bilinmeyen
+pickerKind değerlerini spy türü olarak `spy.pick`'e geçirir ve StudioHub "Desteklenmeyen spy tipi"
+hatası verirdi; yeni bir editör türü Studio tarafında ayrıca ele alınmalıdır. Sıralı çok-tuş
+gönderimi (`F3,F3,F12`) de kapsam dışıdır.
+
+Etkilenen paketler: Domain (`ISapGuiChannel`), Infrastructure (SAP kanal/oturum/aktivite/katalog/DI).
+Agent/WebAPI/Studio **etkilenmez**. `ISapGuiChannel`/`ISapGuiSession`'ın başka implementasyonu yoktur.
+Doğrulama: Infrastructure 783, Agent 155 — tümü yeşil; Release derleme 0 hata. Gerçek `sendVKey`
+COM çağrısı SAP GUI kurulu makinede doğrulanmalıdır.
+
+
+## Kontrat Değişikliği — 2026-07-21 (SAP picker: kök pencere tespiti + tuş ile onay)
+
+2026-07-20 SAP picker kaydının iki takibi. Kullanıcı testinde picker "pencereyi küçültüyor ama
+çerçeve yok, tıklama işlemiyor" davranışı gözlendi.
+
+**1a) Pencere sınıfı kapısı KALDIRILDI (2026-07-21, saha testi sonrası).** Aşağıdaki (1) maddesi
+kapıyı child yerine köke taşıyarak düzeltmeye çalıştı; **yetmedi**. Saha logu:
+`(2404,181) SAP penceresi değil - child sınıfı: '#32768', kök sınıf: '#32768'` — `#32768` Windows'un
+MENÜ pencere sınıfıdır. `WindowFromPoint` en derin child'ı verir ve SAP ekranında bu bir alt kontrol,
+açık menü veya popup olabilir; hiçbiri `SAP_FRONTEND*` değildir. Sınıf tabanlı kapı yapısal olarak
+yanlış negatif üretir ve picker'ı tamamen ölü bırakıyordu (çerçeve yok, tıklama tepkisiz).
+**`SapGuiElementDetector` artık pencere sınıfına bakıp erken dönmez** — her noktada doğrudan
+`ISapGuiElementResolver.ResolveAt`'i çağırır. Otorite SAP'tır: `FindByPosition` bir bileşen
+döndürüyorsa nokta zaten SAP oturumundadır. `IsSapWindow` ve sınıf okumaları yalnızca `Diagnose`
+çıktısında ipucu olarak kalır. Regresyon guard: `DetectAt_AlwaysAsksResolver_EvenWhenWindowClassLooksNonSap`.
+
+**Tanılama (yeni).** Sessiz başarısızlık kaldırıldı: `ISapGuiElementResolver.LastError` (varsayılan
+null üye) + `SapGuiElementDetector.Diagnose(x, y)`; SAP picker element bulamadığında **2 saniyede bir
+`Warning`** seviyesinde sebebi loglar (Agent varsayılan seviyesi Information olduğundan görünür).
+
+**1) Kök pencere tespiti (kısmi düzeltme — 1a tarafından geçersiz kılındı).** `SapGuiElementDetector` noktanın SAP penceresinde olup
+olmadığını `INativeWindowApi.GetWindowClassAt` ile sınıyordu; bu `WindowFromPoint` kullanır ve
+noktanın altındaki **alt (child) kontrolü** döndürür — SAP metin alanının üzerindeyken sınıf
+`SAP_FRONTEND*` DEĞİLDİR. Sonuç: detector COM çözücüsünü **hiç çağırmadan** null dönüyordu; picker
+hiçbir zaman element üretmiyordu. (2026-07-20'de değiştirilen çözücü doğruydu, bu kapı öndeydi.)
+- **`INativeWindowApi` genişledi (salt eklemeli):** `string? GetRootWindowClassAt(int x, int y)`
+  varsayılan üye (`GetWindowClassAt`'e düşer → mevcut implementasyonlar/testler etkilenmez).
+  `Win32NativeWindowApi` `GetAncestor(hWnd, GA_ROOT)` ile top-level pencereye çıkar.
+- Detector artık child **veya** kök sınıfı SAP ise devam eder; reddederken ikisini de loglar.
+
+**2) Seçim onayı tuş kombinasyonuyla (UX DEĞİŞİKLİĞİ).** SAP picker'ı sol tıklama ile onaylıyordu;
+SAP ekranında fare tıklaması alanı/butonu **tetikler** (yanlışlıkla transaction çalıştırabilir).
+Onay artık kullanıcının Studio'da seçtiği tuş kombinasyonudur — image picker'ın dondurma tuşu
+altyapısı yeniden kullanıldı.
+- **`ISapGuiSinglePicker.DetectOnceAsync` imzası değişti:** yeni ilk parametre `ImagePickerOptions`
+  (`IImageRegionPicker`/`ITextOffsetPicker` ile aynı desen). Varsayılan `F2`; Ctrl/Shift/Alt
+  opsiyonel. Modifier'lar basış anında doğrulanır. `Esc` iptal aynen korundu.
+- `SpySessionCoordinator` `kind:"sap"` için `optionsJson`'ı parse edip geçirir ve **timeout'u
+  ≥300 sn**'ye çıkarır (kullanıcı hedef SAP ekranına elle gider; 60 sn yetmiyordu).
+- **Studio:** tuş/modifier kontrolleri artık `sap` pickerKind'ında da görünür
+  (`selector-picker-button`); ekran dondurma modu/geri sayımı yalnız `image`'a özgü kalır.
+  Yeni i18n `picker.confirmKey` (TR + EN). SAP artık `spy.pick`'e seçenek **gönderir** (önceden
+  `undefined`) — bunu doğrulayan iki Studio testi güncellendi.
+
+**Ek — SAP picker "önce hazırlık, sonra tıkla" modu.** SAP'ta F1–F12 tuşlarının **tamamı**
+transaction kısayoludur, dolayısıyla tuşla onay her ekranda uygun değildir. `kind:"sap"` artık
+`ImagePickerOptions.CaptureMode` değerlerinin ikisini de kullanır:
+- `"f2"` — seçim turu hemen başlar, onay seçilen tuş kombinasyonudur.
+- `"timer"` — `DelaySeconds` bir **HAZIRLIK** süresidir (seçim değil): kullanıcı bu sürede hedef SAP
+  ekranını açar; süre bitince seçim turu başlar, imleç altındaki element kırmızı çerçeveyle
+  vurgulanır ve seçim **sol tıklama** ile onaylanır. Geri sayım sırasında da `Esc` iptal eder.
+  Tıklama turu başlamadan önce sol butonun serbest olması beklenir (🎯'e/hazırlık sırasında yapılan
+  tıklamalar seçim sanılmasın).
+
+Picker `RunSelectionLoopAsync` (vurgu + onay) ve `WaitForCountdownAsync` (hazırlık) olarak ayrıldı.
+Studio'da mod açılır listesi SAP için de görünür; etiketler SAP'ta farklıdır
+(`picker.modeKeyConfirm`, `picker.modeTimerSap`, `picker.countdownSeconds` — TR + EN).
+
+**Bilinen sınır (kapsam dışı):** tuşla onay modunda picker `GetAsyncKeyState` ile yoklama yapar,
+tuşu **tüketmez** — basılan tuşu SAP da alır (F8 hem seçimi onaylar hem SAP'ta Çalıştır'ı tetikler).
+Tüketen çözüm `RegisterHotKey`'dir (`GdiImageRegionPicker` bunu kullanır). Zamanlayıcı modu bu
+sorundan tamamen muaftır ve SAP için önerilen moddur.
+
+**Not:** `ImagePickerOptions` adı artık image'a özgü değildir (SAP onay tuşunu da taşır); tip
+yeniden adlandırılmadı — image/text-offset/sap tüketicilerinin tümüne dokunmak gerekirdi.
+`CaptureMode`/`DelaySeconds` SAP yolunda yok sayılır.
+
+Etkilenen paketler: Infrastructure (UI Spy detector), Agent (SAP picker + koordinatör), Studio
+(picker düğmesi + i18n). Domain/WebAPI **etkilenmez**.
+Doğrulama: Infrastructure 785, Agent 155, Studio 540 — tümü yeşil; Release derleme 0 hata.
+Gerçek COM yolu hâlâ SAP GUI kurulu makinede doğrulanmayı bekliyor.
+
+
+## Kontrat Değişikliği — 2026-07-21 (SAP picker: adreslenebilirlik zorunluluğu)
+
+Saha testi COM yolunun ÇALIŞTIĞINI kanıtladı (öz-test: 2 oturum, `wnd[0]` başlığı + ekran
+dikdörtgeni okundu; seçim gerçekleşti). Ancak sonuç `element seçildi  (null)` idi: `FindByPosition`
+bir bileşen döndürdü, `SapComponentDescender` noktayı kapsayan bir alt nesneye indi, ama o nesnenin
+`Id`'si okunamıyordu → **boş `elementId`** alana yazılıyordu (sessiz başarısızlık: kullanıcıya
+"seçildi" denir, alan boş kalır, aktivite çalışmaz).
+
+- **`ISapComponentAccessor` genişledi:** `string? GetId(object node)`. `SapComponentDescender.Deepest`
+  artık yalnız dikdörtgene değil **adreslenebilirliğe** de bakar: noktayı kapsayan en derin
+  **ID'si okunabilen** bileşeni döndürür; ID'siz bir dala inilirse ID'si okunabilen en son ataya
+  geri düşer (ID'siz ara nesnenin ALTINDA adreslenebilir bir alan varsa ona inmeye devam eder).
+- **`ComSapGuiElementResolver`**: `Id` boş çıkarsa element **bulunamadı sayılır** (null döner) ve
+  sebep `LastError`'a yazılır (tip + metin ile). Boş ID artık hiçbir koşulda Studio'ya gönderilmez.
+- **Tanılama (bu turda eklendi):** `ISapGuiElementResolver.SelfTest()` (varsayılan üye) +
+  `SapGuiElementDetector.SelfTest()` — imleç konumundan BAĞIMSIZ bağlantı kanıtı (attach durumu,
+  oturum sayısı, her oturumun `wnd[0]` başlığı ve ekran dikdörtgeni). Picker başlangıcında
+  `Information` seviyesinde loglanır. Ayrıca Esc'te oturum özeti (kaç örnek / kaçı çözüldü).
+  Gerekçe: kullanıcı fareyi SAP'ın üzerinde tutarken konsola bakamıyor; imlece bağlı tanılama
+  yanıltıcı örnekler üretiyordu (fare konsola giderken üzerinden geçtiği Outlook/Terminal
+  pencereleri loglanıyordu).
+
+**Onay tuşu olarak Caps Lock (yeni).** `ImagePickerOptions` artık `HotKey` değeri olarak
+`"CapsLock"`i kabul eder (`VirtualKey` = `VK_CAPITAL` 0x14); F1–F12 desteği aynen korunur,
+tanınmayan değer yine `F2`ye düşer. Gerekçe: SAP'ta F1–F12'nin **tamamı** transaction kısayoludur
+(F2 seçim onaylarken SAP'ta da fonksiyon tetikliyordu); Caps Lock hiçbir SAP fonksiyonunu
+tetiklemez. Studio tuş listesine `CapsLock` eklendi ve **`pickerKind:"sap"` için varsayılan
+yapıldı** (kullanıcı değiştirebilir; image picker varsayılanı `F2` olarak kaldı).
+
+Etkilenen paketler: Infrastructure (UI Spy), Agent (SAP picker logları + tuş ayrıştırma),
+Studio (picker düğmesi). Domain/WebAPI etkilenmez.
+Doğrulama: Infrastructure 792, Agent 162, Studio 540 — yeşil; Release derleme 0 hata.
+**Hâlâ doğrulanmadı:** gerçek SAP alanında dolu bir `elementId` üretilmesi (saha testi bekleniyor).
+
+
+## Kontrat Değişikliği — 2026-07-21 (SAP picker: FindByPosition sonucunun açılması)
+
+Önceki turun "adreslenebilirlik" düzeltmesi yetmedi. Saha logu kesin kanıtı verdi:
+`FindByPosition`, imleç **SAP penceresinin tamamen dışındayken** (Windows Terminal üzerinde) bile
+boş olmayan bir nesne döndürüyor ve o nesnenin `Id`/`Type`/`Text` üçü birden okunamıyor. SAP dışı
+bir noktada gerçek bileşen dönemeyeceğine göre elde tutulan şey **boş bir `GuiComponentCollection`**.
+
+**Kök neden:** `Innermost` koleksiyon/bileşen ayrımını `Count` özelliğine bakarak yapıyordu. SAP
+Scripting koleksiyonları eleman sayısını sürüme/tipe göre `Count` **veya `Length`** ile yayınlar;
+`Count` okunamayınca sayı 0 sanılıyor, nesne "koleksiyon değil" kabul edilip **koleksiyonun kendisi**
+bileşen olarak geri veriliyordu → `Id` boş → picker hiçbir noktada çalışmıyordu.
+
+- **`SapGuiAutomation.GetCollectionCount`** artık `Count` ve `Length`'i sırayla dener.
+- **`ISapComponentAccessor` genişledi:** `IReadOnlyList<object> GetCollectionItems(object node)`.
+- **Yeni:** `SapComponentDescender.Unwrap(found, accessor)` — `FindByPosition` sonucunu gerçek
+  bileşene açar. **Tip tahmini yapmaz**; ölçüt `Id`'nin okunabilmesidir: nesnenin kendisi
+  adreslenebiliyorsa o, değilse koleksiyonun en içteki (son) adreslenebilir elemanı, hiçbiri
+  değilse `null`. Boş koleksiyon artık doğru şekilde "sonuç yok" demektir.
+- `Innermost` silindi (yerini `Unwrap` aldı). `ResolveAt` her çağrıda `LastError`'ı temizler —
+  önceki noktanın hatası sonrakinin tanılamasına taşınmıyor.
+
+**Ek — çağrı hatalarının yutulması giderildi (aynı gün).** `FindComponentAt` içindeki
+`catch { continue; }` SAP'ın gerçek hatasını yutuyor, sonra durum "FindByPosition boş" diye
+raporlanıyordu; **"hata fırlattı" ile "boş döndü" ayırt edilemiyordu** (saha logunda 408 örneğin
+tamamı "boş" göründü, oysa çağrı hiç başarılı olmamış olabilir). Artık:
+- `InvokeFindByPosition` iki imzayı da dener — `(x, y, scrollToElement)` ve `(x, y)` — çünkü SAP
+  sürümleri arasında imza değişir; yanlış argüman sayısı sessiz başarısızlık üretiyordu.
+- Hatalar toplanır ve `LastError`'a yazılır (tanılamada görünür).
+- **Öz-test artık aktif ölçüm yapar:** her oturumun `wnd[0]` dikdörtgeninin TAM MERKEZİNDE
+  `FindByPosition` dener ve sonucu (bulunan element ID'si / adreslenebilir bileşen yok / hata
+  detayı) loglar. Fare konumundan bağımsız kesin kanıt.
+
+Etkilenen paketler: Infrastructure (UI Spy + SAP COM yardımcıları). Agent/Domain/WebAPI/Studio
+imzaları etkilenmez. Doğrulama: Infrastructure 797, Agent 162 — yeşil; Release derleme 0 hata.
+**Hâlâ doğrulanmadı:** gerçek SAP alanında dolu `elementId` üretilmesi (saha testi bekleniyor).
+
+
+## Kontrat Değişikliği — 2026-07-21 (SAP picker: konum tespiti ağaç taramasına geçti)
+
+`FindByPosition` bu ortamda **hiçbir noktada** sonuç üretmedi (saha: 268/268 ve 408/408 boş), üstelik
+hata da fırlatmadı — yani imza/argüman sorunu değil, çağrı sessizce boş dönüyor. Kovalamak yerine
+ona olan bağımlılık kaldırıldı.
+
+**Dayanak:** öz-test `findById("wnd[0]")` + `ScreenLeft/ScreenTop/Width/Height` okumalarının bu
+ortamda ÇALIŞTIĞINI kanıtladı (wnd[0] dikdörtgeni doğru okundu: x=1912, y=-8, 1936x1048). Hit-test
+için SAP'a ihtiyaç yok: imleci içeren en derin adreslenebilir bileşen pencere ağacından bulunabilir.
+
+- **Yeni birincil yol `FindByWindowTree`:** her oturumun `wnd[0]`…`wnd[9]` pencereleri gezilir,
+  noktayı içeren pencereler arasından **en yüksek indeksli** olan seçilir (açık iletişim kutusu ana
+  ekranı kapatır), ardından mevcut `SapComponentDescender.Deepest` ile en derin adreslenebilir
+  bileşene inilir. Yalnızca bu ortamda çalıştığı KANITLANMIŞ API'leri kullanır.
+- `FindByPosition` **ikincil** yol olarak korundu (bazı sürümlerde özel kontrollerde isabetli olabilir).
+- **`SapGuiAutomation.EnumerateSessions` tekrarları eler** (`Children` ve `Sessions` çoğu sürümde
+  AYNI oturumları yayınlıyor; öz-testte tek oturum iki kez görünüyordu ve her tarama iki kat sürüyordu).
+- Öz-test artık her iki yolu da pencere merkezinde ölçer ve `wnd[0]` çocuk sayısını raporlar.
+
+Etkilenen paketler: Infrastructure (UI Spy + SAP COM yardımcıları). Agent/Domain/WebAPI/Studio
+imzaları etkilenmez. Doğrulama: Infrastructure 797, Agent 162 — yeşil; Release derleme 0 hata.
+**Hâlâ doğrulanmadı:** gerçek SAP alanında dolu `elementId` üretilmesi (saha testi bekleniyor).
+
+
+## Kontrat Değişikliği — 2026-07-21 (SAP picker ÇALIŞIYOR + vurgu temizleme + harf tuşları)
+
+**Saha doğrulaması geldi:** `element seçildi wnd[0]/tbar[0]/okcd (GuiOkCodeField)` — ağaç taraması
+gerçek ve doğru element ID'si üretiyor. Öz-test `wnd[0]` çocuklarının (6 adet, konumlarıyla)
+okunabildiğini gösterdi. `FindByPosition` aynı ortamda hâlâ "adreslenebilir bileşen yok" dönüyor
+(eleman sayısı 2) → ağaç taramasına geçmek doğru karardı; ikincil yol olarak kalıyor.
+
+**1) Vurgu çerçevesi temizleme (hata).** `Visualize(true)` çağrılıyor ama hiç `false` çağrılmıyordu;
+SAP'ın çerçevesi kendiliğinden silinmediğinden gezinirken ekranda çerçeveler birikiyordu.
+- `ISapGuiElementResolver.ClearHighlight()` (varsayılan no-op üye) + `SapGuiElementDetector.ClearHighlight()`.
+- `ComSapGuiElementResolver` son vurgulanan bileşeni tutar; yeni vurgudan ÖNCE eskisini kapatır.
+  Ekran değişip bileşen kaybolduysa hata yutulur (çerçeve zaten yok).
+- Picker `finally` bloğunda `ClearHighlight()` çağırır → seçim/iptal sonrası ekranda çerçeve kalmaz.
+
+**3) Tuş artık ONAY değil TETİKLEYİCİ (akış revizyonu).** Ctrl+T ile onaylama çalışmadı. Akış
+her iki modda da tekleştirildi: **hazırlık → seçim turu → SOL TIKLA ile seç.** Hazırlığın bitiş
+sinyali moda göre değişir — `"timer"` geri sayım, `"f2"` kullanıcının seçtiği tuş kombinasyonu
+(varsayılan Ctrl+T, süre sınırsız: oturum zaman aşımına kadar bekler). Seçim **her zaman** sol
+tıklamayla alınır; tuş yalnızca süreci başlatır.
+- Yeni `WaitForHotKeyAsync` (Esc ile iptal edilebilir; tuş serbest bırakılmış halde başlar ki
+  🎯'e basarken sızan tuş anında tetiklemesin). `RunSelectionLoopAsync` sadeleşti — artık
+  `options`/`confirmWithClick` parametresi almıyor, onay tek biçimde tıklamadır.
+- Studio etiketleri güncellendi: `picker.modeKeyConfirm` = "Tus ile baslat, tikla ile sec",
+  `picker.modeTimerSap` = "Geri sayim, sonra tikla ile sec", `picker.confirmKey` =
+  "Secimi baslatma tusu" (TR + EN).
+
+**5) Bayat COM motoru → picker sessizce ölüyordu (hata).** Saha: Ctrl+T doğru iletildikten sonra
+**0/272** örnek çözüldü — SAP penceresinin İÇİNDE bile. Ağaç taraması buna izin vermez (`wnd[0]`
+noktayı içeriyorsa `Deepest` en kötü ihtimalle `wnd[0]`'ı döndürür), dolayısıyla tek açıklama oturum
+listesinin BOŞ olmasıydı. `SapGuiAutomation.EnumerateSessions` COM hatalarını yutar ve boş liste
+döner; önbelleklenen `_engine` bayatladığında (araya başka bir SAP oturumu/iş akışı girdiğinde)
+hiçbir istisna oluşmadan her nokta "sonuç yok" oluyordu — ve tanılama bunu yanlışlıkla
+"FindByPosition boş" diye raporluyordu.
+- Yeni `GetSessions()`: oturum listesi boşsa motoru bırakıp **bir kez yeniden attach** ederek tekrar
+  dener. Hâlâ boşsa `LastError` = "SAP oturumu görünmüyor (motor bayatlamış olabilir…)".
+- `FindComponentAt` ve öz-test artık bu yolu kullanır.
+- `Diagnose` metni düzeltildi: birincil yol ağaç taramasıdır, mesaj artık `FindByPosition`'ı
+  suçlamıyor ("bu noktada SAP elementi yok").
+
+**4) Studio seçenekleri `sap` için hiç göndermiyordu (hata).** `spy.service.ts` seçenek JSON'unu
+yalnızca `image`/`text-offset` türlerinde iletiyordu; `sap` listede yoktu → Studio'da Ctrl+T seçilse
+bile ajana `null` gidiyor, ajan varsayılana (`F2`) düşüyordu. **Aynı satır timeout'u da belirliyordu:**
+`sap` (ve `folder`) 60 sn'lik varsayılanla kalıyordu, oysa ajan bu türlerde ≥300 sn bekler — kullanıcı
+hedef ekranı hazırlarken Studio erken pes edip oturumu düşürüyordu. `manualPreparation` listesi
+(image, text-offset, sap, folder) hem seçenek gönderimini hem uzun timeout'u (≥360 sn) kapsar.
+Regresyon guard: `spy.service.spec.ts` → "passes sap picker options as JSON to the hub".
+
+**2) Harf tuşları (Ctrl+T).** SAP'ta F1–F12'nin tamamı transaction kısayolu olduğundan onay tuşu
+olarak harf + modifier gerekiyordu. `ImagePickerOptions.NormalizeHotKey` artık tek harf (A–Z) kabul
+eder; `VirtualKey` harfin ASCII kodudur (0x41–0x5A). CapsLock ve F1–F12 desteği aynen korunur;
+iki harfli/rakam/sembol girdi yine `F2`ye düşer. Studio tuş listesine A–Z eklendi ve
+**`pickerKind:"sap"` varsayılanı `Ctrl+T`** yapıldı (önceki CapsLock varsayılanının yerine).
+
+Etkilenen paketler: Infrastructure (UI Spy), Agent (tuş ayrıştırma + picker), Studio (picker düğmesi).
+Domain/WebAPI etkilenmez. Doğrulama: Infrastructure 797, Agent 169, Studio 540 — yeşil.
+
+
+## Kontrat Değişikliği — 2026-07-21 (Katalog ↔ aktivite parametre adı uyuşmazlıkları)
+
+Saha: `Sap.Gui.GridRead` picker'dan doğru ID (`wnd[0]/usr/cntlGRID1/shellcont/shell`) alıyor ama
+çalışma anında **"'gridId' parametresi boş olamaz"** ile patlıyordu. Sebep: katalog girdiyi
+`gridElementId`, aktivite ise `gridId` adıyla okuyordu — Studio doğru alanı dolduruyor, runtime
+başka ada bakıyordu.
+
+**Bu bir sınıf hatasıydı, tek örnek değil.** Yeni regresyon testi
+(`ActivityRegistryCoverageTests.Catalog_ParameterNames_MatchActivityMetadata`) katalog ile her
+aktivitenin KENDİ `GetMetadata()` bildirimini karşılaştırır ve **8 uyuşmazlık** buldu:
+
+| Aktivite | Düzeltme |
+|---|---|
+| `Sap.Gui.GridRead` | katalog `gridElementId`/`data` → **`gridId`/`rows`** (runtime'ın okuduğu adlar) |
+| `Sap.Gui.Connect` | katalogdaki `session` çıktısı **silindi** (aktivite hiçbir çıktı döndürmüyor) |
+| `Sap.Gui.Screenshot` | katalog `path` → **`screenshot`** (PNG bayt dizisi) |
+| `Web.Goto`, `Web.FrameSwitch` | aktivitenin döndürdüğü **`session` çıktısı** kataloga eklendi |
+| `Email.DownloadAttachment` | runtime'ın okuduğu **`credentialName` + `folder`** girdileri kataloga eklendi (Studio bu alanları hiç göstermiyordu) |
+| `Api.HttpRequest` | aktivite metadata'sı yalnız `url` bildiriyordu; runtime'ın okuduğu `method`/`headers`/`body`/`authType`/`credentialName`/`timeoutSeconds` eklendi (`timeoutSeconds` kataloga da) |
+
+**Kural:** katalog (`ActivityRegistry`) Studio'nun formu çizdiği kaynak, aktivitenin `GetMetadata()`'sı
+runtime sözleşmesi; **ikisi aynı parametre adlarını kullanmak ZORUNDA** — test artık bunu tüm
+aktiviteler için zorlar. Yeni aktivite eklerken ad uyuşmazlığı derleme değil test hatası verir.
+
+**Ek — `Sap.Gui.GridRead` çıktı değişkeni.** Aktivite satır listesini yalnızca sabit `rows` adına
+yazıyordu; kullanıcı sonucu kendi seçtiği bir workflow değişkenine bağlayamıyordu. `File.List`
+deseni uygulandı: opsiyonel `outputVariable` girdisi (varsayılan `gridSatirlari`) — verilirse satır
+listesi o değişkene de bağlanır (`rows` çıktısı geriye uyumluluk için korunur). Studio designer
+seçilen ada `list<object>` bir workflow değişkeni oluşturur/günceller.
+**File.List'ten farkı:** ALV kolonları çalışma anında (transaction/layout'a göre) belirlendiğinden
+sabit alan şeması ÜRETİLEMEZ — değişken şemasız `list<object>`'tir, satır alanlarına ALV teknik
+kolon adıyla erişilir (alan-düzeyi autocomplete yoktur).
+
+**Etki:** `Sap.Gui.GridRead` node'u olan mevcut workflow'lar alanı **yeniden seçmelidir**
+(`gridElementId` değeri artık okunmuyor). Diğer değişiklikler salt eklemeli/düzeltici.
+Doğrulama: Infrastructure 798 — yeşil; Release solution derlemesi 0 hata.
+
+
+## Kontrat Değişikliği — 2026-07-21 (ALV grid kolon sözleşmesi — tasarım anında yapı)
+
+`Sap.Gui.GridRead` çıktısının yapısı yalnızca çalışma anında belli oluyordu; kullanıcı çalışma
+anında süreç tasarlayamayacağı için satır alanları tasarımda görünmüyordu. Kolonlar artık
+**seçim anında SAP'tan okunur** ve bir SÖZLEŞME olarak node'a yazılır.
+
+- **`SapGuiElement.Columns`** (`IReadOnlyList<string>?`) eklendi — ALV grid seçildiğinde tasarım
+  anındaki teknik kolon adları; grid dışı elementlerde `null`. **Tip adına göre tahmin yapılmaz**,
+  ölçüt `ColumnOrder` koleksiyonunun okunabilmesidir (`TryReadGridColumns`).
+- **`SpyElementMessage.Columns`** ile Studio'ya taşınır (salt eklemeli; diğer picker türleri etkilenmez).
+- **Studio:** 🎯 grid seçiminde `elementId` yanında **`columns`** alanı da doldurulur
+  (`generic-property.onPicked`). Designer bu kolonlardan satır şeması üretir → `{{satir.MATNR}}`
+  autocomplete tasarım anında çalışır. Kolon yoksa şemasız `list<object>` (eski davranış).
+- **Yeni aktivite girdisi `columns`** (JSON dizi, opsiyonel). Verildiğinde çalışma anı satırları
+  sözleşmeye göre şekillenir:
+  - tasarımda olup çalışma anında **gizlenmiş/eksik** kolon → `null` (alan yine de vardır, sonraki
+    node ifadeleri kırılmaz),
+  - çalışma anında **fazladan** gelen kolon → **yok sayılır**,
+  - `columns` verilmemişse veya JSON bozuksa → sözleşmesiz davranılır (tüm çalışma-anı kolonları;
+    bozuk sözleşme sessizce satırları BOŞALTMAZ).
+  Sözleşme hem `rows` çıktısına hem `outputVariable`'a bağlanan listeye uygulanır.
+
+Etkilenen paketler: Domain (VO), Infrastructure (UI Spy + GridRead + katalog), Studio (spy modeli,
+generic-property, designer). Agent/WebAPI imzaları değişmedi.
+Doğrulama: Infrastructure 805, Agent 169, Studio 543 — yeşil; Release solution 0 hata.
+**Saha testi bekliyor:** gerçek ALV'de kolon okuma (`ColumnOrder`) ve sözleşmenin uygulanması.
+
+
+## Kontrat Değişikliği — 2026-07-22 (Canlı konsolda değişken anlık görüntüsü)
+
+Test/tasarım sırasında sürecin ekrandan okuduğu değerlerin (özellikle `list<object>`) konsolda
+görülebilmesi için gözlemci olayı genişletildi. **Not:** Studio'daki "Hata Ayıklama" paneli
+(breakpoint/step-through) hâlâ **çalışmıyor** — `RobotHub` sunucu metotları yazılmadı
+(`ExecuteWithBreakpoints` → "Method does not exist"); geriye bırakıldı. Bu kayıt onun yerine
+mevcut canlı konsolu kullanılabilir kılar.
+
+- **`NodeExecutionEvent.Variables`** (`IReadOnlyDictionary<string,string?>?`, salt eklemeli) —
+  node tamamlandıktan sonra görünür TÜM workflow değişkenlerinin maskeli/kısaltılmış anlık
+  görüntüsü. Başlangıç olaylarında null. Gözlemci yoksa hiç üretilmez (üretimde maliyet yok).
+- **`VariableScope.ExportVisible()`** (yeni) — scope zincirinin düzleştirilmiş görüntüsü
+  (iç scope dıştakini gölgeler; `TryGetVariable` ile aynı sonuç). Yalnız gözlem amaçlıdır.
+- **`BaseRunner`:** aktivite/component dışındaki node tipleri (assign, log, if, döngüler,
+  checkpoint, delay, merge) artık **tamamlanma olayı da yayınlar** (önceden yalnız "başladı"
+  vardı) — değişken değişimleri konsolda görünür. Hata durumunda olay üretilmez (aktivite
+  hataları zaten ayrı raporlanır).
+- **Maskeleme güçlendi:** `Credential`/`Sensitive` tipli parametre adları yürütme boyunca
+  `ExecutionState.SensitiveNames`'te birikir; hassas bir **çıktı** üst scope'ta kalsa bile
+  sonraki node'ların anlık görüntüsünde `[MASKED]` kalır (o node'un metadata'sı adı bilmez).
+  Anahtar-adı sezgisi (`password/secret/token/credential`) korunur.
+- **Önizleme sınırı 200 → 4000 karakter** — 200'de bir ALV grid satır listesi/e-fatura nesnesi
+  ilk alanından sonra kesiliyordu.
+- **Studio:** `NodeLogEvent.variables` + konsol satırında `değişkenler: ad=değer, …` (hata
+  satırlarında da gösterilir). Yeni `run-log.service.spec.ts`.
+
+Etkilenen paketler: Domain (`IWorkflowExecutionObserver`), Infrastructure (`BaseRunner`,
+`VariableScope`), Studio (`RunLogService`). Doğrulama: Infrastructure 807, Agent 169, Studio 598
+— yeşil; Release 0 hata.
+
+### Ek — aynı gün (node logu tanılaması + ajan konsolu yedeği)
+
+Saha testinde Studio konsolunda **hiç** node satırı görünmedi (yalnız çalıştırma-durumu satırları).
+Bu yol (Agent → RobotHub → StudioHub → Studio) hiçbir zaman test edilmemişti (`ReportNodeLog` için
+sıfır test) ve her halkası **sessizce** başarısız oluyordu. Sessizlik kaldırıldı:
+
+- **`RobotHubClient.ReportNodeLogAsync`**: bağlantı yokken olayı düşürürken artık `Warning`
+  loglar (durum değişiminde bir kez — gürültü yok). Önceden koşulsuz `return` idi.
+- **`AgentWorkflowExecutionObserver`**: gönderim hatası `Debug` → `Warning` (ajanın varsayılan
+  `Information` seviyesinde `Debug` hiç basılmıyordu, yani hata görünmezdi).
+- **Ajan konsolu yedeği:** `OnNodeCompleted` node çıkışlarını ve **değişken anlık görüntüsünü**
+  ajanın kendi loguna `Information` seviyesinde yazar. SignalR köprüsü çalışmasa bile değerler
+  ajan konsolunda görülür. Değerler zaten `BaseRunner`'da maskelenmiştir → loglanması güvenlidir.
+- **`RunLogService`**: `jobRunId` karşılaştırması harf-durumu duyarsız (duyarlı karşılaştırma
+  tüm satırları sessizce düşürebilirdi).
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

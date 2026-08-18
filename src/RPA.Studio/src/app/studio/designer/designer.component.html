@@ -7,7 +7,12 @@
   @if (isSimpleMode()) {
     <app-simplified-toolbox [canvas]="canvas()"></app-simplified-toolbox>
   } @else {
-    <app-toolbox [canvas]="canvas()"></app-toolbox>
+    <app-toolbox
+      [canvas]="canvas()"
+      (activityAdded)="onToolboxActivityAdded($event)"
+      (activityDroppedAt)="onToolboxActivityDropped($event)"
+      (categoryChanged)="onToolboxCategoryChanged($event)"
+    ></app-toolbox>
   }
   <app-variables-panel
     [variables]="variables()"
@@ -51,8 +56,9 @@
           {{ 'designer.run' | translate }}
         </button>
         @if (saveState() === 'error') {
-          <span class="designer__save-error text-red-600" data-testid="designer-save-error">
-            {{ 'designer.saveError' | translate }}
+          <span class="designer__save-error text-red-600" data-testid="designer-save-error"
+            [title]="saveErrorMessage() ?? ''">
+            {{ 'designer.saveError' | translate }}{{ saveErrorMessage() ? ': ' + saveErrorMessage() : '' }}
           </span>
         }
         @if (runState() === 'queued') {
@@ -104,14 +110,33 @@
           <span class="ml-1.5 rounded-full bg-slate-200 px-1.5 text-xs text-slate-700">{{ log.count() }}</span>
         }
       </button>
+      <button
+        type="button"
+        class="designer__structured-toggle inline-flex min-h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold leading-none text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 aria-pressed:border-slate-800 aria-pressed:bg-slate-800 aria-pressed:text-white"
+        data-testid="designer-structured-toggle"
+        [attr.aria-pressed]="structuredView()"
+        (click)="toggleStructuredView()"
+      >
+        {{ 'structured.toggle' | translate }}
+      </button>
     </div>
-    <app-canvas
-      [workflow]="workflow()"
-      [breakpointNodeIds]="breakpointNodeIds()"
-      [currentNodeId]="debugCurrentNodeId()"
-      (nodeSelect)="onNodeSelect($event)"
-      (graphChanged)="onGraphChanged($event)"
-    ></app-canvas>
+    @if (structuredView()) {
+      <app-structured-view
+        [workflow]="currentGraph() ?? workflow()"
+        [variables]="variables()"
+        (graphChanged)="onGraphChanged($event)"
+        (nodeSelect)="onStructuredSelect($event)"
+      ></app-structured-view>
+    } @else {
+      <app-canvas
+        [workflow]="workflow()"
+        [breakpointNodeIds]="breakpointNodeIds()"
+        [bodyHighlightNodeIds]="loopBodyHighlightIds()"
+        [currentNodeId]="debugCurrentNodeId()"
+        (nodeSelect)="onNodeSelect($event)"
+        (graphChanged)="onGraphChanged($event)"
+      ></app-canvas>
+    }
   </main>
   @if (!isSimpleMode() && debugMode()) {
     <app-debug-panel
@@ -122,7 +147,8 @@
     <app-properties-panel
       [activityType]="selectedActivityType()"
       [properties]="selectedProperties()"
-      [variables]="variables()"
+      [variables]="panelVariables()"
+      [projectId]="projectId()"
       (propertiesChange)="onPropertiesChange($event)"
     ></app-properties-panel>
   }

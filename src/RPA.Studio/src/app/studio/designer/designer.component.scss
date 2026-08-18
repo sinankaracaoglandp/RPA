@@ -19,7 +19,8 @@
   background: #eef2f7;
 }
 
-.designer__canvas app-canvas {
+.designer__canvas app-canvas,
+.designer__canvas app-structured-view {
   display: block;
   flex: 1 1 auto;
   min-height: 0;

@@ -469,6 +469,71 @@ describe('EInvoiceMappingEditorComponent', () => {
     expect(component.collections[0].fields.length).toBe(0);
   });
 
+  it('alan diyaloğu açılınca hedef her zaman kök fatura alanına döner', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.draftTarget = 'satirlar';
+
+    component.openFieldDialog();
+
+    expect(component.draftTarget).toBe('root');
+  });
+
+  it('yaprak öğeye tıklayınca hedef kök fatura alanına döner', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(PREVIEW_SAMPLE);
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.draftTarget = 'satirlar';
+
+    component.selectNode(component.findFirst('cbc:ID')!);
+
+    expect(component.draftTarget).toBe('root');
+  });
+
+  it('satır dizisi oluşturunca hedef koleksiyona sabitlenmez, kökte kalır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.collectionName = 'satirlar';
+    component.collectionScopeXPath = '//cac:InvoiceLine';
+
+    component.addCollectionFromDraft();
+
+    expect(component.draftTarget).toBe('root');
+  });
+
+  it('koleksiyon başlığındaki "Diziyi sil" onaydan sonra diziyi kaldırır', () => {
+    const component = fixture.componentInstance;
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.setStep(2);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('[data-testid="einvoice-remove-collection-satirlar"]') as HTMLButtonElement;
+    expect(button).toBeTruthy();
+
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+    button.click();
+    expect(component.collections.length).toBe(1);
+
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    button.click();
+    expect(component.collections.length).toBe(0);
+  });
+
+  it('tanımlı satır dizisi bütünüyle silinebilir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    const emitted: string[] = [];
+    component.profileDefinitionChange.subscribe(value => emitted.push(value));
+    component.addCollection('satirlar', '//cac:InvoiceLine');
+    component.addCollectionField('satirlar', { name: 'Miktar', source: 'XPath', valueXPath: './cbc:InvoicedQuantity', type: 'integer', required: false, multiple: false });
+    component.draftTarget = 'satirlar';
+    component.selectedCollectionName = 'satirlar';
+
+    component.removeCollection('satirlar');
+
+    expect(component.collections.length).toBe(0);
+    expect(component.draftTarget).toBe('root');
+    expect(component.selectedCollectionName).toBe('');
+    expect(JSON.parse(emitted.at(-1)!).collections).toEqual([]);
+  });
+
   it('örnek XML yüklenince otomatik 2. adıma geçer', () => {
     const component = new EInvoiceMappingEditorComponent();
     expect(component.activeStep).toBe(1);
@@ -591,5 +656,88 @@ describe('EInvoiceMappingEditorComponent', () => {
       type: 'decimal', required: false, multiple: false,
     });
     expect(component.collections[0].fields[0].valueXPath).toBe('./cbc:InvoicedQuantity');
+  });
+
+  it('liste sihirbazı: keşfedilen listeden seçili kolonlarla koleksiyon oluşturur', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    const lists = component.discoveredLists();
+    expect(lists.some(list => list.localName === 'InvoiceLine')).toBe(true);
+
+    component.selectDiscoveredList(lists.find(list => list.localName === 'InvoiceLine')!);
+    expect(component.wizardColumns.length).toBeGreaterThan(0);
+
+    component.wizardListName = 'kalemler';
+    component.wizardColumns = component.wizardColumns.map(column =>
+      column.relativePath === 'cac:Item/cbc:Name' ? { ...column, selected: true, name: 'aciklama' } : { ...column, selected: false });
+    component.createListFromWizard();
+
+    expect(component.activeWizardList).toBeNull();
+    const collection = component.collections.find(item => item.name === 'kalemler');
+    expect(collection).toBeTruthy();
+    expect(collection!.fields).toEqual([
+      { name: 'aciklama', source: 'XPath', valueXPath: './cac:Item/cbc:Name', type: 'string', required: false, multiple: false },
+    ]);
+  });
+
+  it('liste sihirbazı: "Böl" işaretli kolon değer + birim iki alan üretir', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+    component.wizardListName = 'kalemler';
+    component.wizardColumns = component.wizardColumns.map(column =>
+      column.relativePath === 'cac:Item/cbc:Name'
+        ? { ...column, selected: true, name: 'miktar', split: true }
+        : { ...column, selected: false });
+    component.createListFromWizard();
+
+    const fields = component.collections.find(item => item.name === 'kalemler')!.fields;
+    expect(fields.map(field => field.name)).toEqual(['miktar', 'miktarBirim']);
+    expect(fields[0]).toMatchObject({ group: 'value', type: 'decimal' });
+    expect(fields[1]).toMatchObject({ group: 'unit', type: 'string' });
+  });
+
+  it('liste sihirbazı: tümünü seç / tümünü bırak', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+
+    component.setAllWizardColumns(false);
+    expect(component.wizardColumns.every(column => !column.selected)).toBe(true);
+    expect(component.allWizardColumnsSelected()).toBe(false);
+
+    component.setAllWizardColumns(true);
+    expect(component.allWizardColumnsSelected()).toBe(true);
+  });
+
+  it('liste sihirbazı: çakışan ad uyarır ve oluşturmayı engeller', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+    component.wizardListName = 'kalemler';
+    component.wizardColumns = component.wizardColumns.map(column => ({ ...column, selected: true, name: 'ayniAd' }));
+
+    expect(component.duplicateWizardNames().has('ayniad')).toBe(true);
+    expect(component.wizardBlocked()).toBe(true);
+    component.createListFromWizard();
+    expect(component.collections.find(item => item.name === 'kalemler')).toBeUndefined();
+    expect(component.activeWizardList).not.toBeNull();
+
+    component.wizardColumns = component.wizardColumns.map((column, index) => ({ ...column, name: `alan${index}` }));
+    expect(component.wizardBlocked()).toBe(false);
+    component.createListFromWizard();
+    expect(component.collections.find(item => item.name === 'kalemler')).toBeTruthy();
+  });
+
+  it('liste sihirbazı: tam ekran aç/kapa ve kapanınca sıfırlanır', () => {
+    const component = new EInvoiceMappingEditorComponent();
+    component.loadSampleXml(UBL_WITH_TWO_LINES);
+    component.selectDiscoveredList(component.discoveredLists().find(list => list.localName === 'InvoiceLine')!);
+
+    expect(component.wizardFullscreen).toBe(false);
+    component.toggleWizardFullscreen();
+    expect(component.wizardFullscreen).toBe(true);
+    component.closeWizard();
+    expect(component.wizardFullscreen).toBe(false);
   });
 });

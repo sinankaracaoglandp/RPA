@@ -67,6 +67,15 @@ public static class WorkflowServiceCollectionExtensions
         services.AddKeyedTransient<IActivity, DesktopWaitForActivity>("Desktop.WaitFor");
         services.AddKeyedTransient<IActivity, DesktopScreenshotActivity>("Desktop.Screenshot");
 
+        // Dosya aktiviteleri (File.*). Katalogda tanımlıydı ama keyed IActivity olarak
+        // kaydı eksikti → runner "Aktivite implementasyonu kayıtlı değil: 'File.List'" atıyordu.
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.File.FileCopyActivity>("File.Copy");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.File.FileMoveActivity>("File.Move");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.File.FileDeleteActivity>("File.Delete");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.File.FileListActivity>("File.List");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.File.FileZipActivity>("File.Zip");
+        services.AddKeyedTransient<IActivity, RPA.Infrastructure.Activities.File.FileUnzipActivity>("File.Unzip");
+
         // Kod & Veri: C# kod aktivitesi (Roslyn) + DataTable dönüşümleri.
         services.AddKeyedTransient<IActivity, Activities.Code.InvokeCsharpActivity>("System.InvokeCode");
         services.AddKeyedTransient<IActivity, Activities.Code.DataToDataTableActivity>("Data.ToDataTable");

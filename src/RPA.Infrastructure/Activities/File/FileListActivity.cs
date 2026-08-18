@@ -13,8 +13,9 @@ public sealed class FileListActivity : IActivity
         Description = "Klasördeki dosyaları listeler (pattern).",
         Inputs = new()
         {
-            new ActivityParameter { Name = "folder", Type = "string", Required = true, Description = "Klasör yolu" },
-            new ActivityParameter { Name = "pattern", Type = "string", Required = false, DefaultValue = "*", Description = "Dosya adı deseni" }
+            new ActivityParameter { Name = "folder", Type = "string", Required = true, Description = "Klasör yolu", PickerKind = "folder" },
+            new ActivityParameter { Name = "pattern", Type = "string", Required = false, DefaultValue = "*", Description = "Dosya adı deseni (birden çok uzantı için ; veya , ile ayır)" },
+            new ActivityParameter { Name = "outputVariable", Type = "string", Required = false, DefaultValue = "dosyalar", Description = "Dosya listesinin atanacağı değişken" }
         },
         Outputs = new() { new ActivityParameter { Name = "files", Type = "JSON", Required = false, Description = "Dosya listesi" } },
         RequiredCapabilities = new() { "file" }
@@ -34,7 +35,13 @@ public sealed class FileListActivity : IActivity
         try
         {
             context.Log($"Klasör taranıyor: {folder}, desen: {pattern}");
-            var files = System.IO.Directory.GetFiles(folder, pattern, System.IO.SearchOption.TopDirectoryOnly);
+            var patterns = ParsePatterns(pattern);
+            // Birden çok desen aynı dosyayı döndürebilir (örn. *.* + *.pdf); yolları benzersizleştir.
+            var files = patterns
+                .SelectMany(p => System.IO.Directory.GetFiles(folder, p, System.IO.SearchOption.TopDirectoryOnly))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             var fileList = new JArray();
 
             foreach (var filePath in files)
@@ -51,7 +58,19 @@ public sealed class FileListActivity : IActivity
             }
 
             context.Log($"Dosya listesi hazırlandı: {files.Length} dosya bulundu");
-            return new Dictionary<string, object?> { ["files"] = fileList };
+
+            var outputs = new Dictionary<string, object?> { ["files"] = fileList };
+
+            // Kullanıcı bir çıktı değişkeni seçtiyse dosya listesini ona da bağla (Web.GetText deseni)
+            // → sonraki node'lar (ör. Logic.ForEach) {{degisken}} ile listeye erişebilir.
+            var outputVariable = context.GetVariable<string>("outputVariable")?.Trim();
+            if (!string.IsNullOrWhiteSpace(outputVariable))
+            {
+                context.SetVariable(outputVariable, fileList);
+                outputs[outputVariable] = fileList;
+            }
+
+            return outputs;
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -61,5 +80,24 @@ public sealed class FileListActivity : IActivity
         {
             throw new Domain.Exceptions.SystemException($"Klasör tarama sırasında hata: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Deseni birden çok uzantı filtresine ayırır. Ayraçlar: <c>;</c> ve <c>,</c>
+    /// (örn. <c>*.pdf;*.xlsx</c>). Boş/whitespace giriş varsayılan <c>*</c> döner.
+    /// </summary>
+    internal static IReadOnlyList<string> ParsePatterns(string? pattern)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            return new[] { "*" };
+        }
+
+        var parts = pattern
+            .Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return parts.Length == 0 ? new[] { "*" } : parts;
     }
 }

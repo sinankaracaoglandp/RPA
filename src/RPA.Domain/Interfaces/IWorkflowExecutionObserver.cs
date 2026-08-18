@@ -37,6 +37,14 @@ public sealed record NodeExecutionEvent
     /// <summary>Maskeli/kısaltılmış çıkış değerleri (yalnız tamamlanışta dolu).</summary>
     public IReadOnlyDictionary<string, string?>? Outputs { get; init; }
 
+    /// <summary>
+    /// Node tamamlandıktan SONRA görünür durumdaki tüm workflow değişkenlerinin maskeli/kısaltılmış
+    /// anlık görüntüsü (iç scope dıştakini gölgeler). Tasarım/test sırasında ekrandan okunan
+    /// değerlerin (ör. <c>list&lt;object&gt;</c> grid satırları) konsolda izlenmesi içindir.
+    /// Yalnız tamamlanma olaylarında dolu; başlangıç olaylarında null.
+    /// </summary>
+    public IReadOnlyDictionary<string, string?>? Variables { get; init; }
+
     /// <summary>Hata mesajı (varsa). Null ise başarı.</summary>
     public string? Error { get; init; }
 

@@ -109,6 +109,17 @@ describe('ToolboxComponent', () => {
     expect(component.filteredActivities()[0].activityId).toBe('Sap.Gui.SelectTab');
   });
 
+  it('emits the selected category so other panels can follow it', () => {
+    fixture.detectChanges();
+    flushActivities();
+
+    const seen: string[] = [];
+    component.categoryChanged.subscribe((c: string) => seen.push(c));
+    component.selectCategory('Web');
+
+    expect(seen).toEqual(['Web']);
+  });
+
   it('combines search and category filters', () => {
     fixture.detectChanges();
     flushActivities();
@@ -190,5 +201,22 @@ describe('ToolboxComponent', () => {
 
     const root = fixture.nativeElement.querySelector('[data-testid="toolbox-root"]');
     expect(root.getAttribute('aria-label')).toBeTruthy();
+  });
+});
+
+describe('ToolboxComponent — tuval yokken sürükle-bırak', () => {
+  it('emits the drop point upward when no canvas consumes the drag', () => {
+    TestBed.configureTestingModule({
+      imports: [ToolboxComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    const f = TestBed.createComponent(ToolboxComponent);
+    const dropped: unknown[] = [];
+    f.componentInstance.activityDroppedAt.subscribe((e) => dropped.push(e));
+
+    // Yapısal görünümde tuval yoktur → sürükleme bitişi designer'a devredilmelidir.
+    f.componentInstance.onActivityDragEnded({ activityId: 'Web.Click', clientX: 10, clientY: 20 });
+
+    expect(dropped).toEqual([{ activityId: 'Web.Click', clientX: 10, clientY: 20 }]);
   });
 });

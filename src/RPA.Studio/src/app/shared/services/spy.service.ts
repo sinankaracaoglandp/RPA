@@ -2,7 +2,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { AuthService } from '../../auth/auth.service';
 
-export type SpyKind = 'sap' | 'web' | 'desktop' | 'image' | 'text-offset';
+export type SpyKind = 'sap' | 'web' | 'desktop' | 'image' | 'text-offset' | 'folder';
 
 // Paket F: image picker "ekran dondurma" seçenekleri (geçici menü/pencere yakalama).
 export type ImageCaptureMode = 'f2' | 'timer';
@@ -33,6 +33,8 @@ export interface SpyElement {
   anchorText?: string;
   dx?: number;
   dy?: number;
+  // ALV grid seçildiğinde (kind === 'sap') tasarım anındaki teknik kolon adları.
+  columns?: string[];
 }
 
 export interface SpyHubConnection {
@@ -96,10 +98,13 @@ export class SpyService {
     const connection = await this.ensureConnection();
     const sessionId = this.sessionIdFactory();
 
-    // Image/text-offset picker'da kullanıcı hedef menüyü elle açıp F2/zamanlayıcı ile dondurduğu
-    // için daha uzun süre gerekir; diğer picker'lar normal timeout kullanır.
-    const needsFreeze = kind === 'image' || kind === 'text-offset';
-    const timeoutMs = needsFreeze ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
+    // Kullanıcının hedefi ELLE hazırladığı picker'lar: image/text-offset ekranı dondurur,
+    // sap hedef SAP ekranını açıp tuşla seçimi başlatır, folder klasör ağacında gezinir.
+    // Bunlarda hem tuş/mod seçenekleri gönderilir hem de 60 sn'lik varsayılan timeout yetmez
+    // (ajan tarafı bu türler için zaten ≥300 sn bekler; Studio erken pes ederse oturum düşer).
+    const manualPreparation =
+      kind === 'image' || kind === 'text-offset' || kind === 'sap' || kind === 'folder';
+    const timeoutMs = manualPreparation ? Math.max(this.timeoutMs, 360000) : this.timeoutMs;
 
     const result = new Promise<SpyElement>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -109,7 +114,7 @@ export class SpyService {
       this.pending = { sessionId, resolve, reject, timeoutId };
     });
 
-    const optionsJson = needsFreeze && options ? JSON.stringify(options) : null;
+    const optionsJson = manualPreparation && options ? JSON.stringify(options) : null;
 
     try {
       await connection.invoke('StartSpy', sessionId, kind, optionsJson);

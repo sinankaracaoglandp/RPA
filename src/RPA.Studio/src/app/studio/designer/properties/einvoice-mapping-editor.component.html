@@ -27,6 +27,21 @@
   }
 
   @if (activeStep === 2) {
+    @if (discoveredLists().length) {
+      <div class="einvoice-wizard__discovered" data-testid="einvoice-discovered-lists">
+        <span class="einvoice-wizard__discovered-label">Bulunan listeler</span>
+        @for (list of discoveredLists(); track list.scopeXPath) {
+          <button type="button" class="einvoice-wizard__list-button"
+            [class.einvoice-wizard__list-button--defined]="isListDefined(list)"
+            [attr.data-testid]="'einvoice-discovered-' + list.localName"
+            (click)="selectDiscoveredList(list)">
+            <span class="einvoice-wizard__list-name">{{ list.displayName }}</span>
+            <span class="einvoice-wizard__list-count">{{ list.count }} satır</span>
+            @if (isListDefined(list)) { <span class="einvoice-wizard__list-check" aria-label="Tanımlı">✓</span> }
+          </button>
+        }
+      </div>
+    }
     <div class="einvoice-mapping__workbench">
       <div class="einvoice-mapping__panel" data-testid="einvoice-tree-panel">
         <h4>XML ağacı</h4>
@@ -76,7 +91,7 @@
               [value]="collectionScopeXPath" (input)="collectionScopeXPath = $any($event.target).value" placeholder="//cac:InvoiceLine" />
             <p class="einvoice-mapping__hint">Ağaçta tekrar eden bir öğeye (×N) tıklarsan scope otomatik dolar.</p>
             <button type="button" data-testid="add-collection"
-              (click)="addCollectionFromDraft(); newCollectionOpen = false; draftTarget = collections.length ? collections[collections.length - 1].name : 'root'">
+              (click)="addCollectionFromDraft(); newCollectionOpen = false">
               Satır dizisi oluştur
             </button>
           </div>
@@ -109,6 +124,10 @@
         @for (collection of collections; track collection.name) {
           <h5 class="einvoice-mapping__group-title">
             {{ collection.name }} <span class="einvoice-mapping__scope">{{ collection.scopeXPath }}</span>
+            <button type="button" class="einvoice-mapping__collection-delete"
+              [attr.data-testid]="'einvoice-remove-collection-' + collection.name"
+              [attr.aria-label]="collection.name + ' dizisini tamamen sil'"
+              (click)="confirmRemoveCollection(collection.name)">Diziyi sil</button>
           </h5>
           <ul class="einvoice-mapping__field-list" aria-label="Satır alanları">
             @if (!collection.fields.length) {
@@ -171,6 +190,94 @@
         <summary>Teknik JSON önizleme</summary>
         <pre data-testid="einvoice-draft-preview" aria-live="polite">{{ previewJson() }}</pre>
       </details>
+    </div>
+  }
+
+  @if (activeWizardList) {
+    <div class="einvoice-mapping__overlay" data-testid="einvoice-wizard-dialog" (click)="closeWizard()">
+      <section class="einvoice-mapping__dialog einvoice-wizard__dialog"
+        [class.einvoice-wizard__dialog--full]="wizardFullscreen"
+        role="dialog" aria-modal="true" aria-label="Liste alanları" (click)="$event.stopPropagation()">
+        <header class="einvoice-mapping__dialog-header">
+          <h4>Liste alanlarını seç</h4>
+          <span class="einvoice-wizard__header-actions">
+            <button type="button" class="einvoice-wizard__icon-button" data-testid="einvoice-wizard-fullscreen"
+              [attr.aria-pressed]="wizardFullscreen"
+              [attr.aria-label]="wizardFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
+              (click)="toggleWizardFullscreen()">{{ wizardFullscreen ? '🗗' : '🗖' }}</button>
+            <button type="button" class="einvoice-wizard__icon-button" data-testid="einvoice-wizard-close" aria-label="Kapat" (click)="closeWizard()">×</button>
+          </span>
+        </header>
+
+        <div class="einvoice-mapping__dialog-body">
+          <label for="einvoice-wizard-name">Liste değişkeni adı</label>
+          <input id="einvoice-wizard-name" data-testid="einvoice-wizard-name"
+            [value]="wizardListName" (input)="wizardListName = $any($event.target).value" placeholder="kalemler" />
+          <p class="einvoice-mapping__hint">İşaretlediğin alanlar bu listenin her satırında bir sütun olur. Ad ve tip önerilerini değiştirebilirsin.</p>
+
+          <div class="einvoice-wizard__toolbar">
+            <button type="button" data-testid="einvoice-wizard-select-all"
+              (click)="setAllWizardColumns(true)" [disabled]="allWizardColumnsSelected()">Tümünü seç</button>
+            <button type="button" data-testid="einvoice-wizard-deselect-all"
+              (click)="setAllWizardColumns(false)">Tümünü bırak</button>
+          </div>
+
+          @if (duplicateWizardNames().size > 0) {
+            <p class="einvoice-wizard__warning" role="alert" data-testid="einvoice-wizard-duplicate-warning">
+              Aynı ad birden fazla alanda kullanılıyor. Devam etmeden önce çakışan adları değiştir.
+            </p>
+          }
+
+          <div class="einvoice-wizard__table-scroll">
+          <table class="einvoice-wizard__table" data-testid="einvoice-wizard-columns">
+            <thead>
+              <tr><th>Ekle</th><th>Alan yolu</th><th>Örnek değer</th><th>Ad</th><th>Tip</th><th>Böl</th></tr>
+            </thead>
+            <tbody>
+              @for (column of wizardColumns; track column.relativePath) {
+                <tr [class.einvoice-wizard__row--off]="!column.selected"
+                  [attr.data-testid]="'einvoice-wizard-col-' + column.relativePath">
+                  <td>
+                    <input type="checkbox" [attr.aria-label]="column.relativePath + ' alanını ekle'"
+                      [checked]="column.selected" (change)="toggleWizardColumn($index, $any($event.target).checked)" />
+                  </td>
+                  <td><code>{{ column.relativePath }}</code></td>
+                  <td class="einvoice-wizard__sample">{{ column.sampleValue || '—' }}</td>
+                  <td>
+                    <input class="einvoice-wizard__name-input" [value]="column.name"
+                      [class.einvoice-wizard__name-input--dup]="column.selected && isWizardColumnDuplicate(column.name)"
+                      [attr.aria-invalid]="column.selected && isWizardColumnDuplicate(column.name)"
+                      [attr.aria-label]="column.relativePath + ' için ad'"
+                      (input)="updateWizardColumn($index, { name: $any($event.target).value })" />
+                  </td>
+                  <td>
+                    <select [value]="column.type" [attr.aria-label]="column.relativePath + ' için tip'"
+                      (change)="updateWizardColumn($index, { type: $any($event.target).value })">
+                      <option value="string">Metin</option><option value="integer">Tamsayı</option>
+                      <option value="decimal">Ondalık</option><option value="date">Tarih</option><option value="boolean">Boolean</option>
+                    </select>
+                  </td>
+                  <td>
+                    <button type="button" class="einvoice-wizard__split"
+                      [class.einvoice-wizard__split--on]="column.split"
+                      [attr.aria-pressed]="column.split"
+                      [attr.data-testid]="'einvoice-wizard-split-' + column.relativePath"
+                      (click)="updateWizardColumn($index, { split: !column.split })"
+                      title="Değer + birim iki alana böl (örn. 100 ADET)">🔀</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <footer class="einvoice-mapping__dialog-actions">
+          <button type="button" data-testid="einvoice-wizard-cancel" (click)="closeWizard()">Vazgeç</button>
+          <button type="button" class="einvoice-mapping__primary" data-testid="einvoice-wizard-create"
+            [disabled]="wizardBlocked()" (click)="createListFromWizard()">Listeyi oluştur</button>
+        </footer>
+      </section>
     </div>
   }
 

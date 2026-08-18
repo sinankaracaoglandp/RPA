@@ -1,4 +1,4 @@
-namespace RPA.Infrastructure.SAP;
+﻿namespace RPA.Infrastructure.SAP;
 
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
@@ -75,6 +75,18 @@ public sealed class SapGuiChannel : ISapGuiChannel
     {
         var id = RequireElementId(elementId);
         return GuardedAsync(nameof(SelectTabAsync), id, s => s.SelectTabAsync(id));
+    }
+
+    public Task SendVKeyAsync(int vKey, string windowId = "wnd[0]")
+    {
+        if (vKey is < 0 or > SapVirtualKey.MaxVKey)
+        {
+            throw new BusinessException(
+                $"SAP VKey numarası 0–{SapVirtualKey.MaxVKey} aralığında olmalıdır (verilen: {vKey}).");
+        }
+
+        var window = string.IsNullOrWhiteSpace(windowId) ? "wnd[0]" : windowId.Trim();
+        return GuardedAsync(nameof(SendVKeyAsync), $"{window}:{vKey}", s => s.SendVKeyAsync(vKey, window));
     }
 
     public Task SelectMenuAsync(string menuPath)

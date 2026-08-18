@@ -57,4 +57,13 @@ describe('ExpressionInputComponent autocomplete', () => {
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(component.suggestionsOpen).toBe(false);
   });
+
+  it('suggests schema field paths when the partial matches a field', () => {
+    component.variables = [{
+      name: 'fatura', type: 'object',
+      schema: { type: 'object', properties: { tutar: { type: 'number' } } },
+    } as never];
+    component.updateSuggestions('fatura.tu');
+    expect(component.suggestions.some((s) => s.insert === '{{fatura.tutar}}')).toBe(true);
+  });
 });
