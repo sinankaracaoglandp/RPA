@@ -84,6 +84,13 @@ try
         return 1;
     }
 
+    // Aktivasyon PENCERESI modu (--activate-ui): AgentId/InstallationId/kod ekrandan girilir;
+    // appsettings.json duzenlemek gerekmez. Pencere STA thread'inde acilir, kapaninca cikilir.
+    if (AgentCommandLine.IsActivationUi(args))
+    {
+        return RunActivationUi(host);
+    }
+
     if (activationCode is not null)
     {
         return await ActivateAgentAsync(host, activationCode);
@@ -136,4 +143,32 @@ static async Task<int> ActivateAgentAsync(IHost host, string activationCode)
         Log.Error("Agent aktivasyonu basarisiz: {Reason}", ex.Message);
         return 1;
     }
+}
+
+/// <summary>
+/// Aktivasyon penceresini STA thread'inde acar (WinForms STA gerektirir). Pencere, operatorun
+/// girdigi AgentId/InstallationId/kod ile <see cref="AgentEnrollmentClient"/>'i cagirir. Kullanici
+/// aktive etmeden kapatirsa bu bir hata degildir (cikis 0); pencere hic acilamazsa cikis 1.
+/// </summary>
+static int RunActivationUi(IHost host)
+{
+    var exitCode = 0;
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            ApplicationConfiguration.Initialize();
+            using var form = new RPA.Agent.Activation.ActivationForm(host.Services);
+            System.Windows.Forms.Application.Run(form);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Aktivasyon penceresi acilamadi: {Reason}", ex.Message);
+            exitCode = 1;
+        }
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    return exitCode;
 }

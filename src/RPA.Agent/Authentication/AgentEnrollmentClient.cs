@@ -34,17 +34,33 @@ public sealed class AgentEnrollmentClient : IAgentTokenClient
 
     /// <summary>
     /// Aktivasyon kodunu kullanarak ajani baglar ve donen credential'i korumali depoya yazar.
+    /// AgentId/InstallationId yapilandirmadan (<see cref="AgentOptions"/>) alinir — CLI
+    /// (<c>--activate</c>) yolu bunu kullanir.
     /// </summary>
-    public async Task ActivateAsync(string activationCode, CancellationToken cancellationToken = default)
+    public Task ActivateAsync(string activationCode, CancellationToken cancellationToken = default)
+        => ActivateAsync(_options.AgentId, _options.InstallationId, activationCode, cancellationToken);
+
+    /// <summary>
+    /// AgentId ve InstallationId'nin ACIKCA verildigi aktivasyon — operatorun bu degerleri
+    /// appsettings.json'a yazmadan ekrandan girebilmesi icin (aktivasyon penceresi kullanir).
+    /// Diger her sey (adres, makine parmak izi, credential depolama) yapilandirmadan gelir.
+    /// </summary>
+    public async Task ActivateAsync(Guid agentId, string installationId, string activationCode, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(activationCode);
+        if (agentId == Guid.Empty)
+        {
+            throw new ArgumentException("Agent kimligi (AgentId) bos olamaz.", nameof(agentId));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(installationId);
 
         using var response = await _http.PostAsJsonAsync(
             BuildUri("/api/agent-auth/activate"),
             new
             {
-                agentId = _options.AgentId,
-                installationId = _options.InstallationId,
+                agentId,
+                installationId,
                 activationCode,
                 machineFingerprint = _options.EffectiveMachineName,
             },

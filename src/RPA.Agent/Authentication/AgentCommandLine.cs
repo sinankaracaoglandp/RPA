@@ -8,6 +8,17 @@ namespace RPA.Agent.Authentication;
 public static class AgentCommandLine
 {
     private const string ActivateFlag = "--activate";
+    private const string ActivateUiFlag = "--activate-ui";
+
+    /// <summary>
+    /// <c>--activate-ui</c> bayragi verildiyse true — kod satiri yerine aktivasyon PENCERESI acilir.
+    /// Operator AgentId/InstallationId/kodu ekrandan girer; appsettings.json duzenlemek gerekmez.
+    /// </summary>
+    public static bool IsActivationUi(string[] args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        return args.Any(argument => string.Equals(argument, ActivateUiFlag, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// <c>--activate KOD</c> veya <c>--activate=KOD</c> bicimlerini okur. Bayrak yoksa false.

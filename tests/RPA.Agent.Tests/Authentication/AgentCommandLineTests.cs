@@ -49,4 +49,18 @@ public class AgentCommandLineTests
         var error = Assert.Throws<ArgumentException>(() => AgentCommandLine.TryGetActivationCode(args, out _));
         Assert.Contains("--activate", error.Message);
     }
+
+    [Fact]
+    public void IsActivationUi_WithFlag_ReturnsTrue()
+    {
+        Assert.True(AgentCommandLine.IsActivationUi(["--activate-ui"]));
+        Assert.True(AgentCommandLine.IsActivationUi(["--baska", "--Activate-UI"]));
+    }
+
+    [Fact]
+    public void IsActivationUi_WithoutFlag_ReturnsFalse()
+    {
+        Assert.False(AgentCommandLine.IsActivationUi([]));
+        Assert.False(AgentCommandLine.IsActivationUi(["--activate", "KOD-123"]));
+    }
 }
