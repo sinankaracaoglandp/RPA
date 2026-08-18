@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Vendor-only masaustu araci — RPA.LicenseGenerator'in GORSEL sarmalayicisi.
+    Calisan urun (WebAPI/Agent/Studio) bu projeye ASLA bagimli olmaz; bagimlilik tek yonludur:
+    LicenseStudio -> LicenseGenerator -> Domain/Infrastructure.
+    Kripto/imza YENIDEN YAZILMAZ: uretim LicenseGenerationService dogrudan cagrilir, boylece
+    ureilen .lic dosyalari CLI ciktisiyla bit-birebir aynidir.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>RPA.LicenseStudio</RootNamespace>
+    <AssemblyName>RPA.LicenseStudio</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RPA.LicenseGenerator\RPA.LicenseGenerator.csproj" />
+  </ItemGroup>
+
+</Project>
