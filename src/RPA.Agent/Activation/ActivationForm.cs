@@ -44,8 +44,7 @@ public sealed class ActivationForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5F);
         Padding = new Padding(14);
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
+        AutoScroll = true;
 
         BuildLayout();
 
@@ -96,7 +95,8 @@ public sealed class ActivationForm : Form
     private static void AddRow(TableLayoutPanel table, string label, Control input)
     {
         var row = table.RowCount;
-        table.RowCount++;
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowCount = row + 1;
         table.Controls.Add(new Label
         {
             Text = label,
