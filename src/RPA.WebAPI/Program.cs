@@ -111,13 +111,27 @@ builder.Services.AddScoped<EInvoiceProfileDefinitionValidator>();
 builder.Services.AddScoped<EInvoiceProfileService>();
 
 // Offline license + agent identity WebAPI (license enforcement authority).
+// DEBUG derlemede lisans anahtari zorunlulugu kaldirilir (gelistirici lisans dosyasi olmadan
+// calisabilsin). RELEASE derlemede bypass hic derlenmez — anahtar her zaman zorunludur.
+var licenseBypass = DevelopmentLicenseBypass.IsEnabled(builder.Configuration);
+if (licenseBypass)
+{
+    Log.Warning(
+        "SALT GELISTIRME (DEBUG derlemesi): lisans zorunlulugu DEVRE DISI. Lisans belgesi " +
+        "olmadan agent olusturulabilir/aktive edilebilir ve koltuk siniri uygulanmaz. " +
+        "Release derlemesinde bu yol hic derlenmez; kapatmak icin {Key}=false.",
+        DevelopmentLicenseBypass.ConfigurationKey);
+}
 builder.Services.AddScoped<RPA.Domain.Interfaces.ILicenseService>(sp =>
-    new LicenseService(
+{
+    var service = new LicenseService(
         sp.GetRequiredService<RpaDbContext>(),
         sp.GetRequiredService<IInstallationIdentityService>(),
         sp.GetRequiredService<IVendorLicenseVerifier>(),
         builder.Configuration["Licensing:ProductId"] ?? "RPA.Platform",
-        builder.Configuration["Licensing:CustomerReference"]));
+        builder.Configuration["Licensing:CustomerReference"]);
+    return licenseBypass ? new DevelopmentLicenseService(service) : service;
+});
 // SINGLETON: kurulum kimligi sureç boyunca sabittir ve InstallationIdentityService icindeki
 // semafor ancak TEK bir ornek paylasildiginda anlam tasir — scoped kayitta her istek kendi
 // semaforunu alir, hicbir sey serilestirilmez ve ilk aciliste her istek 3072-bit RSA uretir.
@@ -155,8 +169,10 @@ if (string.IsNullOrWhiteSpace(vendorPublicKeyPem))
 // SINGLETON: dogrulayici durumsuzdur; scoped kayit her istekte PEM'i yeniden ayristirip yeni bir
 // RSA nesnesi acardi (guven kokune her istek icin gereksiz kurulum maliyeti).
 builder.Services.AddSingleton<IVendorLicenseVerifier>(_ => new VendorLicenseVerifier(vendorPublicKeyPem));
-builder.Services.AddScoped<RPA.Domain.Interfaces.IAgentIdentityRepository, EfAgentIdentityRepository>();
-builder.Services.AddScoped<EfAgentIdentityRepository>();
+builder.Services.AddScoped<EfAgentIdentityRepository>(sp =>
+    new EfAgentIdentityRepository(sp.GetRequiredService<RpaDbContext>(), licenseEnforced: !licenseBypass));
+builder.Services.AddScoped<RPA.Domain.Interfaces.IAgentIdentityRepository>(sp =>
+    sp.GetRequiredService<EfAgentIdentityRepository>());
 builder.Services.AddScoped<IAgentActivationCodeStore, EfAgentActivationCodeStore>();
 
 // SignalR: robot ajanları ile çift yönlü mesajlaşma (RobotHub).

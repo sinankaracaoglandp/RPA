@@ -14,8 +14,18 @@ public sealed class EfAgentIdentityRepository : IAgentIdentityRepository
 {
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> NonPostgresLocks = new();
     private readonly RpaDbContext _db;
+    private readonly bool _licenseEnforced;
 
-    public EfAgentIdentityRepository(RpaDbContext db) => _db = db ?? throw new ArgumentNullException(nameof(db));
+    /// <param name="licenseEnforced">
+    /// false ise aktivasyon lisans belgesi/son kullanma/koltuk sinirini uygulamaz
+    /// (yalnizca DEBUG derlemesindeki gelistirme bypass'i; bkz. <see cref="Licensing.DevelopmentLicenseBypass"/>).
+    /// Aktivasyon KODU dogrulamasi her durumda uygulanir — o kimlik dogrulamadir, lisanslama degil.
+    /// </param>
+    public EfAgentIdentityRepository(RpaDbContext db, bool licenseEnforced = true)
+    {
+        _db = db ?? throw new ArgumentNullException(nameof(db));
+        _licenseEnforced = licenseEnforced;
+    }
 
     public async Task<AgentIdentity> CreateAsync(AgentIdentity identity, CancellationToken cancellationToken = default)
     { _db.AgentIdentities.Add(identity); await _db.SaveChangesAsync(cancellationToken); return identity; }
@@ -54,8 +64,11 @@ public sealed class EfAgentIdentityRepository : IAgentIdentityRepository
 
             var document = installation.SignedLicenseDocument is null
                 ? null : LicenseDocumentJson.Deserialize(installation.SignedLicenseDocument);
-            if (document is null) throw new BusinessException("LICENSE_MISSING");
-            if (document.Payload.ExpiresAt <= activatedAt) throw new BusinessException("LICENSE_EXPIRED");
+            if (_licenseEnforced)
+            {
+                if (document is null) throw new BusinessException("LICENSE_MISSING");
+                if (document.Payload.ExpiresAt <= activatedAt) throw new BusinessException("LICENSE_EXPIRED");
+            }
 
             var agent = await _db.AgentIdentities.SingleOrDefaultAsync(x => x.Id == id && x.LicenseInstallationId == installationId && !x.IsDeleted, cancellationToken)
                 ?? throw new BusinessException("AGENT_NOT_FOUND");
@@ -67,10 +80,13 @@ public sealed class EfAgentIdentityRepository : IAgentIdentityRepository
                 if (activation.ExpiresAt <= activatedAt) throw new BusinessException("ACTIVATION_CODE_EXPIRED");
             }
 
-            var used = await _db.AgentIdentities.CountAsync(x => x.LicenseInstallationId == installationId && !x.IsDeleted &&
-                (x.Status == AgentIdentityStatus.Activated || x.Status == AgentIdentityStatus.Disabled), cancellationToken);
-            if (!agent.Status.ConsumesSeat() && used >= document.Payload.MaxActivatedAgents)
-                throw new BusinessException("AGENT_LICENSE_LIMIT_REACHED");
+            if (document is not null)
+            {
+                var used = await _db.AgentIdentities.CountAsync(x => x.LicenseInstallationId == installationId && !x.IsDeleted &&
+                    (x.Status == AgentIdentityStatus.Activated || x.Status == AgentIdentityStatus.Disabled), cancellationToken);
+                if (!agent.Status.ConsumesSeat() && used >= document.Payload.MaxActivatedAgents)
+                    throw new BusinessException("AGENT_LICENSE_LIMIT_REACHED");
+            }
 
             agent.Status = AgentIdentityStatus.Activated;
             agent.MachineFingerprint = machineFingerprint;

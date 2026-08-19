@@ -1188,6 +1188,40 @@ sıfır test) ve her halkası **sessizce** başarısız oluyordu. Sessizlik kald
 
 ---
 
+## Kontrat Değişikliği — 2026-08-19 (DEBUG derlemesinde lisans zorunluluğu kaldırıldı)
+
+Geliştirme derlemesinde (DEBUG) agent lisanslaması **uygulanmaz**; lisans anahtarı **yalnızca
+RELEASE** derlemesinde zorunludur. Bypass yolu RELEASE'te hiç derlenmez — hiçbir yapılandırma
+değeri onu açamaz.
+
+- **Yeni:** `RPA.Infrastructure.Licensing.DevelopmentLicenseBypass` — `IsEnabled(IConfiguration)`.
+  DEBUG'da varsayılan **açık**; `Licensing:DevelopmentBypass=false` ile kapatılır (lisans
+  davranışını ölçen testler bunu yapar). RELEASE'te `#if DEBUG` dışında kaldığı için her zaman
+  `false`.
+- **Yeni:** `DevelopmentLicenseService` — `ILicenseService` dekoratörü. Gerçek ve **geçerli** bir
+  lisans varsa hiçbir şeye dokunmaz (dev makinede gerçek lisansla test hâlâ mümkün); yoksa
+  `GetStatusAsync` sentetik geçerli durum döndürür (`edition="development"`, sınırsız koltuk),
+  `GetCurrentInstallationAsync` kurulum satırını gerekirse oluşturur ve `EnsureAgentCapacityAsync`
+  no-op olur. `ImportAsync` **değişmez** (imza doğrulaması aynen çalışır).
+- **`EfAgentIdentityRepository`** ctor'a opsiyonel `bool licenseEnforced = true` aldı (varsayılan
+  = mevcut davranış). `false` iken aktivasyon `LICENSE_MISSING`/`LICENSE_EXPIRED`/
+  `AGENT_LICENSE_LIMIT_REACHED` uygulamaz. **Aktivasyon KODU doğrulaması her durumda uygulanır** —
+  o kimlik doğrulamadır, lisanslama değil.
+- **Wiring:** `RPA.WebAPI/Program.cs` bypass açıkken dekoratörü ve `licenseEnforced:false` repo'yu
+  kaydeder, açılışta `Warning` seviyesinde yüksek sesle uyarır.
+
+**Kapsam dışı (bilinçli):** ajan credential'ı/aktivasyon akışı ve `Licensing:VendorPublicKeyPem`
+başlangıç koruması **değişmedi** — ilki kimlik doğrulama, ikincisi güven kökü; ikisi de lisans
+anahtarı değildir. DEBUG'da da ajan aktivasyon kodu ile aktive edilir, ancak artık lisans
+belgesi gerekmez.
+
+Etkilenen paketler: Infrastructure (Licensing + `EfAgentIdentityRepository`), WebAPI (DI),
+WebAPI testleri (`LicensedTestApp` yeni `seedLicense`/`developmentBypass` parametreleri;
+`OfflineLicensingEndToEndTests` bypass'ı kapatır). Domain/Agent/Studio **etkilenmez**.
+Doğrulama: WebAPI 134, Infrastructure 807 — tümü yeşil; Release solution derlemesi 0 hata.
+
+---
+
 ## Kontrat Değişiklik Prosedürü
 
 Arayüz / şema / enum değişikliği gerekirse:

@@ -53,7 +53,9 @@ public sealed class LicensedTestApp : IAsyncDisposable
         DateTimeOffset? expiresAt = null,
         int seats = 5,
         bool realRobotService = false,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool seedLicense = true,
+        bool developmentBypass = false)
     {
         var app = new LicensedTestApp(null!);
         Directory.CreateDirectory(app._keyDirectory);
@@ -64,6 +66,9 @@ public sealed class LicensedTestApp : IAsyncDisposable
         {
             builder.UseSetting("Licensing:VendorPublicKeyPem", vendorPublicKeyPem);
             builder.UseSetting("Licensing:KeyDirectory", app._keyDirectory);
+            // Lisans davranisini olcen testler DEBUG gelistirme bypass'ini KAPATIR; aksi halde
+            // "lisans yok/suresi dolmus" senaryolari gelistirme lisansina dusup gecerli gorunurdu.
+            builder.UseSetting(DevelopmentLicenseBypass.ConfigurationKey, developmentBypass ? "true" : "false");
             builder.ConfigureServices(services =>
             {
                 var descriptors = services
@@ -92,7 +97,7 @@ public sealed class LicensedTestApp : IAsyncDisposable
             });
         });
 
-        await app.SeedLicenseAsync(expiresAt ?? DateTimeOffset.UtcNow.AddDays(30), seats);
+        if (seedLicense) await app.SeedLicenseAsync(expiresAt ?? DateTimeOffset.UtcNow.AddDays(30), seats);
         return app;
     }
 

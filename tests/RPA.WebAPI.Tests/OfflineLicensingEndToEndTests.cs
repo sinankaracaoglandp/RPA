@@ -320,6 +320,7 @@ public sealed class OfflineLicensingEndToEndTests : IDisposable
         {
             builder.UseSetting("Licensing:VendorPublicKeyPem", vendorPublicKeyPem);
             builder.UseSetting("Licensing:KeyDirectory", _keyDirectory);
+            builder.UseSetting(RPA.Infrastructure.Licensing.DevelopmentLicenseBypass.ConfigurationKey, "false");
             builder.ConfigureServices(services =>
             {
                 var descriptors = services
