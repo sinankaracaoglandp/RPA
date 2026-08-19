@@ -77,22 +77,25 @@ public sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 3,
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // form alanlari
+        // Girisler kaydirilabilir alanda (kisa/yuksek-DPI ekranda tasmasin); butonlar ve gunluk
+        // sabit alanlarda — her zaman gorunur kalir.
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // giris alani (AutoScroll)
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // butonlar
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // gunluk
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));  // gunluk
 
         var form = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
             AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 3,
-            Padding = new Padding(0, 0, 0, 8),
+            Padding = new Padding(0, 0, 16, 8),
         };
         form.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         form.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        AddRow(form, "Satıcı anahtarı (.pem)", _keyPath, BrowseButton(BrowseKey));
+        AddRow(form, "Satıcı anahtarı (.pem)", _keyPath, KeyButtons());
         AddRow(form, "Anahtar parolası", _password, null);
         AddRow(form, "Kurulum talebi (.json)", _requestPath, RequestButtons());
         AddSeparator(form);
@@ -121,7 +124,10 @@ public sealed class MainForm : Form
         buttons.Controls.Add(_generate, 0, 0);
         buttons.Controls.Add(_openFolder, 1, 0);
 
-        root.Controls.Add(form, 0, 0);
+        var inputScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        inputScroll.Controls.Add(form);
+
+        root.Controls.Add(inputScroll, 0, 0);
         root.Controls.Add(buttons, 0, 1);
         root.Controls.Add(_log, 0, 2);
         Controls.Add(root);
@@ -130,7 +136,8 @@ public sealed class MainForm : Form
     private static void AddRow(TableLayoutPanel table, string label, Control input, Control? trailing)
     {
         var row = table.RowCount;
-        table.RowCount++;
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowCount = row + 1;
         table.Controls.Add(new Label
         {
             Text = label,
@@ -138,8 +145,9 @@ public sealed class MainForm : Form
             AutoSize = true,
             Margin = new Padding(3, 8, 8, 3),
         }, 0, row);
-        table.Controls.Add(input, 1, row);
         input.Margin = new Padding(3, 4, 3, 4);
+        input.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        table.Controls.Add(input, 1, row);
         if (trailing is not null)
         {
             table.Controls.Add(trailing, 2, row);
@@ -150,7 +158,8 @@ public sealed class MainForm : Form
     private static void AddSeparator(TableLayoutPanel table)
     {
         var row = table.RowCount;
-        table.RowCount++;
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowCount = row + 1;
         var line = new Panel { Height = 1, Dock = DockStyle.Fill, BackColor = SystemColors.ControlDark, Margin = new Padding(3, 6, 3, 6) };
         table.Controls.Add(line, 0, row);
         table.SetColumnSpan(line, 3);
@@ -161,6 +170,29 @@ public sealed class MainForm : Form
         var button = new Button { Text = "Gözat…", AutoSize = true };
         button.Click += onClick;
         return button;
+    }
+
+    private Control KeyButtons()
+    {
+        var panel = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = Padding.Empty };
+        panel.Controls.Add(BrowseButton(BrowseKey));
+        var generate = new Button { Text = "Üret…", AutoSize = true };
+        generate.Click += (_, _) => GenerateNewKey();
+        panel.Controls.Add(generate);
+        return panel;
+    }
+
+    private void GenerateNewKey()
+    {
+        var directory = SafeDirectoryOf(_keyPath.Text) ?? DefaultOutputDirectory();
+        using var dialog = new KeyGenForm(directory);
+        dialog.ShowDialog(this);
+        if (!string.IsNullOrWhiteSpace(dialog.GeneratedPrivateKeyPath))
+        {
+            _keyPath.Text = dialog.GeneratedPrivateKeyPath;
+            Log("Yeni satıcı anahtarı üretildi ve seçildi: " + dialog.GeneratedPrivateKeyPath);
+            Log("Önemli: ürünün Licensing:VendorPublicKeyPem ayarını yeni AÇIK anahtarla güncelleyin (pencerede kopyalayabilirsiniz).");
+        }
     }
 
     private Control RequestButtons()
